@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>RacePlan</title>
+
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#111528" />
+<link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+
+<!-- iOS home-screen -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="RacePlan" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #111528; overflow: hidden; }
+  #app {
+    position: fixed; inset: 0; width: 100%; height: 100dvh; border: 0;
+    background: #111528;
+  }
+  /* loading state shown until the iframe finishes */
+  #load {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px;
+    background: #111528; color: #C9A24B; z-index: 2;
+    font: 600 15px/1.4 "Heebo", system-ui, sans-serif;
+    transition: opacity .4s ease; pointer-events: none;
+  }
+  #load.hidden { opacity: 0; }
+  #load .ring {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 3px solid rgba(201,162,75,.25); border-top-color: #C9A24B;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { #load .ring { animation: none; } }
+</style>
+</head>
+<body>
+<div id="load"><div class="ring"></div><div>RacePlan נטען…</div></div>
+
+<iframe
+  id="app"
+  title="RacePlan"
+  src="https://script.google.com/macros/s/AKfycbymEZ1ClOZdly4acorn5lPrCHGXCD2ExjKGqa9q0SxuDD8aavnbektYa24ecM3MCUCffg/exec"
+  allow="clipboard-write; geolocation"
+  referrerpolicy="no-referrer-when-downgrade"
+></iframe>
+
+<script>
+  // hide the loader once the app frame reports load (or after a timeout)
+  var frame = document.getElementById('app');
+  var loader = document.getElementById('load');
+  function done() { loader.classList.add('hidden'); }
+  frame.addEventListener('load', function () { setTimeout(done, 400); });
+  setTimeout(done, 6000);
+
+  // register the service worker so Chrome treats this as installable and the
+  // shell (this page + icons) works offline
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    });
+  }
+</script>
+</body>
+</html>

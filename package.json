@@ -1,0 +1,17 @@
+{
+  "name": "raceplan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RacePlan — race pace planner (React UMD, no bundler). Apps Script web-app build.",
+  "type": "module",
+  "scripts": {
+    "test": "node test/functions.test.mjs",
+    "build": "node build/build.mjs",
+    "push": "npm run build && clasp push --force",
+    "redeploy": "node build/redeploy.mjs"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/preset-react": "^7.27.1"
+  }
+}

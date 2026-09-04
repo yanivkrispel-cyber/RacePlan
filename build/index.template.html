@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RacePlan — מתכנן קצב לריצה</title>
+<base target="_top" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&family=Frank+Ruhl+Libre:wght@500;700;800&family=Cormorant+Garamond:ital,wght@1,600;1,700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #111528; color-scheme: dark; }
+  body { font-family: "Heebo", system-ui, sans-serif; text-wrap: pretty;
+    -webkit-text-size-adjust: 100%; }
+  #root { min-height: 100vh; }
+  input { font-family: inherit; }
+  @media print {
+    .rp-btn, .rpt-del, .rp-toolbar { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- Server-injected context (static hosting uses the #s= hash instead) -->
+<script>
+  window.__RACEPLAN_SHARE__ = <?!= shareJson ?>;
+  window.__RACEPLAN_EXEC_URL__ = <?!= execUrlJson ?>;
+</script>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<script src="<?!= appJsUrl ?>"></script>
+</body>
+</html>
