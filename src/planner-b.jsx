@@ -5,6 +5,30 @@ const { useRacePlan, formatPace, formatClock, formatKm, PaceChart,
         parseGpx, ElevationChart, RouteMap, round2, clearSavedPlan,
         AthleteDB, AthletePanel, computeSegmentElevations } = window;
 
+// ── role ──────────────────────────────────────────────────────────────
+// Apps Script injects window.__RACEPLAN_USER__ = { email, tier }. Owner gets
+// the athlete bank; everyone else is personal-planning only. Plain static
+// hosting has no injected user → treat as full access (local/dev).
+const RP_USER = (typeof window !== 'undefined' && window.__RACEPLAN_USER__) || null;
+const RP_IS_OWNER = !RP_USER || RP_USER.tier === 'owner';
+
+// Fire-and-forget usage ping to the owner's logger web app (once/day/browser).
+function logUsage() {
+  try {
+    const cfg = (typeof window !== 'undefined' && window.__RACEPLAN_LOGGER__) || null;
+    if (!cfg || !cfg.url || !RP_USER || !RP_USER.email) return;
+    const day = new Date().toISOString().slice(0, 10);
+    const flag = 'rp-logged-' + day;
+    if (localStorage.getItem(flag)) return;
+    localStorage.setItem(flag, '1');
+    fetch(cfg.url, {
+      method: 'POST', mode: 'no-cors', keepalive: true,
+      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify({ email: RP_USER.email, token: cfg.token, t: Date.now() }),
+    }).catch(() => {});
+  } catch (e) {}
+}
+
 // keep ~N evenly-spaced samples (always including the last) for chart/map
 function downsample(arr, max) {
   if (arr.length <= max) return arr;
@@ -228,13 +252,14 @@ function PlannerB() {
   });
 
   // Clean the hash from the URL after mount (cosmetic; replaceState can throw in
-  // a sandboxed iframe, so guard it).
+  // a sandboxed iframe, so guard it). Also log this visit once.
   React.useEffect(() => {
     try {
       if (shareData && location.hash.startsWith('#s=')) {
         history.replaceState(null, '', location.pathname + location.search);
       }
     } catch (e) { /* sandboxed iframe — ignore */ }
+    logUsage();
   }, []);
 
   // If a share URL was decoded, build initial segments for the hook
@@ -445,6 +470,7 @@ function PlannerB() {
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <EditableText value={trainer} onChange={handleTrainerChange} placeholder="שם המתאמן"
                 style={{ color: 'var(--rp-text-soft)' }} />
+              {RP_IS_OWNER && (
               <button
                 onClick={() => setShowAthletePanel(true)}
                 title="מאגר מתאמנים"
@@ -466,6 +492,7 @@ function PlannerB() {
                   <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                 </svg>
               </button>
+              )}
             </div>
             {/* race date + time */}
             <div style={{ marginTop: 7, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -603,7 +630,7 @@ function PlannerB() {
 
       </div>
 
-      {showAthletePanel && (
+      {RP_IS_OWNER && showAthletePanel && (
         <AthletePanel
           onClose={() => setShowAthletePanel(false)}
           currentTrainer={trainer}

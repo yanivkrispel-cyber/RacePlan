@@ -14,31 +14,53 @@ URL and server-side storage for the athlete bank.
 | `build/build.mjs` | Transpiles `src/*.jsx` with `@babel/preset-react`, wraps each file in its own IIFE (they were separate `<script>` tags), inlines `image-slot.js` + a 256 px data-URI of `logo.png`. Writes the combined script to **`apps-script/AppJs.gs`** as `var RP_APP_JS = "…"`, and the small HTML shell to `apps-script/index.html`. |
 | `build/index.template.html` | HTML shell: RTL `<html>`, Google Fonts + Leaflet from CDN, React UMD from CDN, two server-injected globals, and `<script src="…/exec?js=1">`. |
 | `build/redeploy.mjs` | build → `clasp push` → new version → repoint the stable `/exec` URL. |
-| `apps-script/Code.gs` | `doGet`: `?js=1` returns `RP_APP_JS` via **ContentService** (no sanitization); otherwise serves the templated shell, injecting `__RACEPLAN_SHARE__` (from `?s=`), `__RACEPLAN_EXEC_URL__`, and the `?js=1` URL. `rp_loadAthletes()` / `rp_saveAthletes(json)` store the calling user's athlete-bank JSON in **their own** `PropertiesService.getUserProperties()` (chunked at 8 KB — the per-value limit). |
+| `apps-script/Code.gs` | `doGet`: `?js=1` returns `RP_APP_JS` via **ContentService** (no sanitization); otherwise serves the templated shell, injecting `__RACEPLAN_SHARE__` (from `?s=`), `__RACEPLAN_EXEC_URL__`, `__RACEPLAN_USER__` ({email, tier}) and `__RACEPLAN_LOGGER__`. `rp_loadAthletes()` / `rp_saveAthletes(json)` — **owner only** (server-checked) — store the owner's athlete-bank JSON in their `PropertiesService.getUserProperties()`, chunked at 8 KB. |
 | `apps-script/AppJs.gs` | Generated — the whole client script as a string constant. |
-| `apps-script/index.html` | Generated — ~1.6 KB shell. |
-| `apps-script/appsscript.json` | Web-app manifest — **`executeAs: USER_ACCESSING`**, `access: ANYONE` (= "anyone with a Google account"). |
-| `.clasp.json` | `scriptId` + `rootDir: apps-script`. |
+| `apps-script/index.html` | Generated — ~1.8 KB shell. |
+| `apps-script/appsscript.json` | Manifest — **`executeAs: USER_ACCESSING`**, `access: ANYONE` (= "anyone with a Google account"), `oauthScopes: [userinfo.email]`. |
+| `logger/` | **Separate** tiny Apps Script (own `.clasp.json`, scriptId `1dIk473c21O…`). `executeAs: USER_DEPLOYING` (runs as owner), `access: ANYONE_ANONYMOUS`. `doPost({email,token})` upserts a row into a **"RacePlan — users" sheet in the owner's Drive** (email · firstSeen · lastSeen · count). |
+| `.clasp.json` | frontend `scriptId` + `rootDir: apps-script`. `logger/.clasp.json` for the logger. |
 
-## Multi-user model
+## Roles & usage log
 
-The web app is deployed **execute-as: the user accessing it**. So every visitor
-runs the script as themselves:
+The web app runs **as the visitor** (`executeAs: USER_ACCESSING`), and asks each
+one to sign in (`access: ANYONE` + `oauthScopes: [userinfo.email]`), so
+`Session.getActiveUser().getEmail()` gives their address.
 
-- `PropertiesService.getUserProperties()` is automatically scoped to that
-  visitor → a private athlete bank per Google account, synced across their
-  devices, invisible to the owner and to other users.
-- No shared spreadsheet, no server-side identity plumbing, no anonymous keys.
-- Server quotas (script runtime, Properties ops) are spent on each visitor's
-  own account, not the owner's.
-- **Cost:** each user authorizes the script once — the Google "unverified app"
-  consent screen (**Advanced → Continue**). It's unverified because the Cloud
-  project isn't through Google's OAuth review (not worth it for a small
-  audience). The only permission requested is running the script itself; no
-  Drive/Sheets/email scopes (the code touches none).
+- **owner** — email equals `RP_OWNER_EMAIL` (Script Property; default
+  `yaniv.krispel@gmail.com`). Full app incl. the athlete bank, stored privately
+  in the owner's UserProperties.
+- **free** — everyone else. Personal race planning only (segments, pace, GPX,
+  chart, map, share, print). The athlete-bank UI is hidden (`RP_IS_OWNER` in
+  `planner-b.jsx`) **and** `rp_saveAthletes`/`rp_loadAthletes` refuse non-owners
+  server-side.
+- Plain static hosting (`RacePlan.html`) has no injected user → treated as
+  owner (full) for local/dev.
 
-The `?s=` share links are stateless (the plan is base64 in the URL) — they work
-for anyone regardless of sign-in.
+**Usage log:** on load the client fires one fire-and-forget
+`fetch(loggerUrl, {mode:'no-cors', body:{email, token}})` per browser per day.
+The `logger/` web app (execute-as owner) writes it into the owner's
+"RacePlan — users" sheet. The shared `token` (`DEFAULT_LOG_TOKEN` in both
+`Code.gs` files; override via `RP_LOG_TOKEN` Script Property on both) only
+deters drive-by bots — it's visible in the page source.
+
+**Future paid tier:** add a `pro` check (email in a Script-Property list, or a
+real registry) alongside the `owner` check — `tier` already flows to the client.
+
+### One-time authorizations
+
+1. **Owner, frontend** — the `userinfo.email` scope was added after the first
+   deploy, and Apps Script does **not** re-prompt an already-authorized user; it
+   just throws at runtime (→ owner silently sees the free view). Fix once:
+   myaccount.google.com/permissions → remove "RacePlan" → reopen the link and
+   approve (now includes "See your email address"). New users get the full
+   consent on first visit automatically.
+2. **Owner, logger** — open the logger `/exec` URL once and approve its Sheets +
+   Drive scopes (it's a separate project). This creates the "RacePlan — users"
+   sheet. Until then, usage-log POSTs silently no-op.
+
+The `?s=` share links are stateless (plan is base64 in the URL) — they work for
+anyone regardless of sign-in or role.
 
 ### First open inside the PWA wrapper
 
@@ -77,31 +99,31 @@ does **not** sanitize, so the script is served through `doGet(?js=1)` with
 ```
 npm install                  # once — @babel/core, @babel/preset-react
 npm run build                # regenerate apps-script/{index.html, AppJs.gs}
-npm run push                 # build + clasp push (updates code, not the /exec URL)
-npm run redeploy -- "note"   # build + push + version + repoint the /exec URL
+npm run push                 # build + clasp push (frontend code, not the /exec URL)
+npm run redeploy -- "note"   # build + push + version + repoint the frontend /exec URL
 ```
 
-Every user (owner included) authorizes **once** on first open — the unverified-app
-consent screen, **Advanced → Continue**. It grants nothing beyond running the
-script.
+The `logger/` project is its own clasp target and rarely changes:
+
+```
+cd logger && clasp push --force && clasp create-version "note" \
+  && clasp redeploy <logger-deployment-id> -V <n> -d "note"
+```
 
 Changing `executeAs` between deployments does not change the `/exec` URL — the
-stable deployment is repointed in place by `npm run redeploy`.
+stable deployment is repointed in place.
 
 ## Storage notes
 
-- Athlete bank: the calling user's `PropertiesService.getUserProperties()`,
-  chunked at 8 KB across keys `rp_ab_0..k` with `rp_ab_n` = count. Private per
-  Google account, synced across that user's devices. Per-user quota ≈ 500 KB
-  (`rp_saveAthletes` refuses payloads over ~460 KB — plenty unless someone
-  stores dozens of GPX-course plans).
+- Athlete bank (**owner only**): the owner's
+  `PropertiesService.getUserProperties()`, chunked at 8 KB across keys
+  `rp_ab_0..k` with `rp_ab_n` = count. Per-user quota ≈ 500 KB
+  (`rp_saveAthletes` refuses payloads over ~460 KB).
 - The current working plan (`rp-plan-v1`), race name/date/time stay in
-  `localStorage` on every target — only the athlete bank syncs to the server.
-- Migration note: the pre-multi-user build kept data in a shared spreadsheet
-  keyed by `e:<email>` / `k:<anonKey>`. That data is not read any more; the
-  owner's bank survives via its `localStorage` mirror and re-lands in
-  UserProperties on the next change. The old auto-created "RacePlan — athlete
-  data" sheet in the owner's Drive can be deleted.
+  `localStorage` on every target and for every role.
+- Usage log: "RacePlan — users" sheet in the owner's Drive (created by the
+  `logger/` project on its first successful POST). One row per email.
+- No migration from earlier builds — data was intentionally reset.
 
 ## Design system
 

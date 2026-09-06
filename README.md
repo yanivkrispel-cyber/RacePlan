@@ -49,7 +49,20 @@ src/*.jsx           React source (shared by every target)
 image-slot.js        <image-slot> web component (logo drag-drop, editor-only)
 RacePlan.html         static-hosting entry point
 build/                 build scripts (Apps Script bundle, PWA icons)
-apps-script/            Code.gs + manifest (AppJs.gs/index.html are generated)
+apps-script/            frontend Code.gs + manifest (AppJs.gs/index.html generated)
+logger/                 separate tiny Apps Script — usage log to the owner's Drive
 docs/                    PWA wrapper, published via GitHub Pages
 test/                     pure-function tests
 ```
+
+## Roles
+
+The Apps Script web app runs as whoever opens it (they sign in with Google):
+
+- **owner** (`RP_OWNER_EMAIL`) — full app, including the multi-athlete bank.
+- **free** — everyone else. Personal race planning only; no athlete bank.
+- Every sign-in is logged (email · first/last seen · count) to a
+  "RacePlan — users" sheet in the owner's Drive via the `logger/` project.
+
+See [`APPS_SCRIPT.md`](APPS_SCRIPT.md) for the role checks and the two one-time
+authorizations the owner does.

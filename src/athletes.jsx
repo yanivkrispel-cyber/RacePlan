@@ -530,7 +530,9 @@ function AthletePanel({
   ), document.body);
 }
 
-// Warm the local mirror from the server as early as possible.
-AthleteSync.pull();
+// Warm the local mirror from the server as early as possible — but only for the
+// owner; free users have no server-side bank (and the panel never mounts).
+const _rpUser = (typeof window !== 'undefined' && window.__RACEPLAN_USER__) || null;
+if (!_rpUser || _rpUser.tier === 'owner') AthleteSync.pull();
 
 Object.assign(window, { AthleteDB, AthletePanel });
