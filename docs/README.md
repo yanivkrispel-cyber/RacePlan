@@ -6,12 +6,12 @@ top-level document on `script.google.com`. You can't set a custom favicon /
 `/exec` URL only ever gets a generic letter tile and opens in a browser tab.
 
 This folder is a tiny static site that:
-- carries a real `manifest.webmanifest` + icons (from `appLogo.jpg`)
+- carries a real `manifest.webmanifest` + icons (from `NewLogo.png` at the repo root)
 - full-screen `<iframe>`s the RacePlan `/exec` URL
 - registers a service worker so Chrome offers **Install** and the shell works offline
 
-Installed from *this* page, the home-screen entry gets the RPK icon, the name
-"RacePlan", a navy splash, and opens standalone (no browser chrome).
+Installed from *this* page, the home-screen entry gets the RACE PLAN icon, the name
+"RacePlan", a near-black splash, and opens standalone (no browser chrome).
 
 It's published via **GitHub Pages** — this repo is configured to serve this
 `docs/` folder at:
@@ -31,9 +31,9 @@ Pushing to `main` updates the published site — no separate deploy step.)
 | `icon-maskable-512.png` | Android adaptive icon (safe-zone padded) |
 | `apple-touch-icon.png` | iOS home-screen icon (180×180) |
 | `favicon-64.png` | browser tab icon |
-| `appLogo.jpg` | icon source (1024×1024 RPK badge) |
+(icon source is `NewLogo.png` at the repo root)
 
-Regenerate icons after replacing `appLogo.jpg`: `python build/pwa-icons.py`,
+Regenerate icons after replacing `NewLogo.png`: `python build/pwa-icons.py`,
 then commit and push.
 
 ## First open — Google sign-in

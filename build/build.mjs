@@ -53,14 +53,15 @@ function transpile(code, filename) {
   }).code;
 }
 
-// logo.png (1180×896, 1.9 MB) → 256 px PNG data URI (~115 KB). Header shows it
-// at 72×72, so 256 px is retina-sharp.
+// NewLogo.png (square RACE PLAN badge) → 320 px PNG data URI. The header shows
+// it small and object-fit:contain, so a modest raster is plenty.
+const LOGO_SRC = 'NewLogo.png';
 function logoDataUri() {
   const py = [
     'import base64, io, sys',
     'from PIL import Image',
-    "im = Image.open(r'" + r('logo.png') + "').convert('RGBA')",
-    'im.thumbnail((256, 256), Image.LANCZOS)',
+    "im = Image.open(r'" + r(LOGO_SRC) + "').convert('RGBA')",
+    'im.thumbnail((320, 320), Image.LANCZOS)',
     'buf = io.BytesIO()',
     "im.save(buf, format='PNG', optimize=True)",
     "sys.stdout.write('data:image/png;base64,' + base64.b64encode(buf.getvalue()).decode())",

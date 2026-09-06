@@ -443,21 +443,16 @@ function PlannerB() {
         {/* ── header: logo (right) | race + trainer (center) | Coach Krispel (left) ── */}
         <div className="rp-header" style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 14 }}>
 
-          {/* RIGHT: logo (in RTL first flex child = right side) */}
-          <div style={{ position: 'relative', width: 68, height: 68, borderRadius: '50%',
-            overflow: 'hidden', flex: '0 0 auto', background: 'var(--rp-surface)',
-            boxShadow: '0 0 0 2px var(--rp-gold-line), var(--rp-shadow)' }}>
+          {/* RIGHT: logo (in RTL first flex child = right side). The RACE PLAN
+              badge is a full square mark with its own dark ground, so show it
+              whole (contain) in a rounded square — no circular crop. */}
+          <div style={{ width: 66, height: 66, flex: '0 0 auto', borderRadius: 'var(--rp-r-12)',
+            overflow: 'hidden' }}>
             <img
-              src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'logo.png'}
-              alt="Coach Krispel"
-              style={{ position: 'absolute', top: '50%', left: '50%',
-                transform: 'translate(-50%, -50%) scale(1.14)',
-                width: '100%', height: '100%', objectFit: 'cover' }}
+              src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'NewLogo.png'}
+              alt="RACE PLAN"
+              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
             />
-            {/* radial vignette hides any pale background at the coin edges */}
-            <div style={{ position: 'absolute', inset: 0, borderRadius: '50%',
-              background: 'radial-gradient(circle, transparent 60%, var(--rp-bg) 100%)',
-              pointerEvents: 'none' }} />
           </div>
 
           {/* CENTER: race name + trainer name + date/time */}
