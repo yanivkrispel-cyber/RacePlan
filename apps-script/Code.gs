@@ -1,18 +1,23 @@
 /**
  * RacePlan — Google Apps Script web app.
  *
- * Serves the single-file React app (build/build.mjs -> index.html) and
- * persists each user's athlete bank in an auto-created Google Sheet.
+ * Serves the single-file React app (build/build.mjs -> AppJs.gs / index.html)
+ * and persists each user's athlete bank privately.
  *
- * Deploy: Deploy > New deployment > Web app
- *   Execute as: Me
- *   Who has access: "Anyone with Google account"  (per-user data by email)
- *                   or "Anyone" (all users share an anonymous browser key)
+ * Deployment (see appsscript.json):
+ *   Execute as:      User accessing the web app
+ *   Who has access:  Anyone with a Google account
+ *
+ * Because the script runs AS the visitor, PropertiesService.getUserProperties()
+ * is automatically scoped to that visitor — every user gets a private store the
+ * owner cannot see, synced across their devices by their Google identity. Each
+ * user authorizes the script once (the "unverified app" consent screen).
  */
 
-var SHEET_NAME = 'athletes';
-var CHUNK = 40000;          // < 50k cell-character limit, with headroom
-var PROP_SS_ID = 'RP_SPREADSHEET_ID';
+// UserProperties: 9 KB per value, ~500 KB per user total. We chunk the JSON.
+var AB_PREFIX = 'rp_ab_';   // rp_ab_n = chunk count; rp_ab_0..k = chunk data
+var AB_CHUNK = 8000;
+var AB_MAX = 460000;        // refuse payloads that won't fit the per-user quota
 
 // ── Web app entry ──────────────────────────────────────────────────────
 function doGet(e) {
@@ -47,86 +52,43 @@ function include(name) {
   return HtmlService.createHtmlOutputFromFile(name).getContent();
 }
 
-// ── Per-user identity ─────────────────────────────────────────────────
-function userKey_(anonKey) {
-  var email = '';
-  try { email = Session.getActiveUser().getEmail() || ''; } catch (err) {}
-  if (email) return 'e:' + email;
-  anonKey = (anonKey || '').toString().replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 80);
-  return anonKey ? 'k:' + anonKey : 'k:_shared';
-}
-
-// ── Storage (lazy-created spreadsheet) ───────────────────────────────
-function sheet_() {
-  var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty(PROP_SS_ID);
-  var ss = null;
-  if (id) {
-    try { ss = SpreadsheetApp.openById(id); } catch (err) { ss = null; }
-  }
-  if (!ss) {
-    ss = SpreadsheetApp.create('RacePlan — athlete data');
-    props.setProperty(PROP_SS_ID, ss.getId());
-  }
-  var sh = ss.getSheetByName(SHEET_NAME);
-  if (!sh) {
-    sh = ss.insertSheet(SHEET_NAME);
-    sh.appendRow(['key', 'chunk', 'data', 'updatedAt']);
-  }
-  return sh;
-}
-
+// ── Per-user athlete-bank storage ────────────────────────────────────
 /**
- * Load the athlete-bank JSON for the calling user.
- * @param {string} anonKey  browser-generated fallback id
- * @return {string} JSON string, or '' when nothing stored yet
+ * Load the calling user's athlete-bank JSON.
+ * @return {string} the JSON string, or '' when nothing is stored yet
  */
-function rp_loadAthletes(anonKey) {
-  var key = userKey_(anonKey);
-  var sh = sheet_();
-  var values = sh.getDataRange().getValues();   // includes header
+function rp_loadAthletes() {
+  var props = PropertiesService.getUserProperties();
+  var n = parseInt(props.getProperty(AB_PREFIX + 'n'), 10);
+  if (!n || n < 1) return '';
   var parts = [];
-  for (var i = 1; i < values.length; i++) {
-    if (values[i][0] === key) parts.push([Number(values[i][1]) || 0, String(values[i][2] || '')]);
-  }
-  if (!parts.length) return '';
-  parts.sort(function (a, b) { return a[0] - b[0]; });
-  return parts.map(function (p) { return p[1]; }).join('');
+  for (var i = 0; i < n; i++) parts.push(props.getProperty(AB_PREFIX + i) || '');
+  return parts.join('');
 }
 
 /**
- * Replace the athlete-bank JSON for the calling user.
- * @param {string} anonKey  browser-generated fallback id
- * @param {string} json     full db JSON ({ athletes: [...] })
+ * Replace the calling user's athlete-bank JSON.
+ * @param {string} json  full db JSON ({ athletes: [...] })
  * @return {string} 'ok'
  */
-function rp_saveAthletes(anonKey, json) {
+function rp_saveAthletes(json) {
   json = (json == null) ? '' : String(json);
-  // guard against runaway payloads (~5 MB)
-  if (json.length > 5000000) throw new Error('payload too large');
+  if (json.length > AB_MAX) throw new Error('athlete bank too large for the per-user store');
 
-  var key = userKey_(anonKey);
-  var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  var lock = LockService.getUserLock();
+  lock.waitLock(15000);
   try {
-    var sh = sheet_();
-    var values = sh.getDataRange().getValues();
+    var props = PropertiesService.getUserProperties();
+    var prev = parseInt(props.getProperty(AB_PREFIX + 'n'), 10) || 0;
+    var chunks = json ? Math.ceil(json.length / AB_CHUNK) : 0;
 
-    // delete existing rows for this key (bottom-up so indexes stay valid)
-    for (var i = values.length - 1; i >= 1; i--) {
-      if (values[i][0] === key) sh.deleteRow(i + 1);
-    }
+    var write = {};
+    for (var i = 0; i < chunks; i++) write[AB_PREFIX + i] = json.substr(i * AB_CHUNK, AB_CHUNK);
+    write[AB_PREFIX + 'n'] = String(chunks);
+    props.setProperties(write, false);            // false: keep unrelated keys
 
-    var now = new Date().toISOString();
-    var rows = [];
-    if (json.length === 0) {
-      rows.push([key, 0, '', now]);
-    } else {
-      for (var off = 0, idx = 0; off < json.length; off += CHUNK, idx++) {
-        rows.push([key, idx, json.substr(off, CHUNK), now]);
-      }
-    }
-    sh.getRange(sh.getLastRow() + 1, 1, rows.length, 4).setValues(rows);
+    for (var j = chunks; j < prev; j++) props.deleteProperty(AB_PREFIX + j);
+    if (chunks === 0) props.deleteProperty(AB_PREFIX + 'n');
   } finally {
     lock.releaseLock();
   }

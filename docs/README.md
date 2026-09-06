@@ -36,11 +36,26 @@ Pushing to `main` updates the published site — no separate deploy step.)
 Regenerate icons after replacing `appLogo.jpg`: `python build/pwa-icons.py`,
 then commit and push.
 
+## First open — Google sign-in
+
+The RacePlan web app runs **as the person using it** (so each user's athlete
+bank is private to their Google account). First open, Google asks each user to
+authorize the script — and that consent screen refuses to load inside an iframe.
+
+`index.html` handles this: if the app frame doesn't appear within a few seconds
+it shows a **"התחברות עם Google"** button (and a persistent "open in a tab" pill)
+that opens the real `/exec` page in a browser tab. There the user does
+**Advanced → Continue** on the "unverified app" screen once, then returns to the
+wrapper / home-screen icon and it works normally from then on.
+
 ## Install on the phone
 
-**Android / Chrome**: open https://yanivkrispel-cyber.github.io/RacePlan/ → ⋮ menu → **Install app** (or "Add to Home screen"). Icon + name come from the manifest; it launches standalone.
+**Android / Chrome**: open https://yanivkrispel-cyber.github.io/RacePlan/ →
+sign in once (see above) → ⋮ menu → **Install app** (or "Add to Home screen").
+Icon + name come from the manifest; it launches standalone.
 
-**iPhone / Safari** (Chrome on iOS can't install PWAs): open the same URL → Share → **Add to Home Screen**. Icon comes from `apple-touch-icon.png`.
+**iPhone / Safari** (Chrome on iOS can't install PWAs): open the same URL → sign
+in once → Share → **Add to Home Screen**. Icon comes from `apple-touch-icon.png`.
 
 ## If you redeploy the Apps Script to a NEW deployment id
 

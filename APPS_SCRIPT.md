@@ -14,11 +14,39 @@ URL and server-side storage for the athlete bank.
 | `build/build.mjs` | Transpiles `src/*.jsx` with `@babel/preset-react`, wraps each file in its own IIFE (they were separate `<script>` tags), inlines `image-slot.js` + a 256 px data-URI of `logo.png`. Writes the combined script to **`apps-script/AppJs.gs`** as `var RP_APP_JS = "…"`, and the small HTML shell to `apps-script/index.html`. |
 | `build/index.template.html` | HTML shell: RTL `<html>`, Google Fonts + Leaflet from CDN, React UMD from CDN, two server-injected globals, and `<script src="…/exec?js=1">`. |
 | `build/redeploy.mjs` | build → `clasp push` → new version → repoint the stable `/exec` URL. |
-| `apps-script/Code.gs` | `doGet`: `?js=1` returns `RP_APP_JS` via **ContentService** (no sanitization); otherwise serves the templated shell, injecting `__RACEPLAN_SHARE__` (from `?s=`), `__RACEPLAN_EXEC_URL__`, and the `?js=1` URL. `rp_loadAthletes` / `rp_saveAthletes` store each user's athlete-bank JSON in an auto-created Google Sheet (chunked under the 50 000-char cell limit). |
+| `apps-script/Code.gs` | `doGet`: `?js=1` returns `RP_APP_JS` via **ContentService** (no sanitization); otherwise serves the templated shell, injecting `__RACEPLAN_SHARE__` (from `?s=`), `__RACEPLAN_EXEC_URL__`, and the `?js=1` URL. `rp_loadAthletes()` / `rp_saveAthletes(json)` store the calling user's athlete-bank JSON in **their own** `PropertiesService.getUserProperties()` (chunked at 8 KB — the per-value limit). |
 | `apps-script/AppJs.gs` | Generated — the whole client script as a string constant. |
 | `apps-script/index.html` | Generated — ~1.6 KB shell. |
-| `apps-script/appsscript.json` | Web-app manifest (`executeAs: USER_DEPLOYING`, `access: ANYONE`). |
+| `apps-script/appsscript.json` | Web-app manifest — **`executeAs: USER_ACCESSING`**, `access: ANYONE` (= "anyone with a Google account"). |
 | `.clasp.json` | `scriptId` + `rootDir: apps-script`. |
+
+## Multi-user model
+
+The web app is deployed **execute-as: the user accessing it**. So every visitor
+runs the script as themselves:
+
+- `PropertiesService.getUserProperties()` is automatically scoped to that
+  visitor → a private athlete bank per Google account, synced across their
+  devices, invisible to the owner and to other users.
+- No shared spreadsheet, no server-side identity plumbing, no anonymous keys.
+- Server quotas (script runtime, Properties ops) are spent on each visitor's
+  own account, not the owner's.
+- **Cost:** each user authorizes the script once — the Google "unverified app"
+  consent screen (**Advanced → Continue**). It's unverified because the Cloud
+  project isn't through Google's OAuth review (not worth it for a small
+  audience). The only permission requested is running the script itself; no
+  Drive/Sheets/email scopes (the code touches none).
+
+The `?s=` share links are stateless (the plan is base64 in the URL) — they work
+for anyone regardless of sign-in.
+
+### First open inside the PWA wrapper
+
+Google's consent screen sends `X-Frame-Options` and will **not** render inside
+the `docs/` iframe. `docs/index.html` therefore shows a top-level **"התחברות עם
+Google"** link (and a persistent "open in a tab" pill) when the app frame
+doesn't come up within a few seconds — the user authorizes in a real tab once,
+then the home-screen icon works normally.
 
 ## Why the client script is served separately
 
@@ -39,9 +67,10 @@ does **not** sanitize, so the script is served through `doGet(?js=1)` with
   logo `src` uses `window.__RACEPLAN_LOGO__` when present.
 - `src/athletes.jsx` — `AthleteDB` keeps its synchronous localStorage API; when
   `google.script.run` exists, localStorage becomes an offline mirror and the DB
-  is pulled once and pushed (debounced) to the Sheet. All bridge calls are
-  queued until after `window` load — calling `google.script.run` mid-parse makes
-  it `document.write` an auth panel into a closed document and throw.
+  is pulled once (`rp_loadAthletes()`) and pushed debounced (`rp_saveAthletes(json)`)
+  to the visitor's own UserProperties. All bridge calls are queued until after
+  `window` load — calling `google.script.run` mid-parse makes it `document.write`
+  an auth panel into a closed document and throw.
 
 ## Deploy / iterate
 
@@ -52,21 +81,27 @@ npm run push                 # build + clasp push (updates code, not the /exec U
 npm run redeploy -- "note"   # build + push + version + repoint the /exec URL
 ```
 
-First run only: open the `/exec` URL once as the owning Google account and grant
-the requested permissions (Sheets + account email). It's an unverified personal
-app, so use **Advanced → Go to RacePlan (unsafe)**. After that every visitor
-uses the owner's authorization.
+Every user (owner included) authorizes **once** on first open — the unverified-app
+consent screen, **Advanced → Continue**. It grants nothing beyond running the
+script.
+
+Changing `executeAs` between deployments does not change the `/exec` URL — the
+stable deployment is repointed in place by `npm run redeploy`.
 
 ## Storage notes
 
-- Identity is the visitor's Google email when the script can see it (always true
-  for the owner, across their devices), otherwise a random key kept in the
-  browser's localStorage (`rp-anon-key`).
-- Data lives in a spreadsheet named **"RacePlan — athlete data"**
-  (`1Yi0yzb-h7L0BQilHlfYm_5RRYjHEyOWQrofzcx_rcn8`) in the owner's Drive; its id is
-  saved in Script Properties (`RP_SPREADSHEET_ID`).
+- Athlete bank: the calling user's `PropertiesService.getUserProperties()`,
+  chunked at 8 KB across keys `rp_ab_0..k` with `rp_ab_n` = count. Private per
+  Google account, synced across that user's devices. Per-user quota ≈ 500 KB
+  (`rp_saveAthletes` refuses payloads over ~460 KB — plenty unless someone
+  stores dozens of GPX-course plans).
 - The current working plan (`rp-plan-v1`), race name/date/time stay in
-  localStorage on every target — only the athlete bank syncs to the server.
+  `localStorage` on every target — only the athlete bank syncs to the server.
+- Migration note: the pre-multi-user build kept data in a shared spreadsheet
+  keyed by `e:<email>` / `k:<anonKey>`. That data is not read any more; the
+  owner's bank survives via its `localStorage` mirror and re-lands in
+  UserProperties on the next change. The old auto-created "RacePlan — athlete
+  data" sheet in the owner's Drive can be deleted.
 
 ## Design system
 

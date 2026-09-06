@@ -14,22 +14,13 @@ function _notifyAth() { _athSubs.forEach((fn) => { try { fn(); } catch (e) {} })
 // AthleteDB stays a synchronous, localStorage-backed API so the UI needs
 // no changes. When the page runs inside Apps Script (google.script.run
 // exists) localStorage becomes an offline mirror and the source of truth
-// is a per-user Google Sheet: pull once on load, push (debounced) on every
-// change. On plain static hosting both calls are no-ops.
+// is the visitor's own PropertiesService store (the web app runs as the
+// accessing user, so it's private and per-Google-account): pull once on
+// load, push (debounced) on every change. On plain static hosting both
+// calls are no-ops.
 const AthleteSync = (() => {
   const on = typeof google !== 'undefined' && google.script && google.script.run;
   if (!on) return { pull() {}, push() {}, enabled: false };
-
-  // Fallback identity for "Anyone" (anonymous) deployments where the server
-  // can't read an email. Stable per browser.
-  let anon = null;
-  try {
-    anon = localStorage.getItem('rp-anon-key');
-    if (!anon) {
-      anon = 'anon-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-      localStorage.setItem('rp-anon-key', anon);
-    }
-  } catch (e) {}
 
   // The google.script.run bridge isn't safe to call while the page is still
   // parsing — its first call can document.write() an auth panel into an
@@ -65,7 +56,7 @@ const AthleteSync = (() => {
             } catch (e) {}
           })
           .withFailureHandler(() => {})
-          .rp_loadAthletes(anon);
+          .rp_loadAthletes();
       });
     },
     push(db) {
@@ -74,7 +65,7 @@ const AthleteSync = (() => {
       timer = setTimeout(() => {
         whenReady(() => {
           try {
-            google.script.run.withFailureHandler(() => {}).rp_saveAthletes(anon, json);
+            google.script.run.withFailureHandler(() => {}).rp_saveAthletes(json);
           } catch (e) {}
         });
       }, 600);
