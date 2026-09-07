@@ -15,11 +15,32 @@
 <meta name="apple-mobile-web-app-title" content="RacePlan" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 
+<script>
+  // The Apps Script /exec URL.
+  window.__EXEC__ = 'https://script.google.com/macros/s/AKfycbymEZ1ClOZdly4acorn5lPrCHGXCD2ExjKGqa9q0SxuDD8aavnbektYa24ecM3MCUCffg/exec';
+
+  // Installed PWA (standalone): the app must load FIRST-PARTY so the Google
+  // login cookies apply — an iframe here is a third-party context and Chrome
+  // won't send them, so the app would hit the sign-in wall on every launch.
+  // Go straight to /exec instead. In a normal browser tab we keep the framed,
+  // on-brand experience below.
+  (function () {
+    var standalone = false;
+    try {
+      standalone = window.matchMedia('(display-mode: standalone)').matches
+        || window.matchMedia('(display-mode: fullscreen)').matches
+        || window.matchMedia('(display-mode: minimal-ui)').matches
+        || window.navigator.standalone === true
+        || document.referrer.indexOf('android-app://') === 0;
+    } catch (e) {}
+    if (standalone) location.replace(window.__EXEC__);
+  })();
+</script>
+
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #111528; overflow: hidden; }
   #app { position: fixed; inset: 0; width: 100%; height: 100dvh; border: 0; background: #111528; }
 
-  /* launch / sign-in overlay — always shows a real button, never a bare 401 */
   #load {
     position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 18px; padding: 28px;
@@ -63,15 +84,14 @@
 
 <script>
   var frame  = document.getElementById('app');
-  var EXEC   = frame.src;
+  var EXEC   = window.__EXEC__;
   var loader = document.getElementById('load');
   var msg    = document.getElementById('msg');
   var hint   = document.getElementById('hint');
   document.getElementById('open').href = EXEC;
 
-  // The real app posts 'raceplan:ready' once it mounts. A 401 / Google auth
-  // page never does — so this reliably distinguishes "app running" from
-  // "needs sign-in", which we can't tell from the iframe's load event alone.
+  // The real app posts 'raceplan:ready' to window.top once it mounts. A 401 /
+  // Google auth page never does.
   var ready = false;
   window.addEventListener('message', function (e) {
     if (e.data !== 'raceplan:ready') return;
@@ -85,8 +105,8 @@
     loader.classList.add('hidden');
   });
 
-  // No ready ping in a few seconds → the frame is almost certainly the Google
-  // sign-in / "authorization required" wall (it won't render in an iframe).
+  // No ready ping soon → the frame is the Google sign-in / authorization wall
+  // (won't render in an iframe). Offer a top-level sign-in.
   setTimeout(function () {
     if (ready) return;
     msg.textContent = 'צריך להתחבר עם Google';
@@ -95,7 +115,7 @@
     loader.querySelector('.ring').style.display = 'none';
   }, 3500);
 
-  // Back from the sign-in tab? Retry the frame — they may have just authorized.
+  // Back from the sign-in tab? Retry the frame.
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'visible' && !ready) {
       frame.src = EXEC + (EXEC.indexOf('?') === -1 ? '?' : '&') + 'r=' + Date.now();

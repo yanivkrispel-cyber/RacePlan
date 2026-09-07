@@ -1,7 +1,7 @@
 // Minimal service worker: makes the wrapper installable and lets the shell
 // (this page + its icons) load offline. The RacePlan app itself lives in a
 // cross-origin iframe and is always fetched from the network.
-const CACHE = 'raceplan-shell-v1';
+const CACHE = 'raceplan-shell-v2';
 const SHELL = [
   './',
   './index.html',
@@ -27,9 +27,24 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  // only handle same-origin GETs; everything else (the Apps Script iframe,
-  // fonts, CDNs) goes straight to the network
+  // only handle same-origin GETs; everything else (the Apps Script app, fonts,
+  // CDNs) goes straight to the network
   if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
+
+  // The launch page must be fresh (it carries the standalone redirect logic),
+  // so navigations are network-first, cache only as offline fallback.
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put('./index.html', copy)).catch(() => {});
+        return res;
+      }).catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
+  // Icons / manifest: cache-first.
   e.respondWith(
     caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
       const copy = res.clone();

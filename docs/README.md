@@ -42,11 +42,22 @@ The RacePlan web app runs **as the person using it** (so each user's athlete
 bank is private to their Google account). First open, Google asks each user to
 authorize the script — and that consent screen refuses to load inside an iframe.
 
-`index.html` handles this: if the app frame doesn't appear within a few seconds
-it shows a **"התחברות עם Google"** button (and a persistent "open in a tab" pill)
-that opens the real `/exec` page in a browser tab. There the user does
-**Advanced → Continue** on the "unverified app" screen once, then returns to the
-wrapper / home-screen icon and it works normally from then on.
+`index.html` handles this by context:
+
+- **Installed PWA** (`display-mode: standalone`) — an iframe would be a
+  third-party context and Chrome won't send the Google login cookies, so the
+  app would hit the sign-in wall on every launch. The launch page instead does
+  `location.replace('/exec')` immediately: first-party, cookies apply, the app
+  opens with no spinner. (Chrome shows a thin origin bar because it's off the
+  `github.io` scope — unavoidable with Apps Script.)
+- **Browser tab** — keeps the framed, on-brand experience. The app posts
+  `raceplan:ready` to `window.top` once it mounts and the overlay hides
+  instantly. If it doesn't (not signed in), after ~3.5 s a
+  **"פתח את RacePlan"** button opens `/exec` in a tab for the one-time
+  **Advanced → Continue** consent.
+
+The service worker serves navigations network-first so the launch page (which
+carries this logic) is always fresh; bump `CACHE` in `sw.js` when it changes.
 
 ## Install on the phone
 
