@@ -76,7 +76,9 @@ if (!document.getElementById('rp-core-styles')) {
     .rpt-head{display:none}
     .rpt-rows{gap:6px}
     .rpt-seg{display:grid;
-      grid-template-columns:18px 1fr 1fr auto auto;
+      /* FIXED widths for the time + status columns so the dist/pace steppers
+         line up across every row even once the cumulative time hits 1:xx:xx */
+      grid-template-columns:18px 1fr 1fr 52px 28px;
       grid-template-rows:auto auto;
       grid-template-areas:
         "idx sp   elev segt stat"
@@ -91,20 +93,19 @@ if (!document.getElementById('rp-core-styles')) {
     .rpt-idxbadge{width:22px;height:22px;font-size:11px}
     .rpt-dist{grid-area:dist}
     .rpt-pace{grid-area:pace}
-    /* .rpt-meta is display:contents (base rule) → its children are grid items */
+    /* .rpt-meta is display:contents (base rule) → its children are grid items.
+       elev is centered over the pace stepper (same column). */
     .rpt-cumdist{display:none}
-    .rpt-elev{grid-area:elev;justify-content:flex-end}
-    /* small + neutral so it reads as metadata like the seg-time above cum-time;
-       the ▲/▼ still shows the direction */
+    .rpt-elev{grid-area:elev;justify-content:center}
     .rpt-elev .rpt-num{font-size:9.5px!important;font-weight:600!important;
       color:var(--rp-text-dim)!important;white-space:nowrap}
     .rpt-segtime{grid-area:segt;justify-content:flex-end}
     .rpt-segtime .rpt-num{font-size:9.5px;font-weight:600;color:var(--rp-text-dim);white-space:nowrap}
     .rpt-cumtime{grid-area:cumt;justify-content:flex-end}
-    .rpt-cumtime .rpt-num{font-size:12.5px;font-weight:800;white-space:nowrap}
-    .rpt-status{grid-area:stat;flex-direction:row;align-items:center;gap:3px;justify-content:flex-end}
-    .rpt-dot{width:8px;height:8px}
-    .rpt-del{opacity:.5;width:20px;height:20px;font-size:13px}
+    .rpt-cumtime .rpt-num{font-size:12px;font-weight:800;white-space:nowrap}
+    .rpt-status{grid-area:stat;flex-direction:row;align-items:center;gap:2px;justify-content:flex-end}
+    .rpt-dot{width:7px;height:7px}
+    .rpt-del{opacity:.5;width:18px;height:18px;font-size:12px}
 
     /* totals: one clean line — סה"כ · <dist> ק"מ · <avg pace> · <total time> */
     .rpt-total{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;
