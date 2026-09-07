@@ -67,28 +67,40 @@ if (!document.getElementById('rp-core-styles')) {
   .rpt-total .t-label{font-size:13px;font-weight:600;opacity:.9}
   .rpt-total .t-num{font-variant-numeric:tabular-nums;font-size:16px}
 
-  /* ── mobile reflow: each segment becomes a compact card ── */
+  /* ── mobile: one compact row per segment ──
+     [#] [dist −val+] [pace −val+] [cum time] [•/✕]
+     cumulative-distance, per-segment time and elevation are hidden per row on
+     phones (still in the totals row); tap the mini menu ▸ later if needed. */
   @container (max-width:600px){
     .rpt-head{display:none}
-    .rpt-rows{gap:var(--rp-s-10)}
-    .rpt-seg{display:grid;grid-template-columns:1fr 1fr;
-      grid-template-areas:"idx status" "dist pace" "meta meta";
-      align-items:center;column-gap:12px;row-gap:12px;
-      padding:13px 14px;border-radius:var(--rp-r-14);
+    .rpt-rows{gap:6px}
+    .rpt-seg{display:grid;
+      grid-template-columns:18px 1fr 1fr auto auto;
+      grid-template-areas:"idx dist pace time status";
+      align-items:center;column-gap:5px;row-gap:0;
+      padding:6px 8px;border-radius:var(--rp-r-12);
       background:var(--rp-surface);border:1px solid var(--rp-line)}
     .rpt-seg:hover{background:var(--rp-surface)}
-    .rpt-cell{flex-direction:column;align-items:flex-start;justify-content:center;gap:4px}
-    .rpt-lbl{display:block;font-size:10px;letter-spacing:.05em;text-transform:uppercase}
-    .rpt-idx{grid-area:idx;align-items:flex-start}
+    .rpt-cell{flex-direction:row;align-items:center;justify-content:center;gap:3px;min-width:0}
+    .rpt-lbl{display:none}
+    .rpt-idx{grid-area:idx;justify-content:center}
+    .rpt-idxbadge{width:22px;height:22px;font-size:11px}
     .rpt-dist{grid-area:dist}
     .rpt-pace{grid-area:pace}
-    .rpt-status{grid-area:status;flex-direction:row;align-items:center;justify-content:flex-end}
-    .rpt-meta{display:flex;grid-area:meta;flex-wrap:wrap;gap:9px 18px;
-      padding-top:11px;border-top:1px solid var(--rp-line-soft)}
-    .rpt-meta .rpt-cell{flex:0 0 auto;flex-direction:row;align-items:baseline;gap:6px}
-    .rpt-total{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:16px}
-    .rpt-total>div{text-align:center;flex:1 1 30%}
-    .rpt-total .t-label{font-size:12px}
+    .rpt-meta{display:contents}
+    .rpt-cumdist,.rpt-elev,.rpt-segtime{display:none}
+    .rpt-cumtime{grid-area:time;justify-content:flex-end}
+    .rpt-cumtime .rpt-num{font-size:12px;font-weight:700;white-space:nowrap}
+    .rpt-status{grid-area:status;flex-direction:row;align-items:center;gap:3px;justify-content:flex-end}
+    .rpt-dot{width:8px;height:8px}
+    .rpt-del{opacity:.5;width:20px;height:20px;font-size:13px}
+
+    .rpt-total{display:flex;flex-wrap:wrap;justify-content:space-around;
+      gap:6px 14px;padding:11px 12px}
+    .rpt-total>div{text-align:center}
+    .rpt-total>div:empty{display:none}
+    .rpt-total .t-label{font-size:11px}
+    .rpt-total .t-num{font-size:14px}
   }
   `;
   document.head.appendChild(s);

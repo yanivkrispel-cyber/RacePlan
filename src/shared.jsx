@@ -113,16 +113,20 @@ if (!document.getElementById('rp-tokens')) {
     }
   }
 
-  /* ── touch sizing on phones (container-query so it also fires inside a
-     narrow embed / Apps Script iframe, not just a small viewport) ── */
+  /* ── phones: compact steppers (the segments table is dense), but keep the
+     standalone action buttons / presets at a comfortable tap size ── */
   @container (max-width:640px){
-    .rp-stp-pill .rp-stp-btn{width:40px;height:40px;font-size:21px}
-    .rp-stp-pill .rp-stp-val{width:68px;height:40px;font-size:17px}
-    .rp-stp-boxed .rp-stp-btn{width:40px;height:42px;font-size:20px}
-    .rp-stp-boxed .rp-stp-val{width:60px;height:42px;font-size:16px}
+    /* inside the dense segments table the pill background is dropped so two
+       steppers fit on one row; elsewhere the pill look is kept */
+    .rpt-seg .rp-stp-pill,.rpt-total .rp-stp-pill{background:transparent;border:0;padding:0;gap:0}
+    .rpt-seg .rp-stp-pill .rp-stp-btn{width:24px;height:26px;background:transparent;
+      color:var(--rp-gold);font-size:17px}
+    .rpt-seg .rp-stp-pill .rp-stp-val{width:auto;min-width:34px;max-width:44px;height:26px;
+      font-size:13.5px;font-weight:700}
+    .rp-stp-boxed .rp-stp-btn{width:34px;height:34px;font-size:18px}
+    .rp-stp-boxed .rp-stp-val{width:52px;height:34px;font-size:14px}
     .rp-btn{padding:11px 15px!important;font-size:15px!important;min-height:44px}
     .rpt-preset{padding:10px 14px;min-height:46px;font-size:15px}
-    .rpt-del{width:36px;height:36px;opacity:.8;font-size:17px}
   }
   `;
   document.head.appendChild(s);

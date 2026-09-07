@@ -430,9 +430,8 @@ function PlannerBApp({ isOwner }) {
         .rpt-total { padding: 11px 12px; margin-top: var(--rp-s-8); }
         .rp-toolbar { flex-wrap: wrap; }
         @container (max-width: 640px) {
-          .rp-planner-wrap { padding: 12px 12px 20px !important; }
-          .rpt-seg { padding: 14px !important; }
-          .rpt-total { padding: 14px !important; }
+          .rp-planner-wrap { padding: 12px 10px 20px !important; }
+          /* segment/total padding for phones is set in core.jsx (compact row) */
           /* sticky (not fixed): container-type on .rp-cq would re-anchor a
              fixed child to the container, defeating the pin */
           .rp-toolbar { position: sticky; bottom: 8px; z-index: 40;
