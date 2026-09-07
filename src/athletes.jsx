@@ -10,64 +10,38 @@ const LS_ATHLETES = 'rp-athletes-v1';
 const _athSubs = new Set();
 function _notifyAth() { _athSubs.forEach((fn) => { try { fn(); } catch (e) {} }); }
 
-// ── Server sync (Apps Script only) ────────────────────────────────────
-// AthleteDB stays a synchronous, localStorage-backed API so the UI needs
-// no changes. When the page runs inside Apps Script (google.script.run
-// exists) localStorage becomes an offline mirror and the source of truth
-// is the visitor's own PropertiesService store (the web app runs as the
-// accessing user, so it's private and per-Google-account): pull once on
-// load, push (debounced) on every change. On plain static hosting both
+// ── Server sync (Firebase) ────────────────────────────────────────────
+// AthleteDB stays a synchronous, localStorage-backed API so the UI needs no
+// changes. When Firebase is present (window.RP_FIREBASE) localStorage is an
+// offline mirror and the source of truth is Firestore users/{uid}/bank/data —
+// private to the signed-in account, owner only. On plain static hosting both
 // calls are no-ops.
 const AthleteSync = (() => {
-  const on = typeof google !== 'undefined' && google.script && google.script.run;
-  if (!on) return { pull() {}, push() {}, enabled: false };
+  const fb = (typeof window !== 'undefined' && window.RP_FIREBASE) || null;
+  if (!fb) return { pull() {}, push() {}, enabled: false };
 
-  // The google.script.run bridge isn't safe to call while the page is still
-  // parsing — its first call can document.write() an auth panel into an
-  // already-closed document and throw. Queue every call until after load.
-  let ready = false;
-  const queue = [];
-  function flush() {
-    ready = true;
-    while (queue.length) { try { queue.shift()(); } catch (e) {} }
-  }
-  function whenReady(fn) {
-    if (ready) { try { fn(); } catch (e) {} return; }
-    queue.push(fn);
-  }
-  if (document.readyState === 'complete') setTimeout(flush, 0);
-  else window.addEventListener('load', () => setTimeout(flush, 0));
-
+  const whenReady = (fn) => fb.ready.then(fn).catch(() => {});
   let timer = null;
 
   return {
     enabled: true,
     pull() {
-      whenReady(() => {
-        google.script.run
-          .withSuccessHandler((json) => {
-            if (!json) return;
-            try {
-              const db = JSON.parse(json);
-              if (db && Array.isArray(db.athletes)) {
-                localStorage.setItem(LS_ATHLETES, json);
-                _notifyAth();
-              }
-            } catch (e) {}
-          })
-          .withFailureHandler(() => {})
-          .rp_loadAthletes();
-      });
+      whenReady(() => fb.loadBank().then((json) => {
+        if (!json) return;
+        try {
+          const db = JSON.parse(json);
+          if (db && Array.isArray(db.athletes)) {
+            localStorage.setItem(LS_ATHLETES, json);
+            _notifyAth();
+          }
+        } catch (e) {}
+      }).catch(() => {}));
     },
     push(db) {
       const json = JSON.stringify(db);
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        whenReady(() => {
-          try {
-            google.script.run.withFailureHandler(() => {}).rp_saveAthletes(json);
-          } catch (e) {}
-        });
+        whenReady(() => fb.saveBank(json).catch(() => {}));
       }, 600);
     },
   };

@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function verified() { return signedIn() && request.auth.token.email_verified == true; }
+    function email()    { return request.auth.token.email; }
+    function isOwner()  { return verified() && email() == 'yaniv.krispel@gmail.com'; }
+
+    match /users/{uid} {
+      // Each user reads/writes only their own profile doc (email, lastSeenAt,
+      // visits). The owner can also read the whole collection = the customer list.
+      allow get, create, update: if signedIn() && request.auth.uid == uid;
+      allow get, list:            if isOwner();
+      allow delete:               if false;
+
+      // The athlete bank — owner only, and only on their own subtree.
+      match /bank/{doc=**} {
+        allow read, write: if isOwner() && request.auth.uid == uid;
+      }
+    }
+  }
+}

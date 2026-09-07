@@ -6,27 +6,18 @@ const { useRacePlan, formatPace, formatClock, formatKm, PaceChart,
         AthleteDB, AthletePanel, computeSegmentElevations } = window;
 
 // ── role ──────────────────────────────────────────────────────────────
-// Apps Script injects window.__RACEPLAN_USER__ = { email, tier }. Owner gets
-// the athlete bank; everyone else is personal-planning only. Plain static
-// hosting has no injected user → treat as full access (local/dev).
+// Firebase (window.RP_FIREBASE) is the source of truth for who's signed in and
+// their tier ('owner' = the coach, gets the athlete bank; 'free' = personal
+// planning only). window.__RACEPLAN_USER__ is the snapshot the bootstrap sets
+// after auth resolves. Plain static hosting (RacePlan.html) has neither → full
+// access for local/dev.
+const RP_FB = (typeof window !== 'undefined' && window.RP_FIREBASE) || null;
 const RP_USER = (typeof window !== 'undefined' && window.__RACEPLAN_USER__) || null;
-const RP_IS_OWNER = !RP_USER || RP_USER.tier === 'owner';
+const RP_IS_OWNER = RP_FB ? (!!RP_USER && RP_USER.tier === 'owner') : (!RP_USER || RP_USER.tier === 'owner');
 
-// Fire-and-forget usage ping to the owner's logger web app (once/day/browser).
+// Record this visit in the owner's customer list (users/{uid}). Firebase-only.
 function logUsage() {
-  try {
-    const cfg = (typeof window !== 'undefined' && window.__RACEPLAN_LOGGER__) || null;
-    if (!cfg || !cfg.url || !RP_USER || !RP_USER.email) return;
-    const day = new Date().toISOString().slice(0, 10);
-    const flag = 'rp-logged-' + day;
-    if (localStorage.getItem(flag)) return;
-    localStorage.setItem(flag, '1');
-    fetch(cfg.url, {
-      method: 'POST', mode: 'no-cors', keepalive: true,
-      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-      body: JSON.stringify({ email: RP_USER.email, token: cfg.token, t: Date.now() }),
-    }).catch(() => {});
-  } catch (e) {}
+  try { if (RP_FB && RP_FB.logVisit) RP_FB.logVisit(); } catch (e) {}
 }
 
 // keep ~N evenly-spaced samples (always including the last) for chart/map
@@ -238,7 +229,40 @@ function CopyToast({ show }) {
   ), document.body);
 }
 
+// Branded sign-in screen (Firebase targets, when nobody is signed in).
+function SignInScreen() {
+  return (
+    <div className="rp-cq" style={{
+      minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', gap: 22, padding: 28, textAlign: 'center',
+      background: 'var(--rp-bg)', color: 'var(--rp-text)', fontFamily: 'var(--rp-font-ui)', direction: 'rtl',
+    }}>
+      <img src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'LogoV2.png'}
+        alt="RACE PLAN" style={{ width: 128, height: 128, borderRadius: 24 }} />
+      <div style={{ fontFamily: 'var(--rp-font-display)', fontSize: 24, fontWeight: 800 }}>
+        RacePlan — מתכנן קצב לריצה
+      </div>
+      <div style={{ color: 'var(--rp-text-dim)', fontSize: 14, maxWidth: 300 }}>
+        התחברו כדי לתכנן את המרוץ שלכם. הנתונים נשמרים בחשבון שלכם.
+      </div>
+      <button className="rp-btn rp-btn-primary" style={{ minHeight: 48, fontSize: 16, padding: '12px 26px' }}
+        onClick={() => RP_FB && RP_FB.signIn()}>
+        התחברות עם Google
+      </button>
+    </div>
+  );
+}
+
+// Auth gate wrapper — hooks here stay stable; PlannerBApp mounts only once a
+// user exists (or there's no Firebase at all).
 function PlannerB() {
+  const [fbUser, setFbUser] = React.useState(() => (RP_FB ? RP_FB.user : undefined));
+  React.useEffect(() => (RP_FB ? RP_FB.onAuth((u) => setFbUser(u)) : undefined), []);
+  if (RP_FB && !fbUser) return <SignInScreen />;
+  return <PlannerBApp isOwner={RP_FB ? (!!fbUser && fbUser.tier === 'owner') : RP_IS_OWNER} />;
+}
+
+function PlannerBApp({ isOwner }) {
   // Decode the shared plan synchronously (runs before first render, no flash).
   // Apps Script serves the payload as window.__RACEPLAN_SHARE__ (from ?s=), since
   // the page runs in a sandboxed iframe where location.hash isn't the real URL.
@@ -465,7 +489,7 @@ function PlannerB() {
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <EditableText value={trainer} onChange={handleTrainerChange} placeholder="שם המתאמן"
                 style={{ color: 'var(--rp-text-soft)' }} />
-              {RP_IS_OWNER && (
+              {isOwner && (
               <button
                 onClick={() => setShowAthletePanel(true)}
                 title="מאגר מתאמנים"
@@ -625,7 +649,7 @@ function PlannerB() {
 
       </div>
 
-      {RP_IS_OWNER && showAthletePanel && (
+      {isOwner && showAthletePanel && (
         <AthletePanel
           onClose={() => setShowAthletePanel(false)}
           currentTrainer={trainer}

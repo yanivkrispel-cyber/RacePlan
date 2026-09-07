@@ -13,3 +13,9 @@ uploads/
 # need to be committed and would just be noisy 250KB diffs.
 apps-script/AppJs.gs
 apps-script/index.html
+
+# Firebase
+web/app.js
+.firebase/
+firebase-debug.log
+firestore-debug.log
