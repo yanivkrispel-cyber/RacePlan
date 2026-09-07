@@ -67,17 +67,20 @@ if (!document.getElementById('rp-core-styles')) {
   .rpt-total .t-label{font-size:13px;font-weight:600;opacity:.9}
   .rpt-total .t-num{font-variant-numeric:tabular-nums;font-size:16px}
 
-  /* ── mobile: one compact row per segment ──
-     [#] [dist +val-] [pace +val-] [seg-time / cum-time] [• ✕]
-     the seg-time (dim, small) sits above the cumulative time (bold). Cumulative
-     distance and elevation are dropped per row (elevation only matters on the
-     chart; cumulative distance is in the totals row). */
+  /* ── mobile: one compact 2-row grid per segment ──
+     row 1 (tiny):  [seg elevation, if GPX] [seg time]
+     row 2:         [#] [dist +val-] [pace +val-] [cum time] [• ✕]
+     # and the •✕ span both rows. Cumulative distance is dropped (it's in the
+     totals row); segment elevation only shows when a GPX profile is loaded. */
   @container (max-width:600px){
     .rpt-head{display:none}
     .rpt-rows{gap:6px}
     .rpt-seg{display:grid;
       grid-template-columns:18px 1fr 1fr auto auto;
-      grid-template-areas:"idx dist pace times status";
+      grid-template-rows:auto auto;
+      grid-template-areas:
+        "idx sp   elev segt stat"
+        "idx dist pace cumt stat";
       align-items:center;column-gap:5px;row-gap:0;
       padding:6px 8px;border-radius:var(--rp-r-12);
       background:var(--rp-surface);border:1px solid var(--rp-line)}
@@ -88,16 +91,18 @@ if (!document.getElementById('rp-core-styles')) {
     .rpt-idxbadge{width:22px;height:22px;font-size:11px}
     .rpt-dist{grid-area:dist}
     .rpt-pace{grid-area:pace}
-    /* seg-time + cum-time stacked in one narrow cell */
-    .rpt-meta{display:flex;grid-area:times;flex-direction:column;align-items:flex-end;
-      gap:0;line-height:1.15}
-    .rpt-cumdist,.rpt-elev{display:none}
-    .rpt-meta .rpt-cell{flex-direction:row;justify-content:flex-end;gap:0}
-    .rpt-segtime{order:1}
-    .rpt-cumtime{order:2}
+    /* .rpt-meta is display:contents (base rule) → its children are grid items */
+    .rpt-cumdist{display:none}
+    .rpt-elev{grid-area:elev;justify-content:flex-end}
+    /* small + neutral so it reads as metadata like the seg-time above cum-time;
+       the ▲/▼ still shows the direction */
+    .rpt-elev .rpt-num{font-size:9.5px!important;font-weight:600!important;
+      color:var(--rp-text-dim)!important;white-space:nowrap}
+    .rpt-segtime{grid-area:segt;justify-content:flex-end}
     .rpt-segtime .rpt-num{font-size:9.5px;font-weight:600;color:var(--rp-text-dim);white-space:nowrap}
+    .rpt-cumtime{grid-area:cumt;justify-content:flex-end}
     .rpt-cumtime .rpt-num{font-size:12.5px;font-weight:800;white-space:nowrap}
-    .rpt-status{grid-area:status;flex-direction:row;align-items:center;gap:3px;justify-content:flex-end}
+    .rpt-status{grid-area:stat;flex-direction:row;align-items:center;gap:3px;justify-content:flex-end}
     .rpt-dot{width:8px;height:8px}
     .rpt-del{opacity:.5;width:20px;height:20px;font-size:13px}
 
