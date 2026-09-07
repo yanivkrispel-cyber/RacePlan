@@ -53,9 +53,9 @@ function transpile(code, filename) {
   }).code;
 }
 
-// NewLogo.png (square RACE PLAN badge) → 320 px PNG data URI. The header shows
-// it small and object-fit:contain, so a modest raster is plenty.
-const LOGO_SRC = 'NewLogo.png';
+// LogoV2.png (square navy/gold RACE PLAN badge) → 320 px PNG data URI. The
+// header shows it small and object-fit:contain, so a modest raster is plenty.
+const LOGO_SRC = 'LogoV2.png';
 function logoDataUri() {
   const py = [
     'import base64, io, sys',

@@ -1,17 +1,17 @@
 # build/pwa-icons.py — regenerate the home-screen icon set in docs/ from the
 # app logo. Run: python build/pwa-icons.py
 #
-# Source: NewLogo.png (square RACE PLAN badge on black). It's already composed
+# Source: LogoV2.png (square navy/gold RACE PLAN badge). It's already composed
 # as an app icon; standard icons are a straight resize. The maskable icon insets
-# it a little further on black so Android's circular/squircle mask can't clip
+# it a little further on navy so Android's circular/squircle mask can't clip
 # the "by Krispel" line near the bottom edge.
 import os
 from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "NewLogo.png")
+SRC = os.path.join(ROOT, "LogoV2.png")
 OUT = os.path.join(ROOT, "docs")
-BG = (10, 10, 12)   # near-black, matches the badge ground
+BG = (16, 20, 40)   # navy, matches the badge ground
 
 src = Image.open(SRC).convert("RGB")
 S = min(src.size)

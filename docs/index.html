@@ -6,7 +6,7 @@
 <title>RacePlan</title>
 
 <link rel="manifest" href="manifest.webmanifest" />
-<meta name="theme-color" content="#0a0a0c" />
+<meta name="theme-color" content="#111528" />
 <link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png" />
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
 
@@ -16,29 +16,29 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; background: #0a0a0c; overflow: hidden; }
-  #app { position: fixed; inset: 0; width: 100%; height: 100dvh; border: 0; background: #0a0a0c; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #111528; overflow: hidden; }
+  #app { position: fixed; inset: 0; width: 100%; height: 100dvh; border: 0; background: #111528; }
 
   /* launch / sign-in overlay — always shows a real button, never a bare 401 */
   #load {
     position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 18px; padding: 28px;
-    background: #0a0a0c; color: #eef0e6; text-align: center;
+    background: #111528; color: #F6EFE3; text-align: center;
     font: 600 15px/1.5 "Heebo", system-ui, sans-serif;
     transition: opacity .35s ease;
   }
   #load.hidden { opacity: 0; pointer-events: none; }
   #load img { width: 108px; height: 108px; border-radius: 22px; }
-  #load .row { display: flex; align-items: center; gap: 9px; color: #9aa08c; font-size: 13px; }
+  #load .row { display: flex; align-items: center; gap: 9px; color: #9BA0B7; font-size: 13px; }
   #load .ring {
     width: 16px; height: 16px; border-radius: 50%;
-    border: 2px solid rgba(182,240,60,.25); border-top-color: #B6F03C;
+    border: 2px solid rgba(201,162,75,.25); border-top-color: #C9A24B;
     animation: spin 1s linear infinite;
   }
   .cta {
     display: inline-block; padding: 13px 26px; border-radius: 12px;
-    background: #B6F03C; color: #0a0a0c; font-weight: 800; font-size: 15px;
-    text-decoration: none; box-shadow: 0 6px 24px rgba(182,240,60,.22);
+    background: #C9A24B; color: #111528; font-weight: 800; font-size: 15px;
+    text-decoration: none; box-shadow: 0 6px 24px rgba(201,162,75,.22);
   }
   #load .hint { color: #8b8f7e; font-weight: 500; font-size: 12.5px; max-width: 320px; }
   @keyframes spin { to { transform: rotate(360deg); } }
