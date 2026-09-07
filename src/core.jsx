@@ -97,8 +97,8 @@ if (!document.getElementById('rp-core-styles')) {
        elev is centered over the pace stepper (same column). */
     .rpt-cumdist{display:none}
     .rpt-elev{grid-area:elev;justify-content:center}
-    .rpt-elev .rpt-num{font-size:9.5px!important;font-weight:600!important;
-      color:var(--rp-text-dim)!important;white-space:nowrap}
+    /* keep the climb/descent colour from ElevCell, just shrink it */
+    .rpt-elev .rpt-num{font-size:9.5px!important;font-weight:700!important;white-space:nowrap}
     .rpt-segtime{grid-area:segt;justify-content:flex-end}
     .rpt-segtime .rpt-num{font-size:9.5px;font-weight:600;color:var(--rp-text-dim);white-space:nowrap}
     .rpt-cumtime{grid-area:cumt;justify-content:flex-end}
@@ -141,7 +141,7 @@ function PresetSelector({ active, onPick, label = 'מרחק' }) {
 function ElevCell({ value }) {
   if (value === null || value === undefined) return <span className="rpt-num dim">—</span>;
   const abs = Math.abs(value);
-  const color = value > 0 ? 'var(--rp-danger-text)' : value < 0 ? 'var(--rp-zone-easy)' : 'var(--rp-text-dim)';
+  const color = value > 0 ? 'var(--rp-elev-up)' : value < 0 ? 'var(--rp-elev-down)' : 'var(--rp-text-dim)';
   const arrow = value > 0 ? '▲' : value < 0 ? '▼' : '';
   return (
     <span className="rpt-num" style={{ color, fontSize: 12.5, fontWeight: 700 }}>

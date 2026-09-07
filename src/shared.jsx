@@ -49,8 +49,10 @@ if (!document.getElementById('rp-tokens')) {
     --rp-zone-target:#C9A24B;
     --rp-zone-easy:#8091BE;
 
-    /* chart */
+    /* chart + elevation deltas (climb = wine/bordeaux, descent = cool blue) */
     --rp-elev:#7C88B0;
+    --rp-elev-up:#C36079;
+    --rp-elev-down:#7C9BD6;
     --rp-grid:rgba(246,239,227,.07);
     --rp-avg:rgba(246,239,227,.38);
 
