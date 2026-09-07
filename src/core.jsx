@@ -68,15 +68,16 @@ if (!document.getElementById('rp-core-styles')) {
   .rpt-total .t-num{font-variant-numeric:tabular-nums;font-size:16px}
 
   /* ── mobile: one compact row per segment ──
-     [#] [dist −val+] [pace −val+] [cum time] [•/✕]
-     cumulative-distance, per-segment time and elevation are hidden per row on
-     phones (still in the totals row); tap the mini menu ▸ later if needed. */
+     [#] [dist +val-] [pace +val-] [seg-time / cum-time] [• ✕]
+     the seg-time (dim, small) sits above the cumulative time (bold). Cumulative
+     distance and elevation are dropped per row (elevation only matters on the
+     chart; cumulative distance is in the totals row). */
   @container (max-width:600px){
     .rpt-head{display:none}
     .rpt-rows{gap:6px}
     .rpt-seg{display:grid;
       grid-template-columns:18px 1fr 1fr auto auto;
-      grid-template-areas:"idx dist pace time status";
+      grid-template-areas:"idx dist pace times status";
       align-items:center;column-gap:5px;row-gap:0;
       padding:6px 8px;border-radius:var(--rp-r-12);
       background:var(--rp-surface);border:1px solid var(--rp-line)}
@@ -87,18 +88,28 @@ if (!document.getElementById('rp-core-styles')) {
     .rpt-idxbadge{width:22px;height:22px;font-size:11px}
     .rpt-dist{grid-area:dist}
     .rpt-pace{grid-area:pace}
-    .rpt-meta{display:contents}
-    .rpt-cumdist,.rpt-elev,.rpt-segtime{display:none}
-    .rpt-cumtime{grid-area:time;justify-content:flex-end}
-    .rpt-cumtime .rpt-num{font-size:12px;font-weight:700;white-space:nowrap}
+    /* seg-time + cum-time stacked in one narrow cell */
+    .rpt-meta{display:flex;grid-area:times;flex-direction:column;align-items:flex-end;
+      gap:0;line-height:1.15}
+    .rpt-cumdist,.rpt-elev{display:none}
+    .rpt-meta .rpt-cell{flex-direction:row;justify-content:flex-end;gap:0}
+    .rpt-segtime{order:1}
+    .rpt-cumtime{order:2}
+    .rpt-segtime .rpt-num{font-size:9.5px;font-weight:600;color:var(--rp-text-dim);white-space:nowrap}
+    .rpt-cumtime .rpt-num{font-size:12.5px;font-weight:800;white-space:nowrap}
     .rpt-status{grid-area:status;flex-direction:row;align-items:center;gap:3px;justify-content:flex-end}
     .rpt-dot{width:8px;height:8px}
     .rpt-del{opacity:.5;width:20px;height:20px;font-size:13px}
 
-    .rpt-total{display:flex;flex-wrap:wrap;justify-content:space-around;
-      gap:6px 14px;padding:11px 12px}
-    .rpt-total>div{text-align:center}
-    .rpt-total>div:empty{display:none}
+    /* totals: one clean line — סה"כ · <dist> ק"מ · <avg pace> · <total time> */
+    .rpt-total{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;
+      gap:3px 12px;padding:11px 12px}
+    .rpt-total>div:empty,.rpt-total .t-segt{display:none}
+    .rpt-total .t-label:first-child{order:0}
+    .rpt-total .t-dist{order:1}
+    .rpt-total .t-unit{order:1;font-size:10px}
+    .rpt-total .t-pace{order:2}
+    .rpt-total .t-cumt{order:3}
     .rpt-total .t-label{font-size:11px}
     .rpt-total .t-num{font-size:14px}
   }
@@ -193,12 +204,12 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
       {showTotals && (
         <div className="rpt-total">
           <div className="t-label">סה"כ</div>
-          <div className="t-num">{formatKm(totalDist)}</div>
-          <div className="t-num">{formatPace(avgPace)}</div>
-          <div className="t-label" style={{ opacity: .75 }}>ק"מ</div>
+          <div className="t-num t-dist">{formatKm(totalDist)}</div>
+          <div className="t-num t-pace">{formatPace(avgPace)}</div>
+          <div className="t-label t-unit" style={{ opacity: .75 }}>ק"מ</div>
           {hasElev && <div></div>}
-          <div className="t-num">{formatClock(totalTime)}</div>
-          <div className="t-num">{formatClock(totalTime)}</div>
+          <div className="t-num t-segt">{formatClock(totalTime)}</div>
+          <div className="t-num t-cumt">{formatClock(totalTime)}</div>
           <div></div>
         </div>
       )}
