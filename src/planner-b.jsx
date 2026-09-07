@@ -449,7 +449,7 @@ function PlannerB() {
           <div style={{ width: 66, height: 66, flex: '0 0 auto', borderRadius: 'var(--rp-r-12)',
             overflow: 'hidden' }}>
             <img
-              src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'NewLogo.png'}
+              src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'LogoV2.png'}
               alt="RACE PLAN"
               style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
             />

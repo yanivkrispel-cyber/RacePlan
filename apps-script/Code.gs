@@ -76,7 +76,8 @@ function doGet(e) {
   var s = p.s ? String(p.s).replace(/[^A-Za-z0-9+/=]/g, '') : '';  // base64 only
   t.shareJson = s ? JSON.stringify(s) : 'null';
   t.execUrlJson = JSON.stringify(execUrl);
-  t.appJsUrl = execUrl + (execUrl.indexOf('?') === -1 ? '?' : '&') + 'js=1';
+  var build = (typeof RP_BUILD !== 'undefined') ? RP_BUILD : '0';
+  t.appJsUrl = execUrl + (execUrl.indexOf('?') === -1 ? '?' : '&') + 'js=1&v=' + build;
   t.userJson = JSON.stringify({ email: email, tier: isOwner_() ? 'owner' : 'free' });
   t.loggerJson = JSON.stringify({
     url: props.getProperty('RP_LOGGER_URL') || DEFAULT_LOGGER_URL,
