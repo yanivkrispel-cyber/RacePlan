@@ -23,13 +23,31 @@ const EL_LINE  = '#7C88B0';
 const EL_FILL  = 'rgba(124,136,176,0.16)';
 const EL_AXIS  = 'rgba(124,136,176,0.75)';
 
+const SNAP_PX = 12;
+
 function PaceChart({
   rows, avgPace, totalDist,
   variant = 'step', colors, height = 230, compact = false,
   elevationProfile = null,   // [{d, ele}] — when present, draws overlay
   showElevation = false,     // controlled toggle
+  interactive = false,       // draggable segment boundaries on the elevation
+  segments = null,           // [{distance, paceSec}] — required for interactive
+  extrema = null,            // [{d, ele, kind}] — snap targets while dragging
+  onSegmentsChange = null,   // (newSegments) => void, fired live during a drag
 }) {
   const [ref, W] = useMeasure();
+  const svgRef = React.useRef(null);
+  const dragRef = React.useRef(null);
+  const moveLogic = React.useRef(() => {});
+  const upLogic = React.useRef(() => {});
+  const boundMove = React.useRef((e) => moveLogic.current(e)).current;
+  const boundUp = React.useRef((e) => upLogic.current(e)).current;
+  const [drag, setDrag] = React.useState(null); // { k, d, snapped:false|'peak'|'valley' }
+  React.useEffect(() => () => {
+    window.removeEventListener('pointermove', boundMove);
+    window.removeEventListener('pointerup', boundUp);
+    window.removeEventListener('pointercancel', boundUp);
+  }, []);
   const H = height;
   const c = colors;
 
@@ -110,9 +128,66 @@ function PaceChart({
   const zoneColor = (z) => c.zones[z];
   const gid = React.useId ? React.useId().replace(/:/g, '') : 'g' + Math.random().toString(36).slice(2);
 
+  // ── interactive boundary dragging (on the elevation) ─────────────────
+  const canDrag = interactive && segments && segments.length > 1
+    && typeof onSegmentsChange === 'function' && Array.isArray(elevationProfile);
+
+  const distAt = (clientX) => {
+    const rect = svgRef.current.getBoundingClientRect();
+    const px = (clientX - rect.left) * (W / (rect.width || W));
+    return ((px - padL) / plotW) * xMax;
+  };
+  const snap = (d) => {
+    if (!extrema || !extrema.length) return { d, kind: false };
+    let best = null, bestDx = SNAP_PX;
+    for (const ex of extrema) {
+      const dx = Math.abs(x(ex.d) - x(d));
+      if (dx < bestDx) { bestDx = dx; best = ex; }
+    }
+    return best ? { d: best.d, kind: best.kind } : { d, kind: false };
+  };
+  const emit = (st, d) => {
+    const next = window.adjustSegmentBoundary(st.segs, elevationProfile, st.k, d);
+    onSegmentsChange(next);
+  };
+  // Move / up run against window (not setPointerCapture — flaky for SVG on iOS
+  // Safari). The bound* wrappers have a stable identity so removeEventListener
+  // works even though the logic closures are rebuilt every render.
+  moveLogic.current = (e) => {
+    const st = dragRef.current;
+    if (!st) return;
+    if (e.cancelable) e.preventDefault();
+    const s = snap(distAt(e.clientX));
+    st.pending = s.d;
+    setDrag({ k: st.k, d: s.d, snapped: s.kind });
+    if (!st.raf) st.raf = requestAnimationFrame(() => { st.raf = 0; emit(st, st.pending); });
+  };
+  upLogic.current = () => {
+    const st = dragRef.current;
+    window.removeEventListener('pointermove', boundMove);
+    window.removeEventListener('pointerup', boundUp);
+    window.removeEventListener('pointercancel', boundUp);
+    if (!st) return;
+    if (st.raf) cancelAnimationFrame(st.raf);
+    emit(st, st.pending != null ? st.pending : rows[st.k].cumDist);
+    dragRef.current = null;
+    setDrag(null);
+  };
+  const onDown = (e, k) => {
+    if (!canDrag) return;
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+    dragRef.current = { k, segs: segments.map((s) => ({ ...s })), raf: 0, pending: null };
+    setDrag({ k, d: rows[k].cumDist, snapped: false });
+    window.addEventListener('pointermove', boundMove, { passive: false });
+    window.addEventListener('pointerup', boundUp);
+    window.addEventListener('pointercancel', boundUp);
+  };
+
   return (
     <div ref={ref} style={{ width: '100%' }}>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: 'block', fontFamily: 'inherit' }}>
+      <svg ref={svgRef} width={W} height={H} viewBox={`0 0 ${W} ${H}`}
+        style={{ display: 'block', fontFamily: 'inherit', touchAction: canDrag ? 'pan-y' : undefined }}>
         <defs>
           <linearGradient id={`fill${gid}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={c.line} stopOpacity={variant === 'area' ? 0.42 : 0.26} />
@@ -196,6 +271,49 @@ function PaceChart({
             })}
           </>
         )}
+
+        {/* ── draggable segment boundaries (align a segment to a climb/descent) ── */}
+        {canDrag && hasEl && extrema && extrema.map((ex, i) => (
+          <circle key={`ex${i}`} cx={x(ex.d)} cy={ye(ex.ele)} r="2.4"
+            fill={ex.kind === 'peak' ? 'var(--rp-elev-up, #C36079)' : 'var(--rp-elev-down, #7C9BD6)'}
+            opacity={drag && drag.snapped && Math.abs(x(ex.d) - x(drag.d)) < 1 ? 1 : 0.4} />
+        ))}
+        {canDrag && rows.slice(0, -1).map((r, k) => {
+          const hx = x(r.cumDist);
+          const on = drag && drag.k === k;
+          return (
+            <g key={`bnd${k}`}>
+              <line x1={hx} y1={padT} x2={hx} y2={padT + plotH}
+                stroke={on ? c.line : 'rgba(201,162,75,0.4)'}
+                strokeWidth={on ? 1.6 : 1} strokeDasharray={on ? '0' : '3 3'} />
+              <rect x={hx - 6} y={padT + plotH / 2 - 13} width="12" height="26" rx="3"
+                fill={c.line} opacity={on ? 1 : 0.72} pointerEvents="none" />
+              {/* finger-sized transparent hit area */}
+              <rect x={hx - 13} y={padT} width="26" height={plotH}
+                fill="transparent" style={{ cursor: 'ew-resize', touchAction: 'none' }}
+                onPointerDown={(e) => onDown(e, k)} />
+            </g>
+          );
+        })}
+        {canDrag && drag && dragRef.current && (() => {
+          const nx = window.adjustSegmentBoundary(dragRef.current.segs, elevationProfile, drag.k, drag.d);
+          const a = nx[drag.k], b = nx[drag.k + 1];
+          if (!a || !b) return null;
+          const lx = Math.min(Math.max(x(drag.d), padL + 66), W - padR - 66);
+          const label = drag.snapped === 'peak' ? '⭯ הוצמד לפסגה'
+            : drag.snapped === 'valley' ? '⭯ הוצמד לשפל'
+            : `${formatKm(drag.d)} ק"מ`;
+          return (
+            <g pointerEvents="none">
+              <rect x={lx - 64} y={padT + 1} width="128" height="31" rx="5"
+                fill={c.dotFill} stroke={c.line} strokeWidth="1" opacity="0.97" />
+              <text x={lx} y={padT + 13} textAnchor="middle" fontSize="9.5" fill={c.textDim}>{label}</text>
+              <text x={lx} y={padT + 25} textAnchor="middle" fontSize="10" fontWeight="700" fill={c.line}>
+                {formatKm(a.distance)}·{formatPace(a.paceSec)} ׀ {formatKm(b.distance)}·{formatPace(b.paceSec)}
+              </text>
+            </g>
+          );
+        })()}
       </svg>
     </div>
   );

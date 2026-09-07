@@ -36,12 +36,13 @@ const fakeReact = { useState(){return [null,()=>{}];}, useMemo(){return null;}, 
 let fakeDOMParser = { parseFromString() { return { querySelector(){return null;}, getElementsByTagName:()=>[] }; } };
 
 const fn = new Function('window','document','localStorage','React','DOMParser','fakeLS','fakeReact','fakeDOMParser',
-  `${engineBody}\n${gpxBody}\nreturn { formatPace, formatClock, parsePace, formatKm, round2, clamp, generatePlan, computePlan, defaultSegments, _haversine, _interpolateEle, computeSegmentElevations, buildSegmentsFromGpx };`);
+  `${engineBody}\n${gpxBody}\nreturn { formatPace, formatClock, parsePace, parseClock, formatKm, round2, clamp, generatePlan, computePlan, defaultSegments, _haversine, _interpolateEle, computeSegmentElevations, buildSegmentsFromGpx, buildPlanSegments, findExtrema, adjustSegmentBoundary };`);
 
 const {
-  formatPace, formatClock, parsePace, formatKm, round2, clamp,
+  formatPace, formatClock, parsePace, parseClock, formatKm, round2, clamp,
   generatePlan, computePlan, defaultSegments,
-  _haversine, _interpolateEle, computeSegmentElevations, buildSegmentsFromGpx
+  _haversine, _interpolateEle, computeSegmentElevations, buildSegmentsFromGpx, buildPlanSegments,
+  findExtrema, adjustSegmentBoundary
 } = fn(win, fakeDoc, fakeLS, fakeReact, {parseFromString(){}}, fakeLS, fakeReact, fakeDOMParser);
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -218,6 +219,100 @@ console.log('── buildSegmentsFromGpx ──');
   };
   const dSegs = buildSegmentsFromGpx(downhill, 300, 1);
   assert(dSegs[0].paceSec < 300, `downhill pace ${dSegs[0].paceSec} < 300 (base)`);
+}
+
+console.log('── parseClock ──');
+{
+  eq(parseClock('3:30:00'), 12600, 'H:MM:SS');
+  eq(parseClock('0:45:30'), 2730, 'zero hours');
+  eq(parseClock('45:00'), 2700, 'MM:SS');
+  eq(parseClock('40'), 2400, 'bare minutes');
+  assert(Number.isNaN(parseClock('abc')), 'garbage -> NaN');
+  eq(parseClock(3600), 3600, 'number passthrough');
+}
+
+console.log('── buildPlanSegments ──');
+{
+  // marathon, flat, even strategy -> ~9 blocks (8×5 + 2.195), total time exact
+  const flatProfile = Array.from({ length: 50 }, (_, i) => ({ d: i, ele: 20 }));
+  const even = buildPlanSegments(flatProfile, 42.195, { goalSec: 12600, strategy: 'even' });
+  assert(even.length === 9, `marathon -> ${even.length} segments (want 9)`);
+  const dist = round2(even.reduce((s, x) => s + x.distance, 0));
+  assert(approx(dist, 42.195, 0.02), `blocks total ${dist} ≈ 42.195`);
+  const t = even.reduce((s, x) => s + x.paceSec * x.distance, 0);
+  assert(approx(t, 12600, 30), `even total time ${Math.round(t)} ≈ goal 12600`);
+  assert(even.every(s => s.paceSec === even[0].paceSec), 'even -> identical pace, flat course');
+
+  // negative split -> first block slower than last, total still on goal
+  const neg = buildPlanSegments(flatProfile, 42.195, { goalSec: 12600, strategy: 'negative', splitPct: 4 });
+  assert(neg[0].paceSec > neg[neg.length - 1].paceSec, `negative: start ${neg[0].paceSec} > finish ${neg.at(-1).paceSec}`);
+  const tn = neg.reduce((s, x) => s + x.paceSec * x.distance, 0);
+  assert(approx(tn, 12600, 40), `negative total time ${Math.round(tn)} ≈ goal`);
+
+  // positive split -> reversed
+  const pos = buildPlanSegments(flatProfile, 42.195, { goalSec: 12600, strategy: 'positive', splitPct: 4 });
+  assert(pos[0].paceSec < pos.at(-1).paceSec, `positive: start ${pos[0].paceSec} < finish ${pos.at(-1).paceSec}`);
+
+  // half marathon -> 5 blocks (4×5 + 1.0975)
+  const half = buildPlanSegments(null, 21.0975, { goalSec: 5400, strategy: 'even' });
+  assert(half.length === 5, `half -> ${half.length} segments (want 5)`);
+
+  // gradient makes an uphill block slower than a downhill block (same strategy)
+  const hilly = [{ d: 0, ele: 0 }, { d: 5, ele: 120 }, { d: 10, ele: 0 }];
+  const g = buildPlanSegments(hilly, 10, { goalSec: 3000, strategy: 'even', gradeAdjust: true });
+  assert(g[0].paceSec > g[1].paceSec, `uphill block ${g[0].paceSec} slower than downhill ${g[1].paceSec}`);
+
+  eq(buildPlanSegments(null, 0, { goalSec: 3000 }).length, 0, 'no distance -> []');
+  eq(buildPlanSegments(null, 10, { goalSec: 0 }).length, 0, 'no goal -> []');
+}
+
+console.log('── findExtrema ──');
+{
+  // up to a peak at d=5, down to a valley at d=10, up again
+  const prof = [
+    { d: 0, ele: 0 }, { d: 2.5, ele: 50 }, { d: 5, ele: 100 },
+    { d: 7.5, ele: 40 }, { d: 10, ele: 10 }, { d: 12.5, ele: 60 }, { d: 15, ele: 90 },
+  ];
+  const ex = findExtrema(prof, 8);
+  assert(ex.length >= 2, `found ${ex.length} extrema`);
+  assert(ex.some(e => e.kind === 'peak' && Math.abs(e.d - 5) < 0.01), 'peak at d=5');
+  assert(ex.some(e => e.kind === 'valley' && Math.abs(e.d - 10) < 0.01), 'valley at d=10');
+  eq(findExtrema(null).length, 0, 'null -> []');
+  eq(findExtrema([{ d: 0, ele: 0 }, { d: 1, ele: 1 }]).length, 0, 'too short -> []');
+  // a run of sub-prominence wiggles collapses to at most one snap point
+  const noisy = [{ d: 0, ele: 0 }, { d: 1, ele: 2 }, { d: 2, ele: 0 }, { d: 3, ele: 2 },
+    { d: 4, ele: 0 }, { d: 5, ele: 2 }, { d: 6, ele: 0 }];
+  assert(findExtrema(noisy, 20).length <= 1, `noisy profile -> ${findExtrema(noisy, 20).length} extrema (<=1)`);
+}
+
+console.log('── adjustSegmentBoundary ──');
+{
+  const segs = [
+    { distance: 5, paceSec: 300 },
+    { distance: 5, paceSec: 300 },
+    { distance: 5, paceSec: 300 },
+  ]; // total 15 km, 75:00
+  const T0 = segs.reduce((t, s) => t + s.paceSec * s.distance, 0);
+
+  // move boundary between seg 0 and seg 1 from 5 km to 7 km, flat profile
+  const flat = Array.from({ length: 20 }, (_, i) => ({ d: i, ele: 10 }));
+  const out = adjustSegmentBoundary(segs, flat, 0, 7);
+  assert(approx(out[0].distance, 7, 0.01), `seg0 -> ${out[0].distance} km`);
+  assert(approx(out[1].distance, 3, 0.01), `seg1 -> ${out[1].distance} km`);
+  assert(approx(out[2].distance, 5, 0.01), 'seg2 unchanged');
+  const T1 = out.reduce((t, s) => t + s.paceSec * s.distance, 0);
+  assert(approx(T1, T0, 30), `total time preserved ${Math.round(T1)} ≈ ${T0}`);
+
+  // clamp: can't cross the neighbour
+  const clamped = adjustSegmentBoundary(segs, flat, 0, 99);
+  assert(clamped[0].distance < 10 && clamped[1].distance > 0, 'boundary clamped inside neighbour');
+
+  // gradient: dragging a boundary so seg0 covers a climb makes seg0 slower
+  const hill = [{ d: 0, ele: 0 }, { d: 5, ele: 0 }, { d: 10, ele: 150 }, { d: 15, ele: 150 }];
+  const g = adjustSegmentBoundary(segs, hill, 0, 9); // seg0 now 0..9 incl. the 5-10 climb
+  assert(g[0].paceSec > 300, `seg0 with climb ${g[0].paceSec} slower than flat 300`);
+
+  eq(adjustSegmentBoundary(segs, flat, 5, 3).length, 3, 'bad boundary index -> unchanged length');
 }
 
 // ── Summary ──────────────────────────────────────────────────────────────

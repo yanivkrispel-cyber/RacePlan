@@ -18,6 +18,37 @@ service cloud.firestore {
       match /bank/{doc=**} {
         allow read, write: if isOwner() && request.auth.uid == uid;
       }
+
+      // "My plans" — every signed-in user's own saved-plan store, private to
+      // that account. (users/{uid} list above does not recurse into this.)
+      match /plans/{doc=**} {
+        allow read, write: if signedIn() && request.auth.uid == uid;
+      }
+    }
+
+    // The shared race library. Any signed-in user can browse it; only the
+    // coach adds / verifies routes.
+    match /races/{raceId} {
+      allow read:                 if signedIn();
+      allow create, update, delete: if isOwner();
+    }
+
+    // Community route submissions. Any verified user may propose a GPX route
+    // for a race; only the coach reads the queue and approves / rejects.
+    // Approval itself writes the course onto races/{id} (owner-only above).
+    match /routeSubmissions/{id} {
+      allow create: if verified()
+        && request.auth.uid == request.resource.data.submitterUid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.raceId is string
+        && request.resource.data.raceId.size() > 0
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.trackFlat is list
+        && request.resource.data.trackFlat.size() < 1200
+        && (!('profileFlat' in request.resource.data)
+            || request.resource.data.profileFlat == null
+            || request.resource.data.profileFlat.size() < 800);
+      allow read, list, update, delete: if isOwner();
     }
   }
 }

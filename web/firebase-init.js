@@ -9,11 +9,22 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp, increment,
+  collection, getDocs, query, where,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+import {
+  getStorage, ref as storageRef, uploadString,
+} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyBW6HPQ-W3uEvDtjo8mOAn5RejAik-agzU',
-  authDomain: 'raceplan-17e5b.firebaseapp.com',
+  // Same-origin auth handler. This value decides the OAuth redirect_uri Google
+  // sees ( <authDomain>/__/auth/handler ); both this one and the …firebaseapp.com
+  // handler are now registered as authorized redirect URIs on the OAuth web
+  // client, so redirect and popup both work. Serving the handler from the app's
+  // own origin also means iOS Safari's ITP can't break the signInWithRedirect
+  // credential hand-back (no cross-site storage read). Firebase Hosting serves
+  // /__/auth/* on this domain automatically.
+  authDomain: 'raceplan-17e5b.web.app',
   projectId: 'raceplan-17e5b',
   storageBucket: 'raceplan-17e5b.firebasestorage.app',
   messagingSenderId: '13899079695',
@@ -27,6 +38,7 @@ const OWNER_EMAIL = 'yaniv.krispel@gmail.com';
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
 
@@ -58,11 +70,20 @@ onAuthStateChanged(auth, (u) => {
 });
 
 async function signIn() {
-  // Redirect is the one flow that works everywhere — installed PWA, iOS, and
-  // desktop — with a single consent. (Popup double-prompts when it's blocked
-  // and then falls back to redirect.)
-  try { await signInWithRedirect(auth, provider); }
-  catch (e) { try { await signInWithPopup(auth, provider); } catch (e2) {} }
+  // Popup first: it returns the credential over postMessage, so it survives
+  // iOS Safari's ITP (which breaks the signInWithRedirect storage hand-back
+  // when authDomain isn't same-origin as the app). Popup is fine on desktop
+  // and on mobile Safari when it's opened from a tap (this is).
+  //
+  // Fall back to a full-page redirect only when the popup can't run at all
+  // (blocked, or an installed PWA / in-app webview with no popup support).
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (e) {
+    const code = (e && e.code) || '';
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/user-cancelled') return;
+    try { await signInWithRedirect(auth, provider); } catch (e2) { /* give up */ }
+  }
 }
 
 function userRef() { return doc(db, 'users', currentUser.uid); }
@@ -97,6 +118,153 @@ async function saveBank(json) {
   return 'ok';
 }
 
+// ── "my plans" — every signed-in user's own saved-plan store ───────────
+// A single JSON blob at users/{uid}/plans/data, private to the account.
+function myPlansRef() { return doc(db, 'users', currentUser.uid, 'plans', 'data'); }
+
+async function loadPlans() {
+  if (!currentUser) return '';
+  try {
+    const snap = await getDoc(myPlansRef());
+    return (snap.exists() && snap.data().json) || '';
+  } catch (e) { return ''; }
+}
+
+async function savePlans(json) {
+  if (!currentUser) return 'denied';
+  json = json == null ? '' : String(json);
+  if (json.length > 900000) throw new Error('plans store too large');
+  await setDoc(myPlansRef(), { json, updatedAt: serverTimestamp() });
+  return 'ok';
+}
+
+// ── shared race library (races/{raceId}) ───────────────────────────────
+// Any signed-in user can browse it; only the owner curates routes.
+// A course payload lives right in the doc (profileFlat / trackFlat as flat
+// number arrays — Firestore forbids nested arrays), so loading a race needs
+// no extra fetch. The raw .gpx goes to Storage at routes/{raceId}.gpx for
+// provenance.
+function raceRef(id) { return doc(db, 'races', id); }
+let _racesCache = null;
+
+async function racesList(force) {
+  if (_racesCache && !force) return _racesCache;
+  try {
+    const snap = await getDocs(collection(db, 'races'));
+    _racesCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) { _racesCache = _racesCache || []; }
+  return _racesCache;
+}
+
+function isOwnerNow() { return !!currentUser && currentUser.tier === 'owner'; }
+
+async function raceSave(id, data) {
+  if (!isOwnerNow() || !id) return 'denied';
+  const clean = JSON.parse(JSON.stringify(data || {}));
+  clean.updatedAt = serverTimestamp();
+  clean.updatedBy = currentUser.email;
+  await setDoc(raceRef(id), clean, { merge: true });
+  _racesCache = null;
+  return 'ok';
+}
+
+async function racePutGpx(id, gpxText) {
+  if (!isOwnerNow() || !id || !gpxText) return '';
+  const path = 'routes/' + id + '.gpx';
+  try {
+    await uploadString(storageRef(storage, path), String(gpxText), 'raw',
+      { contentType: 'application/gpx+xml' });
+    return path;
+  } catch (e) { return ''; }
+}
+
+// ── community route submissions (routeSubmissions/{id}) ────────────────
+// Any signed-in (verified) user may propose a GPX route for a race; only the
+// owner reads the queue and approves / rejects. Approval writes the course
+// onto races/{id} via raceSave; the raw .gpx sits at submissions/{id}.gpx.
+function subCol() { return collection(db, 'routeSubmissions'); }
+
+function tsMillis(t) {
+  if (!t) return 0;
+  if (typeof t.toMillis === 'function') return t.toMillis();
+  if (typeof t.seconds === 'number') return t.seconds * 1000;
+  return 0;
+}
+
+// A fresh doc id, no write — needed so the Storage path can be built first.
+function submissionId() { return doc(subCol()).id; }
+
+async function submitRoute(id, data) {
+  if (!currentUser || !id) return 'denied';
+  const body = {
+    ...JSON.parse(JSON.stringify(data || {})),
+    status: 'pending',
+    submitterUid: currentUser.uid,
+    submitterEmail: currentUser.email,
+    submitterName: currentUser.name,
+    createdAt: serverTimestamp(),
+    reviewedAt: null,
+  };
+  await setDoc(doc(subCol(), id), body);
+  return 'ok';
+}
+
+async function submitPutGpx(id, gpxText) {
+  if (!currentUser || !id || !gpxText) return '';
+  const path = 'submissions/' + id + '.gpx';
+  try {
+    await uploadString(storageRef(storage, path), String(gpxText), 'raw',
+      { contentType: 'application/gpx+xml' });
+    return path;
+  } catch (e) { return ''; }
+}
+
+async function submissionsList(status) {
+  if (!isOwnerNow()) return [];
+  try {
+    const snap = await getDocs(query(subCol(), where('status', '==', status || 'pending')));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => tsMillis(b.createdAt) - tsMillis(a.createdAt));
+  } catch (e) { return []; }
+}
+
+async function submissionReview(id, action, note) {
+  if (!isOwnerNow() || !id) return 'denied';
+  if (action !== 'approved' && action !== 'rejected') return 'bad-action';
+  await updateDoc(doc(subCol(), id), {
+    status: action,
+    reviewedAt: serverTimestamp(),
+    reviewedBy: currentUser.email,
+    reviewNote: note || null,
+  });
+  return 'ok';
+}
+
+// One-time bulk import of the shipped catalog. Skips ids that already exist,
+// so it never clobbers a route the owner has already attached.
+async function racesSeed(records) {
+  if (!isOwnerNow() || !Array.isArray(records)) return 0;
+  const have = new Set((await racesList(true)).map((r) => r.id));
+  const pending = records.filter((r) => r && r.id && !have.has(r.id));
+  let n = 0;
+  for (let i = 0; i < pending.length; i += 20) {
+    const chunk = pending.slice(i, i + 20);
+    // eslint-disable-next-line no-await-in-loop
+    await Promise.all(chunk.map((rec) => {
+      const { id, ...rest } = rec;
+      return setDoc(raceRef(id), {
+        ...rest,
+        seed: true,
+        routeStatus: rest.routeStatus || 'none',
+        createdAt: serverTimestamp(),
+        updatedBy: currentUser.email,
+      }).then(() => { n++; }).catch(() => {});
+    }));
+  }
+  _racesCache = null;
+  return n;
+}
+
 window.RP_FIREBASE = {
   ready,
   get user() { return currentUser; },
@@ -105,5 +273,16 @@ window.RP_FIREBASE = {
   signOut: () => signOut(auth),
   loadBank,
   saveBank,
+  loadPlans,
+  savePlans,
   logVisit,
+  racesList,
+  raceSave,
+  racePutGpx,
+  racesSeed,
+  submissionId,
+  submitRoute,
+  submitPutGpx,
+  submissionsList,
+  submissionReview,
 };

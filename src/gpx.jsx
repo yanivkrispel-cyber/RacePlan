@@ -117,4 +117,145 @@ function computeSegmentElevations(profile, rows) {
   });
 }
 
-Object.assign(window, { parseGpx, buildSegmentsFromGpx, computeSegmentElevations });
+// Build race-plan segments from a loaded course so the plan matches the route.
+// Splits into `blockKm` blocks (+ a remainder; a tail under 1 km folds into the
+// last block), then sets each block's pace from a goal time, a pacing strategy,
+// and — when a profile is present — that block's net gradient. Finally the whole
+// set is scaled so Σ(pace·distance) === goalSec exactly.
+//
+//   opts = { goalSec, blockKm = 5,
+//            strategy: 'even' | 'negative' | 'positive' | 'staged',
+//            splitPct = 0,          // 0-8, ignored for 'even'
+//            gradeAdjust = true }
+function buildPlanSegments(profile, totalDist, opts) {
+  const o = opts || {};
+  const total = +totalDist;
+  const goalSec = +o.goalSec;
+  if (!(total > 0) || !(goalSec > 0)) return [];
+
+  const blockKm = o.blockKm > 0 ? o.blockKm : 5;
+  const strategy = o.strategy || 'even';
+  const s = clamp((+o.splitPct || 0) / 100, 0, 0.08);
+  const gradeAdjust = o.gradeAdjust !== false;
+  const hasProfile = Array.isArray(profile) && profile.length > 1
+    && profile.some((p) => isFinite(p.ele));
+
+  // block boundaries
+  const bounds = [0];
+  for (let d = blockKm; d < total - 1e-6; d += blockKm) bounds.push(round2(d));
+  bounds.push(round2(total));
+  if (bounds.length >= 3 && bounds[bounds.length - 1] - bounds[bounds.length - 2] < 1) {
+    bounds.splice(bounds.length - 2, 1); // fold a sub-1 km tail into the last block
+  }
+
+  const base = goalSec / total; // flat sec/km
+
+  const raw = [];
+  for (let i = 1; i < bounds.length; i++) {
+    const a = bounds[i - 1];
+    const b = bounds[i];
+    const distKm = round2(b - a);
+    const f = total > blockKm ? ((a + b) / 2) / total : 0.5; // position in the race, 0..1
+
+    let mult = 1;
+    if (strategy === 'negative') mult = 1 + s - 2 * s * f;      // slow → fast
+    else if (strategy === 'positive') mult = 1 - s + 2 * s * f; // fast → slow
+    else if (strategy === 'staged') mult = f < 1 / 3 ? 1 + s : f > 2 / 3 ? 1 - s : 1;
+
+    let pace = base * mult;
+    if (gradeAdjust && hasProfile) {
+      const eA = _interpolateEle(profile, a);
+      const eB = _interpolateEle(profile, b);
+      if (isFinite(eA) && isFinite(eB)) {
+        const gradePct = ((eB - eA) / (distKm * 1000)) * 100;
+        pace += clamp(gradePct * 14, -22, 48); // sec/km, same model as buildSegmentsFromGpx
+      }
+    }
+    raw.push({ distance: distKm, paceSec: pace });
+  }
+
+  // scale so the total time lands exactly on the goal
+  const sum = raw.reduce((t, r) => t + r.paceSec * r.distance, 0);
+  const scale = sum > 0 ? goalSec / sum : 1;
+  return raw.map((r) => ({
+    distance: r.distance,
+    paceSec: clamp(Math.round(r.paceSec * scale), 150, 720),
+  }));
+}
+
+// Net grade adjustment (sec/km) for a span [aKm, bKm] of the elevation profile —
+// same model as buildSegmentsFromGpx. 0 when there's no usable profile.
+function _gradeAdj(profile, aKm, bKm) {
+  if (!Array.isArray(profile) || profile.length < 2) return 0;
+  const eA = _interpolateEle(profile, aKm);
+  const eB = _interpolateEle(profile, bKm);
+  const distM = (bKm - aKm) * 1000;
+  if (!isFinite(eA) || !isFinite(eB) || distM <= 0) return 0;
+  return clamp(((eB - eA) / distM) * 100 * 14, -22, 48);
+}
+
+// Prominent peaks / valleys in the elevation profile, for "snap to the top of the
+// climb" while dragging a segment boundary. minProm = metres of swing to keep one.
+function findExtrema(profile, minProm) {
+  if (!Array.isArray(profile) || profile.length < 3) return [];
+  const prom = minProm > 0 ? minProm : 8;
+  const raw = [];
+  for (let i = 1; i < profile.length - 1; i++) {
+    const a = profile[i - 1].ele, b = profile[i].ele, c = profile[i + 1].ele;
+    if (!isFinite(a) || !isFinite(b) || !isFinite(c)) continue;
+    if (b >= a && b > c) raw.push({ d: profile[i].d, ele: b, kind: 'peak' });
+    else if (b <= a && b < c) raw.push({ d: profile[i].d, ele: b, kind: 'valley' });
+  }
+  const kept = [];
+  for (const e of raw) {
+    const last = kept[kept.length - 1];
+    if (!last) { kept.push(e); continue; }
+    if (Math.abs(e.ele - last.ele) >= prom) kept.push(e);
+    else if ((e.kind === 'peak' && e.ele > last.ele) || (e.kind === 'valley' && e.ele < last.ele)) {
+      kept[kept.length - 1] = e; // keep the more extreme of a noisy pair
+    }
+  }
+  return kept;
+}
+
+// Move the boundary between segment i and i+1 to newCumKm. Only those two
+// segments change distance; their pace is re-derived (flat component kept, grade
+// term recomputed for the new span); then all paces are scaled so the total time
+// is unchanged. Returns a fresh segments array.
+function adjustSegmentBoundary(segments, profile, i, newCumKm) {
+  const segs = segments.map((s) => ({ distance: s.distance, paceSec: s.paceSec }));
+  if (i < 0 || i >= segs.length - 1) return segs;
+
+  const cum = [];
+  let acc = 0;
+  for (const s of segs) { acc += s.distance; cum.push(acc); }
+  const total = acc;
+  const MIN = 0.2;
+  const startI = i === 0 ? 0 : cum[i - 1];
+  const endI1 = cum[i + 1];
+  const b = clamp(newCumKm, startI + MIN, Math.min(endI1 - MIN, total - MIN));
+  if (!(b > startI) || !(b < endI1)) return segs;
+
+  const T = segs.reduce((t, s) => t + s.paceSec * s.distance, 0);
+
+  const redo = (idx, aKm, bKm) => {
+    const oldA = idx === 0 ? 0 : cum[idx - 1];
+    const flat = segs[idx].paceSec - _gradeAdj(profile, oldA, cum[idx]);
+    segs[idx].distance = round2(bKm - aKm);
+    segs[idx].paceSec = flat + _gradeAdj(profile, aKm, bKm);
+  };
+  redo(i, startI, b);
+  redo(i + 1, b, endI1);
+
+  const T2 = segs.reduce((t, s) => t + s.paceSec * s.distance, 0);
+  const scale = T2 > 0 ? T / T2 : 1;
+  return segs.map((s) => ({
+    distance: round2(s.distance),
+    paceSec: clamp(Math.round(s.paceSec * scale), 150, 720),
+  }));
+}
+
+Object.assign(window, {
+  parseGpx, buildSegmentsFromGpx, computeSegmentElevations, buildPlanSegments,
+  findExtrema, adjustSegmentBoundary,
+});

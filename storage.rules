@@ -1,0 +1,32 @@
+rules_version = '2';
+
+// Firebase Storage — raw GPX files for the shared race library only.
+// Everything else is closed.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == 'yaniv.krispel@gmail.com';
+    }
+
+    // routes/{raceId}.gpx — any signed-in user may download; only the coach uploads.
+    match /routes/{file} {
+      allow read:  if request.auth != null;
+      allow write: if isOwner() && request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // submissions/{id}.gpx — a verified user proposes a route; only the coach reads.
+    match /submissions/{file} {
+      allow read:  if isOwner();
+      allow write: if request.auth != null
+        && request.auth.token.email_verified == true
+        && request.resource.size < 5 * 1024 * 1024;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

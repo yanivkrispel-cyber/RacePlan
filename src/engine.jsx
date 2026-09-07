@@ -27,6 +27,17 @@ function parsePace(str) {
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
 
+// "H:MM:SS" → seconds; "MM:SS" → seconds; "MM" → minutes. Inverse of formatClock
+// for the 3-part form. Returns NaN on garbage.
+function parseClock(str) {
+  if (typeof str === 'number') return str;
+  const p = String(str).trim().split(':').map((x) => parseInt(x, 10));
+  if (!p.length || p.some((n) => !isFinite(n) || n < 0)) return NaN;
+  if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
+  if (p.length === 2) return p[0] * 60 + p[1];
+  return p[0] * 60;
+}
+
 const formatKm = (n) => Number(n).toFixed(2);
 const round2 = (n) => Math.round(n * 100) / 100;
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
@@ -192,6 +203,15 @@ function useRacePlan(initial, initialPreset) {
     },
     loadCourse: (meta) => setCourse(meta || null),
     clearCourse: () => setCourse(null),
+    // Replace every segment's distance/pace, keeping ids stable by position so
+    // React keys don't churn (used for live boundary dragging on the chart).
+    replaceSegments: (list) => setSegments((ss) => (Array.isArray(list) && list.length
+      ? list.map((s, i) => ({
+          id: (ss[i] && ss[i].id) || uid(),
+          distance: clamp(round2(+s.distance || 0.05), 0.05, 99),
+          paceSec: clamp(Math.round(+s.paceSec || 300), 120, 900),
+        }))
+      : ss)),
     // Restore a fully-serialized plan (used by share URL)
     restorePlan: (data) => {
       if (Array.isArray(data.s) && data.s.length) {
@@ -209,7 +229,7 @@ function useRacePlan(initial, initialPreset) {
 }
 
 Object.assign(window, {
-  formatPace, formatClock, parsePace, formatKm, round2, clamp,
+  formatPace, formatClock, parsePace, parseClock, formatKm, round2, clamp,
   PRESETS, ZONES, defaultSegments, generatePlan, computePlan, useRacePlan,
   clearSavedPlan,
 });
