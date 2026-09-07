@@ -2,13 +2,16 @@
   "name": "raceplan",
   "version": "1.0.0",
   "private": true,
-  "description": "RacePlan — race pace planner (React UMD, no bundler). Apps Script web-app build.",
+  "description": "RacePlan — race pace planner (React UMD, no bundler). Firebase Hosting + Auth + Firestore.",
   "type": "module",
   "scripts": {
     "test": "node test/functions.test.mjs",
     "build": "node build/build.mjs",
-    "push": "npm run build && clasp push --force",
-    "redeploy": "node build/redeploy.mjs"
+    "deploy": "npm run build && firebase deploy --only hosting,firestore:rules",
+    "deploy:hosting": "npm run build && firebase deploy --only hosting",
+    "deploy:rules": "firebase deploy --only firestore:rules",
+    "_legacy:push": "npm run build && clasp push --force",
+    "_legacy:redeploy": "node build/redeploy.mjs"
   },
   "devDependencies": {
     "@babel/core": "^7.29.0",
