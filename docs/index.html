@@ -75,7 +75,12 @@
   var ready = false;
   window.addEventListener('message', function (e) {
     if (e.data !== 'raceplan:ready') return;
-    if (!/\.googleusercontent\.com$/.test(new URL(e.origin).hostname)) return;
+    var ok = false;
+    try {
+      var h = new URL(e.origin).hostname;
+      ok = /(^|\.)googleusercontent\.com$/.test(h) || /(^|\.)script\.google\.com$/.test(h);
+    } catch (err) {}
+    if (!ok) return;
     ready = true;
     loader.classList.add('hidden');
   });
