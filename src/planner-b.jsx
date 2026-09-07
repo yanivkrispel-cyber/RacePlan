@@ -465,11 +465,12 @@ function SignInScreen() {
     }}>
       <img src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'LogoV2.png'}
         alt="RACE PLAN" style={{ width: 128, height: 128, borderRadius: 24 }} />
-      <div style={{ fontFamily: 'var(--rp-font-display)', fontSize: 24, fontWeight: 800 }}>
-        RacePlan — מתכנן קצב לריצה
+      <div style={{ fontFamily: 'var(--rp-font-display)', fontSize: 30, fontWeight: 800,
+        letterSpacing: '.14em', direction: 'ltr' }}>
+        RACE PLAN
       </div>
-      <div style={{ color: 'var(--rp-text-dim)', fontSize: 14, maxWidth: 300 }}>
-        התחברו כדי לתכנן את המרוץ שלכם. הנתונים נשמרים בחשבון שלכם.
+      <div style={{ color: 'var(--rp-text-dim)', fontSize: 15, maxWidth: 300 }}>
+        תכננו את המרוץ הבא שלכם
       </div>
       <button className="rp-btn rp-btn-primary" style={{ minHeight: 48, fontSize: 16, padding: '12px 26px' }}
         onClick={() => RP_FB && RP_FB.signIn()}>
