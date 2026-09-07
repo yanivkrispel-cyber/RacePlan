@@ -19,3 +19,4 @@ web/app.js
 .firebase/
 firebase-debug.log
 firestore-debug.log
+sa-key.json

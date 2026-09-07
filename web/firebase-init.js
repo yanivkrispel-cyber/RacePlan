@@ -58,13 +58,11 @@ onAuthStateChanged(auth, (u) => {
 });
 
 async function signIn() {
-  try {
-    // popup where it works (desktop); redirect is the reliable path in an
-    // installed PWA / iOS
-    await signInWithPopup(auth, provider);
-  } catch (e) {
-    try { await signInWithRedirect(auth, provider); } catch (e2) {}
-  }
+  // Redirect is the one flow that works everywhere — installed PWA, iOS, and
+  // desktop — with a single consent. (Popup double-prompts when it's blocked
+  // and then falls back to redirect.)
+  try { await signInWithRedirect(auth, provider); }
+  catch (e) { try { await signInWithPopup(auth, provider); } catch (e2) {} }
 }
 
 function userRef() { return doc(db, 'users', currentUser.uid); }
