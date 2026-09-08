@@ -5,6 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>RACE PLAN</title>
 <base target="_top" />
+<script>
+/* set <html lang/dir> from the resolved locale before the app mounts (no RTL flash) */
+(function () {
+  try {
+    var q = new URLSearchParams(location.search).get('lang');
+    var ls = null; try { ls = localStorage.getItem('rp-locale'); } catch (e) {}
+    var nav = ((navigator.language || 'he') + '').slice(0, 2).toLowerCase();
+    var ok = { he: 1, en: 1, fr: 1, es: 1 };
+    var loc = [q, ls, nav].filter(function (l) { return l && ok[(l + '').slice(0, 2).toLowerCase()]; })[0];
+    loc = loc ? (loc + '').slice(0, 2).toLowerCase() : 'he';
+    if (q && ok[loc]) { try { localStorage.setItem('rp-locale', loc); } catch (e) {} }
+    var d = document.documentElement;
+    d.lang = loc; d.setAttribute('dir', (loc === 'he' || loc === 'ar') ? 'rtl' : 'ltr');
+  } catch (e) {}
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&family=Frank+Ruhl+Libre:wght@500;700;800&family=Cormorant+Garamond:ital,wght@1,600;1,700&display=swap" rel="stylesheet" />

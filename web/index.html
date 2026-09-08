@@ -4,6 +4,22 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>RACE PLAN</title>
+<script>
+/* set <html lang/dir> from the resolved locale before the app mounts (no RTL flash) */
+(function () {
+  try {
+    var q = new URLSearchParams(location.search).get('lang');
+    var ls = null; try { ls = localStorage.getItem('rp-locale'); } catch (e) {}
+    var nav = ((navigator.language || 'he') + '').slice(0, 2).toLowerCase();
+    var ok = { he: 1, en: 1, fr: 1, es: 1 };
+    var loc = [q, ls, nav].filter(function (l) { return l && ok[(l + '').slice(0, 2).toLowerCase()]; })[0];
+    loc = loc ? (loc + '').slice(0, 2).toLowerCase() : 'he';
+    if (q && ok[loc]) { try { localStorage.setItem('rp-locale', loc); } catch (e) {} }
+    var d = document.documentElement;
+    d.lang = loc; d.setAttribute('dir', (loc === 'he' || loc === 'ar') ? 'rtl' : 'ltr');
+  } catch (e) {}
+})();
+</script>
 <link rel="manifest" href="manifest.webmanifest" />
 <meta name="theme-color" content="#111528" />
 <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-64.png" />

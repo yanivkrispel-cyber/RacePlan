@@ -28,7 +28,9 @@ const r = (...p) => join(ROOT, ...p);
 
 // Script load order — mirrors RacePlan.html exactly.
 const JSX_FILES = [
+  'src/i18n.jsx',
   'src/engine.jsx',
+  'src/units.jsx',
   'src/chart.jsx',
   'src/shared.jsx',
   'src/core.jsx',

@@ -47,6 +47,7 @@ function tierFor(email) {
 }
 
 let currentUser = null;
+let currentProfile = null;   // the users/{uid} doc data (locale, units, …), if loaded
 const authSubs = new Set();
 function emitAuth() { authSubs.forEach((fn) => { try { fn(currentUser); } catch (e) {} }); }
 
@@ -93,6 +94,7 @@ async function logVisit() {
   if (!currentUser) return;
   const ref = userRef();
   const snap = await getDoc(ref);
+  currentProfile = snap.exists() ? snap.data() : {};
   const base = { email: currentUser.email, name: currentUser.name, tier: currentUser.tier,
     lastSeenAt: serverTimestamp() };
   if (snap.exists()) {
@@ -100,6 +102,20 @@ async function logVisit() {
   } else {
     await setDoc(ref, { ...base, createdAt: serverTimestamp(), visits: 1 });
   }
+}
+
+// Persist a small set of user preferences (locale, units) onto users/{uid}.
+async function saveProfile(fields) {
+  if (!currentUser || !fields) return 'denied';
+  const allow = ['locale', 'units'];
+  const clean = {};
+  for (const k of allow) if (fields[k] != null) clean[k] = String(fields[k]);
+  if (!Object.keys(clean).length) return 'noop';
+  currentProfile = { ...(currentProfile || {}), ...clean };
+  try {
+    await setDoc(userRef(), { ...clean, prefsAt: serverTimestamp() }, { merge: true });
+    return 'ok';
+  } catch (e) { return 'error'; }
 }
 
 async function loadBank() {
@@ -307,9 +323,11 @@ async function racesSeed(records) {
 window.RP_FIREBASE = {
   ready,
   get user() { return currentUser; },
+  get profile() { return currentProfile; },
   onAuth(fn) { authSubs.add(fn); return () => authSubs.delete(fn); },
   signIn,
   signOut: () => signOut(auth),
+  saveProfile,
   loadBank,
   saveBank,
   loadPlans,
