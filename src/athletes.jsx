@@ -1,6 +1,9 @@
 // athletes.jsx — Athlete bank: per-athlete plan storage with history.
 // Exposes AthleteDB (CRUD) and AthletePanel (modal UI) on window.
 const { round2 } = window;
+const I18N = window.I18N;
+const t = (I18N && I18N.t) || ((k) => k);
+const U = window.UNITS;
 
 const LS_ATHLETES = 'rp-athletes-v1';
 
@@ -53,13 +56,15 @@ const aid = () => `a${Date.now()}${++_aid}`;
 
 // ── Date formatter ─────────────────────────────────────────────────────
 function formatSavedAt(iso) {
-  const d = new Date(iso);
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yy = d.getFullYear();
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  return `${dd}/${mm}/${yy} ${hh}:${mi}`;
+  try {
+    return new Intl.DateTimeFormat(I18N ? I18N.locale : 'he',
+      { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      .format(new Date(iso));
+  } catch (e) {
+    const d = new Date(iso);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
 }
 
 // ── AthleteDB ──────────────────────────────────────────────────────────
@@ -213,7 +218,7 @@ function AthletePanel({
         position: 'fixed', inset: 0, zIndex: 1000,
         background: 'rgba(9,11,22,.78)', backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 20, direction: 'rtl', fontFamily: 'var(--rp-font-ui)',
+        padding: 20, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)',
         color: 'var(--rp-text)',
       }}
     >
@@ -237,7 +242,7 @@ function AthletePanel({
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 800, maxHeight: '88vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: 'var(--rp-shadow-modal)',
-        direction: 'rtl',
+        direction: I18N.dir,
       }}>
 
         {/* Header */}
@@ -251,7 +256,7 @@ function AthletePanel({
               <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
               <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
             </svg>
-            <span style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>מאגר מתאמנים</span>
+            <span style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>{t('athletes.title')}</span>
           </div>
           <button onClick={onClose} style={{
             background: 'none', border: 'none', cursor: 'pointer',
@@ -271,14 +276,14 @@ function AthletePanel({
             <div style={{ padding: '10px 16px 8px', fontSize: 11, fontWeight: 700,
               color: DIMMER, letterSpacing: '.07em', textTransform: 'uppercase',
               borderBottom: `1px solid ${COL_BORDER}` }}>
-              מתאמנים ({db.athletes.length})
+              {t('athletes.roster')} ({db.athletes.length})
             </div>
 
             {/* List */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '6px 6px' }}>
               {db.athletes.length === 0 && (
                 <div style={{ padding: '18px 12px', color: DIMMER, fontSize: 13, textAlign: 'center' }}>
-                  אין מתאמנים עדיין
+                  {t('athletes.noneYet')}
                 </div>
               )}
               {db.athletes.map(a => (
@@ -311,12 +316,12 @@ function AthletePanel({
                   value={newName}
                   onChange={e => setNewName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
-                  placeholder="שם מתאמן חדש..."
+                  placeholder={t('athletes.newNamePlaceholder')}
                   style={{
                     flex: 1, background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
                     borderRadius: 8, padding: '7px 10px', fontSize: 13, color: TEXT,
                     fontFamily: 'inherit', outline: 'none', minWidth: 0,
-                    direction: 'rtl',
+                    direction: I18N.dir,
                   }}
                 />
                 <button onClick={handleAdd} style={{
@@ -333,7 +338,7 @@ function AthletePanel({
             <div style={{ padding: '10px 18px 8px', fontSize: 11, fontWeight: 700,
               color: DIMMER, letterSpacing: '.07em', textTransform: 'uppercase',
               borderBottom: `1px solid ${COL_BORDER}` }}>
-              {selAthlete ? selAthlete.name : 'מתאמן'}
+              {selAthlete ? selAthlete.name : t('athletes.athlete')}
             </div>
 
             {selAthlete && onPlanForAthlete && (
@@ -346,11 +351,11 @@ function AthletePanel({
                 }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                     strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-                  תכנן מרוץ ל{selAthlete.name}
+                  {t('athletes.planForX', { name: selAthlete.name })}
                 </button>
                 {selAthlete.plans.length > 0 && (
                   <div style={{ fontSize: 11, fontWeight: 700, color: DIMMER, letterSpacing: '.06em',
-                    textTransform: 'uppercase', margin: '14px 4px 2px' }}>תכנונים שמורים</div>
+                    textTransform: 'uppercase', margin: '14px 4px 2px' }}>{t('athletes.savedPlans')}</div>
                 )}
               </div>
             )}
@@ -358,12 +363,12 @@ function AthletePanel({
             <div style={{ flex: 1, overflowY: 'auto', padding: '6px 14px 10px' }}>
               {!selAthlete && (
                 <div style={{ padding: '40px 20px', color: DIMMER, fontSize: 14, textAlign: 'center' }}>
-                  בחרו מתאמן מהרשימה, או הוסיפו חדש
+                  {t('athletes.pickOrAdd')}
                 </div>
               )}
               {selAthlete && selAthlete.plans.length === 0 && (
                 <div style={{ padding: '24px 20px', color: DIMMER, fontSize: 13, textAlign: 'center' }}>
-                  אין עדיין תכנונים שמורים למתאמן הזה
+                  {t('athletes.noSavedPlans')}
                 </div>
               )}
               {selAthlete && selAthlete.plans.map(plan => (
@@ -385,8 +390,8 @@ function AthletePanel({
                       <div style={{ fontSize: 11.5, color: DIM, marginTop: 3 }}>
                         {formatSavedAt(plan.savedAt)}
                         {plan.course
-                          ? ` · GPX: ${plan.course.name || plan.course.source || ''} ${plan.course.dist ? plan.course.dist + ' ק"מ' : ''}`
-                          : plan.segments ? ` · ${plan.segments.length} קטעים` : ''}
+                          ? ` · GPX: ${plan.course.name || ''} ${plan.course.dist && U ? U.fmtDist(plan.course.dist) : (plan.course.dist || '')}`
+                          : plan.segments ? ` · ${t('athletes.segCount', { count: plan.segments.length })}` : ''}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -394,7 +399,7 @@ function AthletePanel({
                         background: 'var(--rp-gold-wash)', border: '1px solid var(--rp-gold-line)',
                         borderRadius: 8, padding: '5px 12px', cursor: 'pointer',
                         color: 'var(--rp-gold)', fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
-                      }}>טען</button>
+                      }}>{t('common.load')}</button>
                       <button
                         onClick={() => setConfirmDel({ type: 'plan', id: plan.id, athleteId: selId })}
                         style={{
@@ -419,7 +424,7 @@ function AthletePanel({
           {selAthlete ? (
             <>
               <span style={{ fontSize: 12.5, color: DIMMER }}>
-                {selAthlete.plans.length} תכנונים שמורים
+                {t('athletes.savedPlansCount', { count: selAthlete.plans.length })}
               </span>
               <div style={{ marginInlineStart: 'auto' }}>
                 <button
@@ -428,12 +433,12 @@ function AthletePanel({
                     background: 'transparent', border: `1px solid ${FIELD_BD}`,
                     borderRadius: 8, padding: '6px 12px', cursor: 'pointer',
                     color: 'var(--rp-danger-text)', fontSize: 12.5, fontFamily: 'inherit',
-                  }}>מחק מתאמן</button>
+                  }}>{t('athletes.deleteAthlete')}</button>
               </div>
             </>
           ) : (
             <span style={{ fontSize: 13, color: DIMMER }}>
-              בחרו מתאמן כדי לתכנן לו מרוץ או לפתוח תכנון קיים
+              {t('athletes.pickToPlan')}
             </span>
           )}
         </div>
@@ -449,28 +454,28 @@ function AthletePanel({
           <div style={{
             background: 'var(--rp-surface)', border: `1px solid ${FIELD_BD}`,
             borderRadius: 16, padding: '26px 30px', maxWidth: 340,
-            textAlign: 'center', direction: 'rtl',
+            textAlign: 'center', direction: I18N.dir,
             boxShadow: '0 16px 48px rgba(0,0,0,.7)',
           }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, marginBottom: 10 }}>
-              {confirmDel.type === 'athlete' ? 'מחק מתאמן?' : 'מחק תכנית?'}
+              {confirmDel.type === 'athlete' ? t('athletes.deleteAthleteQ') : t('athletes.deletePlanQ')}
             </div>
             <div style={{ fontSize: 13, color: DIM, marginBottom: 22 }}>
               {confirmDel.type === 'athlete'
-                ? 'כל התכניות של המתאמן יימחקו לצמיתות.'
-                : 'הפעולה אינה ניתנת לביטול.'}
+                ? t('athletes.deleteAthleteWarn')
+                : t('common.irreversible')}
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <button onClick={() => setConfirmDel(null)} style={{
                 background: 'var(--rp-surface-2)', border: `1px solid ${FIELD_BD}`,
                 borderRadius: 9, padding: '8px 18px', cursor: 'pointer',
                 color: TEXT, fontFamily: 'inherit', fontWeight: 600, fontSize: 13,
-              }}>ביטול</button>
+              }}>{t('common.cancel')}</button>
               <button onClick={handleDelConfirm} style={{
                 background: 'var(--rp-danger)', border: 'none',
                 borderRadius: 9, padding: '8px 18px', cursor: 'pointer',
                 color: 'var(--rp-text)', fontFamily: 'inherit', fontWeight: 700, fontSize: 13,
-              }}>מחק</button>
+              }}>{t('common.delete')}</button>
             </div>
           </div>
         </div>

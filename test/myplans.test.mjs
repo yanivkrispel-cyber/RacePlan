@@ -23,7 +23,10 @@ const fakeLS = {
   setItem(k, v) { this.store[k] = String(v); },
   removeItem(k) { delete this.store[k]; },
 };
-const fakeWin = { round2: (n) => Math.round(n * 100) / 100 };
+const fakeWin = {
+  round2: (n) => Math.round(n * 100) / 100,
+  I18N: { locale: 'he', t: (k) => ({ 'myplans.untitled': 'תכנון' }[k] || k) },
+};
 
 const fn = new Function('window', 'localStorage', `${body}
   return { serializePlan, MyPlansDB, defaultPlanName, formatSavedAt };`);

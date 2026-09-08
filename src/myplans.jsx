@@ -7,6 +7,9 @@
 // backed API; when Firebase is present the source of truth is Firestore
 // users/{uid}/plans/data (one JSON blob, private to the account, any tier).
 const { round2 } = window;
+const I18N = window.I18N;
+const t = (I18N && I18N.t) || ((k) => k);
+const U = window.UNITS;
 
 const LS_MYPLANS = 'rp-myplans-v1';
 
@@ -52,13 +55,15 @@ const mpid = () => `p${Date.now()}${++_mpid}`;
 
 // ── date formatter ────────────────────────────────────────────────────
 function formatSavedAt(iso) {
-  const d = new Date(iso);
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yy = d.getFullYear();
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  return `${dd}/${mm}/${yy} ${hh}:${mi}`;
+  try {
+    return new Intl.DateTimeFormat(I18N ? I18N.locale : 'he',
+      { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      .format(new Date(iso));
+  } catch (e) {
+    const d = new Date(iso);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
 }
 
 // current planner state  →  the serialised body of a saved plan
@@ -84,7 +89,7 @@ function serializePlan(cur) {
 }
 
 function defaultPlanName(cur, iso) {
-  return `${(cur && cur.raceName) || 'תכנון'} — ${formatSavedAt(iso)}`;
+  return `${(cur && cur.raceName) || t('myplans.untitled')} — ${formatSavedAt(iso)}`;
 }
 
 // ── MyPlansDB ─────────────────────────────────────────────────────────
@@ -200,7 +205,7 @@ function MyPlansPanel({
         position: 'fixed', inset: 0, zIndex: 1000,
         background: 'rgba(9,11,22,.78)', backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 20, direction: 'rtl', fontFamily: 'var(--rp-font-ui)', color: TEXT,
+        padding: 20, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: TEXT,
       }}
     >
       <style>{`
@@ -218,7 +223,7 @@ function MyPlansPanel({
         background: PANEL_BG, border: `1px solid ${COL_BORDER}`,
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 560, maxHeight: '88vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        boxShadow: 'var(--rp-shadow-modal)', direction: 'rtl',
+        boxShadow: 'var(--rp-shadow-modal)', direction: I18N.dir,
       }}>
 
         {/* header */}
@@ -229,7 +234,7 @@ function MyPlansPanel({
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
             </svg>
-            <span style={{ fontSize: 17, fontWeight: 800 }}>התכנונים שלי</span>
+            <span style={{ fontSize: 17, fontWeight: 800 }}>{t('myplans.title')}</span>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
             color: DIM, fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
@@ -239,9 +244,9 @@ function MyPlansPanel({
         <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px', minHeight: 0 }}>
           {plans.length === 0 && (
             <div style={{ padding: '40px 20px', color: DIMMER, fontSize: 14, textAlign: 'center' }}>
-              אין תכנונים שמורים עדיין
+              {t('myplans.noneYet')}
               <div style={{ fontSize: 12, marginTop: 6 }}>
-                מלאו שם למטה ולחצו "שמור תכנון נוכחי".
+                {t('myplans.noneYetHint')}
               </div>
             </div>
           )}
@@ -261,7 +266,7 @@ function MyPlansPanel({
                       onBlur={commitRename}
                       style={{ width: '100%', background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
                         borderRadius: 8, padding: '5px 8px', fontSize: 13.5, color: TEXT,
-                        fontFamily: 'inherit', outline: 'none', direction: 'rtl' }}
+                        fontFamily: 'inherit', outline: 'none', direction: I18N.dir }}
                     />
                   ) : (
                     <div style={{ fontSize: 14, fontWeight: 700, overflow: 'hidden',
@@ -270,8 +275,8 @@ function MyPlansPanel({
                   <div style={{ fontSize: 11.5, color: DIM, marginTop: 3 }}>
                     {formatSavedAt(plan.savedAt)}
                     {plan.course
-                      ? ` · GPX: ${plan.course.name || plan.course.source || ''}${plan.course.dist ? ' ' + round2(plan.course.dist) + ' ק"מ' : ''}`
-                      : plan.segments ? ` · ${plan.segments.length} קטעים` : ''}
+                      ? ` · GPX: ${plan.course.name || ''}${plan.course.dist ? ' ' + (U ? U.fmtDist(plan.course.dist) : round2(plan.course.dist)) : ''}`
+                      : plan.segments ? ` · ${t('athletes.segCount', { count: plan.segments.length })}` : ''}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -279,8 +284,8 @@ function MyPlansPanel({
                     background: 'var(--rp-gold-wash)', border: '1px solid var(--rp-gold-line)',
                     borderRadius: 8, padding: '5px 12px', cursor: 'pointer',
                     color: 'var(--rp-gold)', fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
-                  }}>טען</button>
-                  <button onClick={() => startRename(plan)} aria-label="שינוי שם" style={{
+                  }}>{t('common.load')}</button>
+                  <button onClick={() => startRename(plan)} aria-label={t('myplans.rename')} style={{
                     background: 'transparent', border: `1px solid ${FIELD_BD}`, borderRadius: 8,
                     padding: '5px 8px', cursor: 'pointer', color: DIMMER, fontFamily: 'inherit', lineHeight: 1,
                   }}>
@@ -289,7 +294,7 @@ function MyPlansPanel({
                       <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
                     </svg>
                   </button>
-                  <button onClick={() => setConfirmDel({ id: plan.id })} aria-label="מחיקה" style={{
+                  <button onClick={() => setConfirmDel({ id: plan.id })} aria-label={t('common.delete')} style={{
                     background: 'transparent', border: `1px solid ${FIELD_BD}`, borderRadius: 8,
                     padding: '5px 8px', cursor: 'pointer', color: DIMMER, fontSize: 13,
                     fontFamily: 'inherit', lineHeight: 1,
@@ -310,10 +315,10 @@ function MyPlansPanel({
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
-            placeholder="שם לתכנון…"
+            placeholder={t('myplans.namePlaceholder')}
             style={{ flex: 1, minWidth: 140, background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
               borderRadius: 8, padding: '9px 12px', fontSize: 13, color: TEXT,
-              fontFamily: 'inherit', outline: 'none', direction: 'rtl' }}
+              fontFamily: 'inherit', outline: 'none', direction: I18N.dir }}
           />
           <button onClick={handleSave} style={{
             background: savedFlash ? 'var(--rp-gold-soft)' : ACCENT, border: 'none',
@@ -327,7 +332,7 @@ function MyPlansPanel({
                   strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
-                נשמר!
+                {t('myplans.saved')}
               </>
             ) : (
               <>
@@ -336,7 +341,7 @@ function MyPlansPanel({
                   <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
                   <polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" />
                 </svg>
-                שמור תכנון נוכחי
+                {t('myplans.saveCurrent')}
               </>
             )}
           </button>
@@ -351,22 +356,22 @@ function MyPlansPanel({
         }}>
           <div style={{
             background: 'var(--rp-surface)', border: `1px solid ${FIELD_BD}`, borderRadius: 16,
-            padding: '26px 30px', maxWidth: 340, textAlign: 'center', direction: 'rtl',
+            padding: '26px 30px', maxWidth: 340, textAlign: 'center', direction: I18N.dir,
             boxShadow: '0 16px 48px rgba(0,0,0,.7)',
           }}>
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>מחיקת תכנון?</div>
-            <div style={{ fontSize: 13, color: DIM, marginBottom: 22 }}>הפעולה אינה ניתנת לביטול.</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>{t('myplans.deleteQ')}</div>
+            <div style={{ fontSize: 13, color: DIM, marginBottom: 22 }}>{t('common.irreversible')}</div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <button onClick={() => setConfirmDel(null)} style={{
                 background: 'var(--rp-surface-2)', border: `1px solid ${FIELD_BD}`, borderRadius: 9,
                 padding: '8px 18px', cursor: 'pointer', color: TEXT, fontFamily: 'inherit',
                 fontWeight: 600, fontSize: 13,
-              }}>ביטול</button>
+              }}>{t('common.cancel')}</button>
               <button onClick={handleDelConfirm} style={{
                 background: 'var(--rp-danger)', border: 'none', borderRadius: 9,
                 padding: '8px 18px', cursor: 'pointer', color: 'var(--rp-text)',
                 fontFamily: 'inherit', fontWeight: 700, fontSize: 13,
-              }}>מחק</button>
+              }}>{t('common.delete')}</button>
             </div>
           </div>
         </div>
