@@ -581,8 +581,8 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
 
   const pickPreset = (km, name) => applyCourse({ name, dist: km, profile: null });
   const pickCustom = () => {
-    const raw = parseFloat(customKm);
-    const km = U ? Math.round(U.parseDist(raw) * 100) / 100 : Math.round(raw * 100) / 100;
+    const km = U ? Math.round(U.parseDist(customKm) * 100) / 100
+      : Math.round(parseFloat(String(customKm).replace(',', '.')) * 100) / 100;
     if (!(km > 0) || km > 300) { setErr(t('setup.badDistance')); return; }
     applyCourse({ name: (U ? U.fmtDist(km) : km + ' km'), dist: km, profile: null });
   };

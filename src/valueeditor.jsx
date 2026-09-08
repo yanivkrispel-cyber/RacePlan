@@ -135,7 +135,7 @@ function ValueEditor({ type, value, title, onApply, onClose, unitMajor, unitMino
         : +digits.slice(0, -2) * 60 + +digits.slice(-2);
       if (!isFinite(n)) { const p = parsePace(typing); if (isFinite(p)) n = p; }
     } else {
-      n = parseFloat(typing);
+      n = parseFloat(String(typing).replace(',', '.'));
     }
     if (isFinite(n)) setVal(clampV(n));
     setTyping(null);

@@ -52,7 +52,8 @@ const UNITS = (() => {
   // ── distance ────────────────────────────────────────────────────────
   const dispDist = (km) => (isImp() ? (+km || 0) / KM_PER_MI : (+km || 0));
   const parseDist = (v) => {
-    const n = parseFloat(v);
+    // tolerate a locale decimal comma ("12,3")
+    const n = parseFloat(typeof v === 'string' ? v.replace(',', '.') : v);
     if (!isFinite(n)) return NaN;
     return isImp() ? n * KM_PER_MI : n;
   };
