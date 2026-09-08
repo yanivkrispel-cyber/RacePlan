@@ -2,6 +2,9 @@
 // four looks via `kind`), a drag-drop LogoSlot, and a zone legend.
 // Skins set color via CSS custom properties on their root; see contract below.
 const { formatPace, parsePace, formatKm } = window;
+const I18N = window.I18N;
+const t = (I18N && I18N.t) || ((k) => k);
+const U = window.UNITS;
 
 // ── design tokens ──────────────────────────────────────────────────────
 // Dark adaptation of DESIGN_TOKENS.md: the navy/gold/sand roles kept, mapped
@@ -204,7 +207,7 @@ function Stepper({ value, type, onStep, onSet, kind = 'boxed', step }) {
 
   return (
     <div className={`rp-stp rp-stp-${kind}`}>
-      <button className="rp-stp-btn rp-stp-plus" tabIndex={-1} onClick={() => onStep(+stepBy)} aria-label="הוסף">+</button>
+      <button className="rp-stp-btn rp-stp-plus" tabIndex={-1} onClick={() => onStep(+stepBy)} aria-label={t('common.add')}>+</button>
       <input
         className="rp-stp-val"
         type="text"
@@ -220,7 +223,7 @@ function Stepper({ value, type, onStep, onSet, kind = 'boxed', step }) {
           else if (e.key === 'ArrowDown') { e.preventDefault(); onStep(-stepBy); }
         }}
       />
-      <button className="rp-stp-btn rp-stp-minus" tabIndex={-1} onClick={() => onStep(-stepBy)} aria-label="הפחת">−</button>
+      <button className="rp-stp-btn rp-stp-minus" tabIndex={-1} onClick={() => onStep(-stepBy)} aria-label={t('common.decrease')}>−</button>
     </div>
   );
 }
@@ -231,13 +234,13 @@ function LogoSlot({ width, height, radius = 10, shape = 'rounded', fit = 'contai
   return (
     <div className="rp-logo" style={{ width, height, ...style }}
       dangerouslySetInnerHTML={{
-        __html: `<image-slot id="raceplan-logo" fit="${fit}" shape="${shape}" radius="${radius}" placeholder="לוגו"></image-slot>`,
+        __html: `<image-slot id="raceplan-logo" fit="${fit}" shape="${shape}" radius="${radius}" placeholder="${t('common.logo')}"></image-slot>`,
       }} />
   );
 }
 
 function ZoneLegend({ colors, style, dim }) {
-  const items = [['fast', 'מהיר'], ['target', 'מטרה'], ['easy', 'קל']];
+  const items = [['fast', t('zone.fast')], ['target', t('zone.target')], ['easy', t('zone.easy')]];
   return (
     <div style={{ display: 'flex', gap: 14, alignItems: 'center', ...style }}>
       {items.map(([k, label]) => (

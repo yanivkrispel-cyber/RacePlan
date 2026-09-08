@@ -3,6 +3,9 @@
 // Combines three ways to set the number: a scroll wheel (choose), fixed-jump
 // buttons with hold-to-repeat, and tap-to-type an exact value.
 const { formatPace, formatKm, parsePace } = window;
+const I18N = window.I18N;
+const t = (I18N && I18N.t) || ((k) => k);
+const U = window.UNITS;
 
 const z2 = (n) => String(n).padStart(2, '0');
 
@@ -20,7 +23,7 @@ function HoldBtn({ delta, onStep, children, ariaLabel }) {
     t.current = setTimeout(tick, 400);
   };
   return (
-    <button type="button" aria-label={ariaLabel || (delta < 0 ? 'הפחת' : 'הוסף')}
+    <button type="button" aria-label={ariaLabel || (delta < 0 ? t('common.decrease') : t('common.add'))}
       onPointerDown={start} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop}
       style={{
         minWidth: 44, minHeight: 40, borderRadius: 9, cursor: 'pointer',
@@ -93,16 +96,19 @@ function Wheel({ items, value, onChange, format, label }) {
   );
 }
 
-const PACE_MIN = []; for (let i = 2; i <= 15; i++) PACE_MIN.push(i);
+// Ranges are generous enough to cover both min/km and min/mi (pace) and both
+// km and mi (distance) — ValueEditor works entirely in *display* units; the
+// caller converts to/from the stored SI value.
+const PACE_MIN = []; for (let i = 2; i <= 20; i++) PACE_MIN.push(i);
 const PACE_SEC = []; for (let i = 0; i < 60; i++) PACE_SEC.push(i);
-const DIST_KM = []; for (let i = 0; i <= 60; i++) DIST_KM.push(i);
-const DIST_M = []; for (let i = 0; i < 1000; i += 10) DIST_M.push(i); // sub-km, metres
+const DIST_KM = []; for (let i = 0; i <= 90; i++) DIST_KM.push(i);
+const DIST_M = []; for (let i = 0; i < 1000; i += 10) DIST_M.push(i); // sub-unit, thousandths
 
-function ValueEditor({ type, value, title, onApply, onClose }) {
+function ValueEditor({ type, value, title, onApply, onClose, unitMajor, unitMinor, unitPace }) {
   const isPace = type === 'pace';
   const clampV = (v) => isPace
-    ? Math.max(120, Math.min(900, Math.round(v)))
-    : Math.max(0.05, Math.min(99, Math.round(v * 100) / 100));
+    ? Math.max(90, Math.min(1500, Math.round(v)))
+    : Math.max(0.01, Math.min(150, Math.round(v * 100) / 100));
 
   const [val, setVal] = React.useState(() => clampV(value));
   const [typing, setTyping] = React.useState(null);
@@ -115,8 +121,8 @@ function ValueEditor({ type, value, title, onApply, onClose }) {
   const dm = Math.round((val - dk) * 1000 / 10) * 10; // sub-km part, in metres (0..990)
 
   const jumps = isPace
-    ? [{ d: 10, t: '10' }, { d: 5, t: '5' }, { d: 1, t: '1' }]
-    : [{ d: 0.1, t: '100' }, { d: 0.05, t: '50' }, { d: 0.01, t: '10' }]; // metres
+    ? [{ d: 10, lbl: '10' }, { d: 5, lbl: '5' }, { d: 1, lbl: '1' }]
+    : [{ d: 0.1, lbl: '100' }, { d: 0.05, lbl: '50' }, { d: 0.01, lbl: '10' }]; // sub-unit steps
   const ltr = { direction: 'ltr', unicodeBidi: 'isolate' };
   const fmtVal = isPace ? formatPace(val) : formatKm(val);
 
@@ -140,7 +146,7 @@ function ValueEditor({ type, value, title, onApply, onClose }) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(9,11,22,.78)',
         backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 18, direction: 'rtl', fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
+        padding: 18, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
       <style>{`
         .rp-wheel::-webkit-scrollbar{display:none}
         .rp-wheel{scrollbar-width:none}
@@ -156,7 +162,7 @@ function ValueEditor({ type, value, title, onApply, onClose }) {
         boxShadow: 'var(--rp-shadow-modal)', padding: '14px 16px 16px' }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontSize: 14, fontWeight: 800 }}>{title || (isPace ? 'קצב' : 'מרחק')}</div>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>{title || (isPace ? t('ve.pace') : t('ve.distance'))}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
             color: 'var(--rp-text-dim)', fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
         </div>
@@ -165,20 +171,20 @@ function ValueEditor({ type, value, title, onApply, onClose }) {
         <div style={{ display: 'flex', direction: 'ltr', alignItems: 'flex-start', gap: 6, justifyContent: 'center' }}>
           {isPace ? (
             <>
-              <Wheel items={PACE_MIN} value={pm} label="דקות"
+              <Wheel items={PACE_MIN} value={pm} label={t('ve.minutes')}
                 onChange={(m) => setVal(clampV(m * 60 + ps))} />
               <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--rp-text-dim)',
                 lineHeight: '180px' }}>:</div>
-              <Wheel items={PACE_SEC} value={ps} format={z2} label="שניות"
+              <Wheel items={PACE_SEC} value={ps} format={z2} label={t('ve.seconds')}
                 onChange={(s) => setVal(clampV(pm * 60 + s))} />
             </>
           ) : (
             <>
-              <Wheel items={DIST_KM} value={dk} label={'ק"מ'}
+              <Wheel items={DIST_KM} value={dk} label={unitMajor || (U ? U.distUnit() : t('units.km'))}
                 onChange={(k) => setVal(clampV(k + dm / 1000))} />
               <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--rp-text-dim)',
                 lineHeight: '180px' }}>.</div>
-              <Wheel items={DIST_M} value={dm} label="מטרים"
+              <Wheel items={DIST_M} value={dm} label={unitMinor || t('ve.thousandths')}
                 onChange={(m) => setVal(clampV(dk + m / 1000))} />
             </>
           )}
@@ -186,9 +192,9 @@ function ValueEditor({ type, value, title, onApply, onClose }) {
 
         {/* fixed jumps + tap-to-type */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 12, justifyContent: 'center' }}>
-          {jumps.map(({ d, t }) => (
-            <HoldBtn key={'m' + t} delta={-d} onStep={bump}>
-              <span style={ltr}>−{t}</span>
+          {jumps.map(({ d, lbl }) => (
+            <HoldBtn key={'m' + lbl} delta={-d} onStep={bump}>
+              <span style={ltr}>−{lbl}</span>
             </HoldBtn>
           ))}
           {typing == null ? (
@@ -208,15 +214,15 @@ function ValueEditor({ type, value, title, onApply, onClose }) {
                 background: 'var(--rp-surface-2)', border: '1px solid var(--rp-gold-line)',
                 color: 'var(--rp-text)', outline: 'none' }} />
           )}
-          {jumps.map(({ d, t }) => (
-            <HoldBtn key={'p' + t} delta={d} onStep={bump}>
-              <span style={ltr}>+{t}</span>
+          {jumps.map(({ d, lbl }) => (
+            <HoldBtn key={'p' + lbl} delta={d} onStep={bump}>
+              <span style={ltr}>+{lbl}</span>
             </HoldBtn>
           ))}
         </div>
 
         <button className="rp-btn rp-btn-primary" onClick={() => onApply(val)}
-          style={{ width: '100%', justifyContent: 'center', marginTop: 14 }}>אישור</button>
+          style={{ width: '100%', justifyContent: 'center', marginTop: 14 }}>{t('common.apply')}</button>
       </div>
     </div>
   ), document.body);

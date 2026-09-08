@@ -1,6 +1,8 @@
 // elevation.jsx — elevation profile (meters vs cumulative km) from a GPX track.
 // Same crisp measure-then-draw approach as the pace chart.
 const { useMeasure } = window;
+const t = (window.I18N && window.I18N.t) || ((k) => k);
+const U = window.UNITS;
 
 function ElevationChart({ profile, colors, height = 230, gain, loss }) {
   const [ref, W] = useMeasure();
@@ -51,7 +53,7 @@ function ElevationChart({ profile, colors, height = 230, gain, loss }) {
         <path d={area} fill={`url(#elfill${gid})`} />
         <path d={line} fill="none" stroke={colors.line} strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
         <text x={W - padR} y={padT + 2} textAnchor="end" fontSize="11.5" fill={colors.textDim}>
-          ↑ {gain} מ׳ · ↓ {loss} מ׳
+          ↑ {U ? U.fmtElev(gain) : gain} · ↓ {U ? U.fmtElev(loss) : loss}
         </text>
       </svg>
     </div>

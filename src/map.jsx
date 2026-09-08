@@ -1,6 +1,8 @@
 // map.jsx — interactive route map from GPX track using Leaflet + CARTO dark
 // tiles (to match the dark UI). The polyline always renders even if tiles
 // are slow/unavailable, so the route shape is never lost.
+const t = (window.I18N && window.I18N.t) || ((k) => k);
+
 function RouteMap({ track, height = 340 }) {
   const ref = React.useRef(null);
   const mapRef = React.useRef(null);

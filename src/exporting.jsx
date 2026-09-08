@@ -9,6 +9,9 @@
 // render correctly because the PDF is a rasterised snapshot of real DOM.
 
 const { formatPace, formatClock, formatKm } = window;
+const I18N = window.I18N;
+const t = (I18N && I18N.t) || ((k) => k);
+const U = window.UNITS;
 
 const RP_EXPORT = (() => {
   const H2C = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
@@ -73,7 +76,7 @@ const RP_EXPORT = (() => {
       try { await navigator.clipboard.writeText(url); return 'copied'; }
       catch (e) { /* fall through */ }
     }
-    try { window.prompt('קישור לשיתוף:', url); } catch (e) {}
+    try { window.prompt(t('share.linkPrompt'), url); } catch (e) {}
     return 'prompt';
   }
 
@@ -96,12 +99,12 @@ const PrintableSummary = React.forwardRef(function PrintableSummary(
   return (
     <div ref={ref} className="rp-printable" style={{
       width: 720, background: '#fff', color: '#14171f', padding: 32,
-      fontFamily: '"Heebo", system-ui, sans-serif', direction: 'rtl', boxSizing: 'border-box',
+      fontFamily: '"Heebo", system-ui, sans-serif', direction: I18N.dir, boxSizing: 'border-box',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
         borderBottom: '2px solid #14171f', paddingBottom: 12, marginBottom: 16 }}>
         <div>
-          <div style={{ fontSize: 24, fontWeight: 800 }}>{raceName || 'תוכנית מרוץ'}</div>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>{raceName || t('pdf.defaultTitle')}</div>
           <div style={{ fontSize: 13, color: '#555', marginTop: 4 }}>
             {trainer}{trainer && when ? ' · ' : ''}{when}
           </div>
@@ -110,27 +113,27 @@ const PrintableSummary = React.forwardRef(function PrintableSummary(
       </div>
 
       <div style={{ display: 'flex', gap: 24, marginBottom: 18, fontSize: 13 }}>
-        <div><b>זמן כולל:</b> {formatClock(plan ? plan.totalTime : 0)}</div>
-        <div><b>מרחק:</b> {formatKm(plan ? plan.totalDist : 0)} ק"מ</div>
-        <div><b>קצב ממוצע:</b> {formatPace(plan ? plan.avgPace : 0)} / ק"מ</div>
+        <div><b>{t('pdf.totalTime')}</b> {formatClock(plan ? plan.totalTime : 0)}</div>
+        <div><b>{t('pdf.distance')}</b> {U.fmtDist(plan ? plan.totalDist : 0)}</div>
+        <div><b>{t('pdf.avgPace')}</b> {U.fmtPace(plan ? plan.avgPace : 0)} {U.paceUnit()}</div>
       </div>
 
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
             <th style={{ ...head, textAlign: 'center', width: 44 }}>#</th>
-            <th style={{ ...head, textAlign: 'right' }}>מרחק (ק"מ)</th>
-            <th style={{ ...head, textAlign: 'right' }}>קצב</th>
-            <th style={{ ...head, textAlign: 'right' }}>זמן מקטע</th>
-            <th style={{ ...head, textAlign: 'right' }}>זמן מצטבר</th>
+            <th style={{ ...head, textAlign: 'start' }}>{t('pdf.colDistance', { unit: U.distUnit() })}</th>
+            <th style={{ ...head, textAlign: 'start' }}>{t('pdf.colPace')}</th>
+            <th style={{ ...head, textAlign: 'start' }}>{t('pdf.colSegTime')}</th>
+            <th style={{ ...head, textAlign: 'start' }}>{t('pdf.colCumTime')}</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
             <tr key={i}>
               <td style={{ ...cell, textAlign: 'center', color: '#888' }}>{i + 1}</td>
-              <td style={cell}>{formatKm(r.distance)}</td>
-              <td style={cell}>{formatPace(r.paceSec)}</td>
+              <td style={cell}>{U.dispDistNum(r.distance)}</td>
+              <td style={cell}>{U.fmtPace(r.paceSec)}</td>
               <td style={cell}>{formatClock(r.segTime)}</td>
               <td style={{ ...cell, fontWeight: 600 }}>{formatClock(r.cumTime)}</td>
             </tr>
@@ -138,7 +141,7 @@ const PrintableSummary = React.forwardRef(function PrintableSummary(
         </tbody>
       </table>
 
-      <div style={{ marginTop: 18, fontSize: 11, color: '#999' }}>נוצר ב־RACE PLAN By Krispel</div>
+      <div style={{ marginTop: 18, fontSize: 11, color: '#999' }}>{t('pdf.madeWith')}</div>
     </div>
   );
 });
@@ -154,7 +157,7 @@ function ActionSheet({ title, items, onClose }) {
       style={{
         position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(9,11,22,.72)',
         backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', padding: 20, direction: 'rtl',
+        justifyContent: 'center', padding: 20, direction: I18N.dir,
         fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)',
       }}
     >

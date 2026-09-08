@@ -1,6 +1,9 @@
 // chart.jsx — themeable pace-profile chart (SVG). Reads window helpers.
 // Supports optional elevation overlay (dual Y-axis) when elevationProfile is provided.
 const { formatPace, formatKm } = window;
+const I18N = window.I18N;
+const t = (I18N && I18N.t) || ((k) => k);
+const U = window.UNITS;
 
 function useMeasure() {
   const ref = React.useRef(null);
@@ -205,7 +208,7 @@ function PaceChart({
         {yTicks.map((p, i) => (
           <g key={`y${i}`}>
             <line x1={padL} y1={y(p)} x2={W - padR} y2={y(p)} stroke={c.grid} strokeWidth="1" />
-            <text x={padL - 8} y={y(p) + 3.5} textAnchor="end" fontSize={compact ? 9.5 : 11} fill={c.textDim}>{formatPace(p)}</text>
+            <text x={padL - 8} y={y(p) + 3.5} textAnchor="end" fontSize={compact ? 9.5 : 11} fill={c.textDim}>{U ? U.fmtPace(p) : formatPace(p)}</text>
           </g>
         ))}
 
@@ -213,13 +216,13 @@ function PaceChart({
         {hasEl && elYTicks.map((e, i) => (
           <text key={`el${i}`} x={W - padR + 6} y={ye(e) + 3.5}
             textAnchor="start" fontSize={compact ? 9 : 10.5} fill={EL_AXIS}>
-            {Math.round(e)}מ׳
+            {U ? U.elevInt(e) + U.elevUnit() : Math.round(e) + 'm'}
           </text>
         ))}
 
         {/* x labels */}
         {xTicks.map((d, i) => (
-          <text key={`x${i}`} x={x(d)} y={H - 8} textAnchor="middle" fontSize={compact ? 9.5 : 11} fill={c.textDim}>{d.toFixed(1)}</text>
+          <text key={`x${i}`} x={x(d)} y={H - 8} textAnchor="middle" fontSize={compact ? 9.5 : 11} fill={c.textDim}>{(U ? U.dispDist(d) : d).toFixed(1)}</text>
         ))}
 
         {/* ── elevation overlay (drawn first, behind pace) ── */}
@@ -300,16 +303,18 @@ function PaceChart({
           const a = nx[drag.k], b = nx[drag.k + 1];
           if (!a || !b) return null;
           const lx = Math.min(Math.max(x(drag.d), padL + 66), W - padR - 66);
-          const label = drag.snapped === 'peak' ? '⭯ הוצמד לפסגה'
-            : drag.snapped === 'valley' ? '⭯ הוצמד לשפל'
-            : `${formatKm(drag.d)} ק"מ`;
+          const label = drag.snapped === 'peak' ? '⭯ ' + t('chart.snapPeak')
+            : drag.snapped === 'valley' ? '⭯ ' + t('chart.snapValley')
+            : (U ? U.fmtDist(drag.d) : `${formatKm(drag.d)}`);
           return (
             <g pointerEvents="none">
               <rect x={lx - 64} y={padT + 1} width="128" height="31" rx="5"
                 fill={c.dotFill} stroke={c.line} strokeWidth="1" opacity="0.97" />
               <text x={lx} y={padT + 13} textAnchor="middle" fontSize="9.5" fill={c.textDim}>{label}</text>
               <text x={lx} y={padT + 25} textAnchor="middle" fontSize="10" fontWeight="700" fill={c.line}>
-                {formatKm(a.distance)}·{formatPace(a.paceSec)} ׀ {formatKm(b.distance)}·{formatPace(b.paceSec)}
+                {(U ? U.dispDistNum(a.distance) : formatKm(a.distance))}·{(U ? U.fmtPace(a.paceSec) : formatPace(a.paceSec))}
+                {' ׀ '}
+                {(U ? U.dispDistNum(b.distance) : formatKm(b.distance))}·{(U ? U.fmtPace(b.paceSec) : formatPace(b.paceSec))}
               </text>
             </g>
           );

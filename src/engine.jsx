@@ -81,12 +81,14 @@ function clearSavedPlan() {
 }
 
 // ── distance presets (km) ──────────────────────────────────────────────
+// `nameKey` is an i18n key; the on-chip numeric label is derived from `km` by
+// the UI (via window.UNITS) so it follows the metric/imperial setting.
 const PRESETS = [
-  { km: 42.2, label: '42.2', name: 'מרתון' },
-  { km: 21.1, label: '21.1', name: 'חצי מרתון' },
-  { km: 15,   label: '15',   name: '15 ק"מ' },
-  { km: 10,   label: '10',   name: '10 ק"מ' },
-  { km: 5,    label: '5',    name: '5 ק"מ' },
+  { km: 42.2, nameKey: 'preset.marathon' },
+  { km: 21.1, nameKey: 'preset.half' },
+  { km: 15,   nameKey: null },
+  { km: 10,   nameKey: null },
+  { km: 5,    nameKey: null },
 ];
 
 function defaultSegments() {
@@ -145,10 +147,11 @@ function computePlan(segments) {
   return { rows, totalDist, totalTime, avgPace };
 }
 
+// `labelKey` is an i18n key; resolve with window.I18N.t at render time.
 const ZONES = {
-  easy:   { label: 'קל',   key: 'easy' },
-  target: { label: 'מטרה', key: 'target' },
-  fast:   { label: 'מהיר', key: 'fast' },
+  easy:   { labelKey: 'zone.easy',   key: 'easy' },
+  target: { labelKey: 'zone.target', key: 'target' },
+  fast:   { labelKey: 'zone.fast',   key: 'fast' },
 };
 
 // ── the hook ───────────────────────────────────────────────────────────

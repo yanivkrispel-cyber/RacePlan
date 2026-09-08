@@ -3,6 +3,7 @@
 // then splits the course into ~1 km blocks whose target pace is adjusted by
 // each block's gradient (uphill slower, downhill a little faster).
 const { round2, clamp } = window;
+const t = (window.I18N && window.I18N.t) || ((k) => k);
 
 function _haversine(a, b) {
   const R = 6371000, toRad = Math.PI / 180;
@@ -15,7 +16,7 @@ function _haversine(a, b) {
 
 function parseGpx(text) {
   const doc = new DOMParser().parseFromString(text, 'application/xml');
-  if (doc.querySelector('parsererror')) throw new Error('XML לא תקין');
+  if (doc.querySelector('parsererror')) throw new Error(t('gpx.badXml'));
   let nodes = [...doc.getElementsByTagName('trkpt')];
   if (nodes.length < 2) nodes = [...doc.getElementsByTagName('rtept')];
   if (nodes.length < 2) nodes = [...doc.getElementsByTagName('wpt')];
@@ -27,7 +28,7 @@ function parseGpx(text) {
       ele: eleEl ? parseFloat(eleEl.textContent) : NaN,
     };
   }).filter((p) => isFinite(p.lat) && isFinite(p.lon));
-  if (pts.length < 2) throw new Error('לא נמצאו נקודות מסלול');
+  if (pts.length < 2) throw new Error(t('gpx.noPoints'));
 
   let cum = 0, gain = 0, loss = 0;
   pts[0].cum = 0;

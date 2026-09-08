@@ -2,6 +2,9 @@
 // Skins arrange these differently and recolor via custom properties, so the
 // heavy/repetitive segments table lives here once.
 const { formatPace, formatClock, formatKm, Stepper } = window;
+const I18N = window.I18N;
+const t = (I18N && I18N.t) || ((k) => k);
+const U = window.UNITS;
 
 if (!document.getElementById('rp-core-styles')) {
   const s = document.createElement('style');
@@ -133,14 +136,22 @@ if (!document.getElementById('rp-core-styles')) {
   document.head.appendChild(s);
 }
 
-function PresetSelector({ active, onPick, label = 'מרחק' }) {
+function presetLabel(p) {
+  const km = p.km;
+  return U ? U.dispDistNum(km, km % 1 === 0 ? 0 : 1) : String(km);
+}
+function presetName(p) {
+  return p.nameKey ? t(p.nameKey) : t('preset.km', { n: presetLabel(p), unit: U ? U.distUnit() : 'km' });
+}
+
+function PresetSelector({ active, onPick, label }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--rp-text-dim)' }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--rp-text-dim)' }}>{label || t('setup.distance')}</span>
       <div className="rpt-presets">
         {window.PRESETS.map((p) => (
           <button key={p.km} className="rpt-preset" aria-pressed={active === p.km} onClick={() => onPick(p.km)}>
-            {p.label}<small>{p.name}</small>
+            {presetLabel(p)}<small>{p.nameKey ? t(p.nameKey) : ''}</small>
           </button>
         ))}
       </div>
@@ -155,7 +166,7 @@ function ElevCell({ value }) {
   const arrow = value > 0 ? '▲' : value < 0 ? '▼' : '';
   return (
     <span className="rpt-num" style={{ color, fontSize: 12.5, fontWeight: 700 }}>
-      {arrow}{abs}מ׳
+      {arrow}{U ? U.elevInt(abs) + U.elevUnit() : abs + 'm'}
     </span>
   );
 }
@@ -167,12 +178,12 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
     <div className={`rpt${hasElev ? ' has-elev' : ''}`}>
       <div className="rpt-head">
         <div className="h-idx">#</div>
-        <div>מרחק (ק"מ)</div>
-        <div>קצב יעד</div>
-        <div>מצטבר</div>
-        {hasElev && <div>גובה</div>}
-        <div>זמן קטע</div>
-        <div>זמן מצטבר</div>
+        <div>{t('segTable.distance', { unit: U ? U.distUnit() : 'km' })}</div>
+        <div>{t('segTable.targetPace')}</div>
+        <div>{t('segTable.cumulative')}</div>
+        {hasElev && <div>{t('segTable.elevation')}</div>}
+        <div>{t('segTable.segTime')}</div>
+        <div>{t('segTable.cumTime')}</div>
         <div></div>
       </div>
       <div className="rpt-rows">
@@ -180,10 +191,10 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
           <div className="rpt-seg" key={r.id}>
             <div className="rpt-cell rpt-idx"><span className="rpt-idxbadge">{r.index}</span></div>
             <div className="rpt-cell rpt-dist">
-              <span className="rpt-lbl">מרחק (ק"מ)</span>
+              <span className="rpt-lbl">{t('segTable.distance', { unit: U ? U.distUnit() : 'km' })}</span>
               {onEditValue ? (
                 <button className="rpt-val" onClick={() => onEditValue(r.id, 'dist', r.distance)}>
-                  {formatKm(r.distance)}<span className="rpt-val-c">▾</span>
+                  {U ? U.dispDistNum(r.distance) : formatKm(r.distance)}<span className="rpt-val-c">▾</span>
                 </button>
               ) : (
                 <Stepper value={r.distance} type="dist" kind={stepperKind} step={distStep}
@@ -191,10 +202,10 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
               )}
             </div>
             <div className="rpt-cell rpt-pace">
-              <span className="rpt-lbl">קצב יעד</span>
+              <span className="rpt-lbl">{t('segTable.targetPace')}</span>
               {onEditValue ? (
                 <button className="rpt-val" onClick={() => onEditValue(r.id, 'pace', r.paceSec)}>
-                  {formatPace(r.paceSec)}<span className="rpt-val-c">▾</span>
+                  {U ? U.fmtPace(r.paceSec) : formatPace(r.paceSec)}<span className="rpt-val-c">▾</span>
                 </button>
               ) : (
                 <Stepper value={r.paceSec} type="pace" kind={stepperKind} step={paceStep}
@@ -203,38 +214,38 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
             </div>
             <div className="rpt-meta">
               <div className="rpt-cell rpt-cumdist">
-                <span className="rpt-lbl">מצטבר</span>
-                <span className="rpt-num dim">{formatKm(r.cumDist)}</span>
+                <span className="rpt-lbl">{t('segTable.cumulative')}</span>
+                <span className="rpt-num dim">{U ? U.dispDistNum(r.cumDist) : formatKm(r.cumDist)}</span>
               </div>
               {hasElev && (
                 <div className="rpt-cell rpt-elev">
-                  <span className="rpt-lbl">גובה</span>
+                  <span className="rpt-lbl">{t('segTable.elevation')}</span>
                   <ElevCell value={elevations[i]} />
                 </div>
               )}
               <div className="rpt-cell rpt-segtime">
-                <span className="rpt-lbl">זמן קטע</span>
+                <span className="rpt-lbl">{t('segTable.segTime')}</span>
                 <span className="rpt-num">{formatClock(r.segTime)}</span>
               </div>
               <div className="rpt-cell rpt-cumtime">
-                <span className="rpt-lbl">זמן מצטבר</span>
+                <span className="rpt-lbl">{t('segTable.cumTime')}</span>
                 <span className="rpt-num">{formatClock(r.cumTime)}</span>
               </div>
             </div>
             <div className="rpt-cell rpt-status">
-              <span className="rpt-dot" title={window.ZONES[r.zone].label}
+              <span className="rpt-dot" title={t(window.ZONES[r.zone].labelKey)}
                 style={{ background: colors.zones[r.zone] }} />
-              <button className="rpt-del" title="מחק קטע" onClick={() => onRemove(r.id)}>✕</button>
+              <button className="rpt-del" title={t('segTable.removeSegment')} onClick={() => onRemove(r.id)}>✕</button>
             </div>
           </div>
         ))}
       </div>
       {showTotals && (
         <div className="rpt-total">
-          <div className="t-label">סה"כ</div>
-          <div className="t-num t-dist">{formatKm(totalDist)}</div>
-          <div className="t-num t-pace">{formatPace(avgPace)}</div>
-          <div className="t-label t-unit" style={{ opacity: .75 }}>ק"מ</div>
+          <div className="t-label">{t('segTable.total')}</div>
+          <div className="t-num t-dist">{U ? U.dispDistNum(totalDist) : formatKm(totalDist)}</div>
+          <div className="t-num t-pace">{U ? U.fmtPace(avgPace) : formatPace(avgPace)}</div>
+          <div className="t-label t-unit" style={{ opacity: .75 }}>{U ? U.distUnit() : 'km'}</div>
           {hasElev && <div></div>}
           <div className="t-num t-segt">{formatClock(totalTime)}</div>
           <div className="t-num t-cumt">{formatClock(totalTime)}</div>
@@ -245,4 +256,4 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
   );
 }
 
-Object.assign(window, { PresetSelector, SegmentsTable });
+Object.assign(window, { PresetSelector, SegmentsTable, presetLabel, presetName });
