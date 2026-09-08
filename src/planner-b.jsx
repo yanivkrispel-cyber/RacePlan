@@ -6,6 +6,10 @@ const { useRacePlan, formatPace, formatClock, parseClock, formatKm, PaceChart,
         AthleteDB, AthletePanel, MyPlansDB, MyPlansPanel, RouteLibrary, RaceAdminPanel,
         PrintableSummary, ActionSheet, RP_EXPORT, ValueEditor,
         computeSegmentElevations, buildPlanSegments } = window;
+const I18N = window.I18N;
+const t = (I18N && I18N.t) || ((k) => k);
+const U = window.UNITS;
+const presetName = window.presetName || ((p) => String(p.km));
 
 // ── role ──────────────────────────────────────────────────────────────
 // Firebase (window.RP_FIREBASE) is the source of truth for who's signed in and
@@ -88,8 +92,8 @@ const LS_RACE_DATE = 'rp-race-date';
 const LS_RACE_TIME = 'rp-race-time';
 
 function _windDirLabel(deg) {
-  const dirs = ['צפוני', 'צפון-מזרחי', 'מזרחי', 'דרום-מזרחי', 'דרומי', 'דרום-מערבי', 'מערבי', 'צפון-מערבי'];
-  return dirs[Math.round(deg / 45) % 8];
+  const keys = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+  return t('weather.dir.' + keys[Math.round(deg / 45) % 8]);
 }
 
 function _weatherIcon(code) {
@@ -109,7 +113,7 @@ function WeatherCard({ weather, status }) {
         background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
         borderRadius: 'var(--rp-r-12)', padding: '11px 16px', marginBottom: 10,
         fontSize: 13, color: 'var(--rp-text-dim)' }}>
-        <span style={{ fontSize: 18 }}>🌍</span> טוען תחזית מזג אוויר...
+        <span style={{ fontSize: 18 }}>🌍</span> {t('weather.loading')}
       </div>
     );
   }
@@ -126,7 +130,7 @@ function WeatherCard({ weather, status }) {
         <div>
           <div style={{ fontFamily: 'var(--rp-font-display)', fontSize: 21, fontWeight: 800,
             color: 'var(--rp-text)', lineHeight: 1 }}>{weather.temp}°C</div>
-          <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>מרגיש {weather.feelsLike}°C</div>
+          <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>{t('weather.feelsLike', { temp: weather.feelsLike })}</div>
         </div>
       </div>
 
@@ -142,9 +146,9 @@ function WeatherCard({ weather, status }) {
         </svg>
         <div>
           <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--rp-text)', lineHeight: 1 }}>
-            {weather.windSpeed} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--rp-text-dim)' }}>קמ"ש</span>
+            {U ? Math.round(U.dispSpeed(weather.windSpeed)) : weather.windSpeed} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--rp-text-dim)' }}>{U ? U.speedUnit() : t('units.kmh')}</span>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>רוח {_windDirLabel(weather.windDir)}</div>
+          <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>{t('weather.wind', { dir: _windDirLabel(weather.windDir) })}</div>
         </div>
       </div>
 
@@ -162,7 +166,7 @@ function WeatherCard({ weather, status }) {
             color: wet ? 'var(--rp-gold)' : 'var(--rp-text)' }}>
             {weather.precipProb}%
           </div>
-          <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>סיכוי לגשם</div>
+          <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>{t('weather.rainChance')}</div>
         </div>
       </div>
     </div>
@@ -195,19 +199,19 @@ function GpxBanner({ course, onClear, onSaveToLibrary, ownerMode }) {
       </span>
       <div style={{ flex: '1 1 auto', minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {course.name || 'מסלול מיובא'} <span style={{ fontWeight: 500, color: 'var(--rp-gold)' }}>· מתוך GPX</span>
+          {course.name || t('gpxBanner.importedRoute')} <span style={{ fontWeight: 500, color: 'var(--rp-gold)' }}>{t('gpxBanner.fromGpx')}</span>
         </div>
         <div style={{ fontSize: 11.5, color: 'var(--rp-text-dim)', marginTop: 2 }}>
-          {formatKm(course.dist)} ק"מ · עלייה {course.gain} מ׳ · ירידה {course.loss} מ׳
-          {course.source ? ` · ${course.source}` : ''}
+          {U ? U.fmtDist(course.dist) : formatKm(course.dist)} · {t('gpxBanner.gain')} {U ? U.fmtElev(course.gain) : course.gain} · {t('gpxBanner.loss')} {U ? U.fmtElev(course.loss) : course.loss}
+          {course.source ? ` · ${window.RP_ROUTES ? window.RP_ROUTES.sourceLabel(course.source) : course.source}` : ''}
         </div>
       </div>
       {onSaveToLibrary && (
         <button className="rp-btn" onClick={onSaveToLibrary} style={{ flex: '0 0 auto', padding: '7px 12px', fontSize: 13 }}>
-          {ownerMode ? 'שמור בספרייה' : 'הצע מסלול לספרייה'}
+          {ownerMode ? t('gpxBanner.saveToLibrary') : t('gpxBanner.proposeToLibrary')}
         </button>
       )}
-      <button className="rp-btn" onClick={onClear} style={{ flex: '0 0 auto', padding: '7px 12px', fontSize: 13 }}>הסר מסלול</button>
+      <button className="rp-btn" onClick={onClear} style={{ flex: '0 0 auto', padding: '7px 12px', fontSize: 13 }}>{t('gpxBanner.removeRoute')}</button>
     </div>
   );
 }
@@ -231,7 +235,7 @@ function CopyToast({ show, text }) {
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--rp-gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="20 6 9 17 4 12" />
       </svg>
-      {text || 'הקישור הועתק ללוח'}
+      {text || t('planner.linkCopied')}
     </div>
   ), document.body);
 }
@@ -250,7 +254,7 @@ function HoldButton({ delta, onStep, children, style, ariaLabel }) {
     t.current = setTimeout(tick, 380);
   };
   return (
-    <button type="button" aria-label={ariaLabel || (delta < 0 ? 'הפחת' : 'הוסף')}
+    <button type="button" aria-label={ariaLabel || (delta < 0 ? t('common.decrease') : t('common.add'))}
       onPointerDown={start} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop}
       style={{
         cursor: 'pointer', touchAction: 'manipulation', lineHeight: 1,
@@ -323,17 +327,17 @@ function RaceClock({ h, m, s, onH, onM, onS, subtitle, digitH = 50 }) {
       <div style={{ background: '#04050a', borderRadius: 12, padding: '10px 8px 7px',
         display: 'flex', direction: 'ltr', alignItems: 'flex-start', justifyContent: 'center', gap: 4,
         boxShadow: 'inset 0 0 22px rgba(0,0,0,.75)' }}>
-        <ClockGroup value={h} digits={1} max={11} onChange={onH} label="שעות" digitH={digitH} />
+        <ClockGroup value={h} digits={1} max={11} onChange={onH} label={t('clock.hours')} digitH={digitH} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, alignItems: 'center',
           justifyContent: 'center', height: digitH, marginTop: 27 }}>
           <ClockDot /><ClockDot />
         </div>
-        <ClockGroup value={m} digits={2} max={59} onChange={onM} label="דקות" digitH={digitH} />
+        <ClockGroup value={m} digits={2} max={59} onChange={onM} label={t('clock.minutes')} digitH={digitH} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, alignItems: 'center',
           justifyContent: 'center', height: digitH, marginTop: 27 }}>
           <ClockDot /><ClockDot />
         </div>
-        <ClockGroup value={s} digits={2} max={59} onChange={onS} label="שניות" digitH={digitH} />
+        <ClockGroup value={s} digits={2} max={59} onChange={onS} label={t('clock.seconds')} digitH={digitH} />
       </div>
       {subtitle && (
         <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--rp-text-dim)',
@@ -410,21 +414,21 @@ function GoalSheet({ currentSec, dist, onClose, onApply }) {
     <div className="rp-cq-scope" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(9,11,22,.80)',
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 18, direction: 'rtl', fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
+        padding: 18, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
       <div style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 400,
         boxShadow: 'var(--rp-shadow-modal)', padding: 18 }}>
-        <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 12 }}>זמן יעד</div>
+        <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 12 }}>{t('setup.goalTime')}</div>
         <RaceClock h={gh} m={gm} s={gs} onH={setGh} onM={setGm} onS={setGs}
-          subtitle="קנה-מידה לכל הקטעים" />
+          subtitle={t('planner.goalScaleAll')} />
         <div style={{ fontSize: 12, marginTop: 8, textAlign: 'center', fontWeight: 700,
           color: ok ? 'var(--rp-text)' : 'var(--rp-danger, #d9736a)' }}>
-          {ok ? `${formatClock(goalSec)} · ${formatPace(goalSec / (dist || 1))} / ק"מ` : 'זמן קצר מדי'}
+          {ok ? `${formatClock(goalSec)} · ${U ? U.fmtPace(goalSec / (dist || 1)) + ' ' + U.paceUnit() : formatPace(goalSec / (dist || 1))}` : t('planner.goalTooShort')}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button className="rp-btn rp-btn-primary" disabled={!ok} style={{ flex: 1, justifyContent: 'center' }}
-            onClick={() => onApply(goalSec)}>עדכן קצבים</button>
-          <button className="rp-btn" onClick={onClose}>ביטול</button>
+            onClick={() => onApply(goalSec)}>{t('planner.updatePaces')}</button>
+          <button className="rp-btn" onClick={onClose}>{t('common.cancel')}</button>
         </div>
       </div>
     </div>
@@ -458,47 +462,47 @@ function GpxPlanDialog({ course, defaultGoalSec, onCancel, onBuild }) {
   const slowest = paces.length ? Math.max(...paces) : 0;
 
   const STRATS = [
-    ['negative', 'פתיחה סולידית', 'איטי ← מהיר'],
-    ['even', 'יציב', 'קצב אחיד'],
-    ['positive', 'פתיחה מהירה', 'מהיר ← איטי'],
-    ['staged', 'מדורג', 'שליש-שליש-שליש'],
+    ['negative', 'strategy.negative', 'strategy.negativeSub'],
+    ['even', 'strategy.even', 'strategy.evenSub'],
+    ['positive', 'strategy.positive', 'strategy.positiveSub'],
+    ['staged', 'strategy.staged', 'strategy.stagedSub'],
   ];
 
   return ReactDOM.createPortal((
     <div className="rp-cq-scope" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(9,11,22,.78)',
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 18, direction: 'rtl', fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
+        padding: 18, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
       <div style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 440, maxHeight: '90vh',
         overflowY: 'auto', boxShadow: 'var(--rp-shadow-modal)', padding: '18px 18px 16px' }}>
 
-        <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>בניית תוכנית מהמסלול</div>
+        <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>{t('setup.fromRouteTitle')}</div>
         <div style={{ fontSize: 12, color: 'var(--rp-text-dim)', marginBottom: 14 }}>
-          {(course.name || 'מסלול')} · {formatKm(course.dist)} ק"מ · קטעים של 5 ק"מ
+          {(course.name || t('routes.route'))} · {U ? U.fmtDist(course.dist) : formatKm(course.dist)} · {t('planner.blocks5k')}
         </div>
 
         <RaceClock
           h={gh} m={gm} s={gs} onH={setGh} onM={setGm} onS={setGs}
-          subtitle={`${course.name || 'מסלול'} · זמן מטרה`} />
+          subtitle={t('setup.goalSubtitle', { name: course.name || t('routes.route') })} />
         <div style={{ fontSize: 12, marginTop: 8, textAlign: 'center',
           color: goalOk ? 'var(--rp-text)' : 'var(--rp-danger, #d9736a)', fontWeight: 700 }}>
           {goalOk
-            ? `${formatClock(goalSec)}  ·  ${formatPace(goalSec / course.dist)} / ק"מ`
-            : 'זמן מטרה קצר מדי'}
+            ? `${formatClock(goalSec)}  ·  ${U ? U.fmtPace(goalSec / course.dist) + ' ' + U.paceUnit() : formatPace(goalSec / course.dist)}`
+            : t('setup.goalShort')}
         </div>
 
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', margin: '14px 0 6px' }}>אסטרטגיה</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', margin: '14px 0 6px' }}>{t('setup.strategy')}</div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
           {STRATS.map(([v, label, sub]) => (
             <button key={v} onClick={() => setStrategy(v)} style={{
-              textAlign: 'right', padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+              textAlign: 'start', padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
               fontFamily: 'inherit',
               background: strategy === v ? 'var(--rp-gold-wash)' : 'var(--rp-surface-2)',
               border: `1px solid ${strategy === v ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
               color: strategy === v ? 'var(--rp-gold)' : 'var(--rp-text)' }}>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>{label}</div>
-              <div style={{ fontSize: 10.5, color: 'var(--rp-text-dim)', marginTop: 1 }}>{sub}</div>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>{t(label)}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--rp-text-dim)', marginTop: 1 }}>{t(sub)}</div>
             </button>
           ))}
         </div>
@@ -507,7 +511,7 @@ function GpxPlanDialog({ course, defaultGoalSec, onCancel, onBuild }) {
           <div style={{ marginTop: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700,
               color: 'var(--rp-text-dim)' }}>
-              <span>עוצמת הספליט</span><span style={{ color: 'var(--rp-gold)' }}>{splitPct}%</span>
+              <span>{t('setup.splitStrength')}</span><span style={{ color: 'var(--rp-gold)' }}>{splitPct}%</span>
             </div>
             <input type="range" min="0" max="8" step="0.5" value={splitPct}
               onChange={(e) => setSplitPct(+e.target.value)}
@@ -519,24 +523,24 @@ function GpxPlanDialog({ course, defaultGoalSec, onCancel, onBuild }) {
           fontSize: 13, cursor: hasProfile ? 'pointer' : 'not-allowed', opacity: hasProfile ? 1 : 0.5 }}>
           <input type="checkbox" checked={gradeAdjust && hasProfile} disabled={!hasProfile}
             onChange={(e) => setGradeAdjust(e.target.checked)} style={{ accentColor: 'var(--rp-gold)' }} />
-          התאמה לשיפוע המסלול
-          {!hasProfile && <span style={{ fontSize: 11, color: 'var(--rp-text-dim)' }}>· אין נתוני גובה בקובץ</span>}
+          {t('setup.gradeAdjust')}
+          {!hasProfile && <span style={{ fontSize: 11, color: 'var(--rp-text-dim)' }}>· {t('setup.noElevationFile')}</span>}
         </label>
 
         {preview.length > 0 && (
           <div style={{ marginTop: 14, padding: '9px 11px', borderRadius: 8,
             background: 'var(--rp-surface-2)', border: '1px solid var(--rp-line)',
             fontSize: 12, color: 'var(--rp-text-dim)' }}>
-            {preview.length} קטעים · קצב {formatPace(fastest)}–{formatPace(slowest)} / ק"מ · סה"כ {formatClock(goalSec)}
+            {t('setup.previewLine', { count: preview.length, fast: (U ? U.fmtPace(fastest) : formatPace(fastest)), slow: (U ? U.fmtPace(slowest) : formatPace(slowest)), per: (U ? U.paceUnit() : t('units.perKm')), total: formatClock(goalSec) })}
           </div>
         )}
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button className="rp-btn rp-btn-primary" disabled={!goalOk}
             onClick={() => onBuild(opts)} style={{ flex: 1, justifyContent: 'center' }}>
-            בנה תוכנית
+            {t('setup.build')}
           </button>
-          <button className="rp-btn" onClick={onCancel} style={{ flex: '0 0 auto' }}>דלג</button>
+          <button className="rp-btn" onClick={onCancel} style={{ flex: '0 0 auto' }}>{t('setup.skip')}</button>
         </div>
       </div>
     </div>
@@ -577,9 +581,10 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
 
   const pickPreset = (km, name) => applyCourse({ name, dist: km, profile: null });
   const pickCustom = () => {
-    const km = Math.round(parseFloat(customKm) * 100) / 100;
-    if (!(km > 0) || km > 300) { setErr('מרחק לא תקין'); return; }
-    applyCourse({ name: km + ' ק"מ', dist: km, profile: null });
+    const raw = parseFloat(customKm);
+    const km = U ? Math.round(U.parseDist(raw) * 100) / 100 : Math.round(raw * 100) / 100;
+    if (!(km > 0) || km > 300) { setErr(t('setup.badDistance')); return; }
+    applyCourse({ name: (U ? U.fmtDist(km) : km + ' km'), dist: km, profile: null });
   };
 
   const onGpxFile = async (e) => {
@@ -596,7 +601,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
         gain: parsed.elevGain, loss: parsed.elevLoss, profile: null,
       });
     } catch (er) {
-      setErr('לא ניתן לקרוא את קובץ ה-GPX');
+      setErr(t('setup.cannotReadGpx'));
     }
   };
 
@@ -613,10 +618,10 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
   const slowest = paces.length ? Math.max(...paces) : 0;
 
   const STRATS = [
-    ['negative', 'פתיחה סולידית', 'איטי ← מהיר'],
-    ['even', 'יציב', 'קצב אחיד'],
-    ['positive', 'פתיחה מהירה', 'מהיר ← איטי'],
-    ['staged', 'מדורג', 'שליש-שליש-שליש'],
+    ['negative', 'strategy.negative', 'strategy.negativeSub'],
+    ['even', 'strategy.even', 'strategy.evenSub'],
+    ['positive', 'strategy.positive', 'strategy.positiveSub'],
+    ['staged', 'strategy.staged', 'strategy.stagedSub'],
   ];
 
   // Only a real route (with a profile or track) becomes the planner's "course";
@@ -626,7 +631,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
   const build = () => {
     if (!course || !goalOk) return;
     const segs = buildPlanSegments(course.profile || null, course.dist, opts);
-    if (!segs.length) { setErr('לא ניתן לבנות תוכנית'); return; }
+    if (!segs.length) { setErr(t('setup.cannotBuild')); return; }
     onBuild({ segments: segs, course: realCourse(course), raceName: course.name || defaultName, goalSec });
   };
   const startEmpty = () => {
@@ -651,44 +656,44 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
     <div className="rp-cq-scope" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(9,11,22,.80)',
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16, direction: 'rtl', fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
+        padding: 16, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
       <div style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 440, maxHeight: '92vh',
         overflowY: 'auto', boxShadow: 'var(--rp-shadow-modal)', padding: '18px 18px 16px' }}>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: 17, fontWeight: 800 }}>תכנון מרוץ חדש</div>
+          <div style={{ fontSize: 17, fontWeight: 800 }}>{t('setup.title')}</div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
             color: 'var(--rp-text-dim)', fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
         </div>
 
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', marginBottom: 7 }}>מרחק</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', marginBottom: 7 }}>{t('setup.distance')}</div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {(PRESETS || []).map((pr) => chip(
             !!course && Math.abs((course.dist || 0) - pr.km) < 0.05 && !course.profile,
-            pr.label, () => pickPreset(pr.km, pr.name), pr.label))}
+            (window.presetLabel ? window.presetLabel(pr) : pr.km), () => pickPreset(pr.km, presetName(pr)), pr.km))}
         </div>
         <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
           <input value={customKm} onChange={(e) => setCustomKm(e.target.value)}
-            inputMode="decimal" placeholder="מרחק אחר (ק״מ)"
+            inputMode="decimal" placeholder={U && U.imperial ? t('setup.customMi') : t('setup.customKm')}
             style={{ flex: 1, background: 'var(--rp-surface-2)', border: '1px solid var(--rp-line-input)',
               borderRadius: 8, padding: '8px 10px', fontSize: 13, color: 'var(--rp-text)',
               fontFamily: 'inherit', outline: 'none' }} />
-          <button onClick={pickCustom} className="rp-btn" style={{ flex: '0 0 auto' }}>הוסף</button>
+          <button onClick={pickCustom} className="rp-btn" style={{ flex: '0 0 auto' }}>{t('common.add')}</button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0 4px' }}>
           <div style={{ flex: 1, height: 1, background: 'var(--rp-line)' }} />
-          <span style={{ fontSize: 11, color: 'var(--rp-text-dim)' }}>או ממסלול</span>
+          <span style={{ fontSize: 11, color: 'var(--rp-text-dim)' }}>{t('setup.fromRoute')}</span>
           <div style={{ flex: 1, height: 1, background: 'var(--rp-line)' }} />
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           {RouteLibrary && (
             <button className="rp-btn" style={{ flex: 1, justifyContent: 'center' }}
-              onClick={() => setRouteOpen(true)}>ספריית מסלולים</button>
+              onClick={() => setRouteOpen(true)}>{t('setup.routeLibrary')}</button>
           )}
           <button className="rp-btn" style={{ flex: 1, justifyContent: 'center' }}
-            onClick={() => fileRef.current && fileRef.current.click()}>ייבוא GPX</button>
+            onClick={() => fileRef.current && fileRef.current.click()}>{t('setup.importGpx')}</button>
           <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml,text/xml"
             onChange={onGpxFile} style={{ display: 'none' }} />
         </div>
@@ -697,32 +702,32 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
           <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--rp-gold)',
             background: 'var(--rp-gold-wash)', border: '1px solid var(--rp-gold-line)',
             borderRadius: 8, padding: '8px 10px' }}>
-            {course.name} · {formatKm(course.dist)} ק"מ{course.profile ? ' · פרופיל גובה' : ''}
+            {course.name} · {U ? U.fmtDist(course.dist) : formatKm(course.dist)}{course.profile ? ' · ' + t('setup.hasProfile') : ''}
           </div>
         )}
 
         {course && (
           <>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', margin: '14px 0 6px' }}>זמן יעד</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', margin: '14px 0 6px' }}>{t('setup.goalTime')}</div>
             <RaceClock h={gh} m={gm} s={gs} onH={setGh} onM={setGm} onS={setGs}
-              subtitle={`${course.name} · זמן מטרה`} />
+              subtitle={t('setup.goalSubtitle', { name: course.name })} />
             <div style={{ fontSize: 12, marginTop: 8, textAlign: 'center', fontWeight: 700,
               color: goalOk ? 'var(--rp-text)' : 'var(--rp-danger, #d9736a)' }}>
-              {goalOk ? `${formatClock(goalSec)}  ·  ${formatPace(goalSec / course.dist)} / ק"מ`
-                : 'זמן מטרה קצר מדי'}
+              {goalOk ? `${formatClock(goalSec)}  ·  ${U ? U.fmtPace(goalSec / course.dist) + ' ' + U.paceUnit() : formatPace(goalSec / course.dist)}`
+                : t('setup.goalShort')}
             </div>
 
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', margin: '14px 0 6px' }}>אסטרטגיה</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', margin: '14px 0 6px' }}>{t('setup.strategy')}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
               {STRATS.map(([v, label, sub]) => (
                 <button key={v} onClick={() => setStrategy(v)} style={{
-                  textAlign: 'right', padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+                  textAlign: 'start', padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
                   fontFamily: 'inherit',
                   background: strategy === v ? 'var(--rp-gold-wash)' : 'var(--rp-surface-2)',
                   border: `1px solid ${strategy === v ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
                   color: strategy === v ? 'var(--rp-gold)' : 'var(--rp-text)' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{label}</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--rp-text-dim)', marginTop: 1 }}>{sub}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{t(label)}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--rp-text-dim)', marginTop: 1 }}>{t(sub)}</div>
                 </button>
               ))}
             </div>
@@ -731,7 +736,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
               <div style={{ marginTop: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700,
                   color: 'var(--rp-text-dim)' }}>
-                  <span>עוצמת הספליט</span><span style={{ color: 'var(--rp-gold)' }}>{splitPct}%</span>
+                  <span>{t('setup.splitStrength')}</span><span style={{ color: 'var(--rp-gold)' }}>{splitPct}%</span>
                 </div>
                 <input type="range" min="0" max="8" step="0.5" value={splitPct}
                   onChange={(e) => setSplitPct(+e.target.value)}
@@ -743,15 +748,15 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
               cursor: hasProfile ? 'pointer' : 'not-allowed', opacity: hasProfile ? 1 : 0.5 }}>
               <input type="checkbox" checked={gradeAdjust && hasProfile} disabled={!hasProfile}
                 onChange={(e) => setGradeAdjust(e.target.checked)} style={{ accentColor: 'var(--rp-gold)' }} />
-              התאמה לשיפוע המסלול
-              {!hasProfile && <span style={{ fontSize: 11, color: 'var(--rp-text-dim)' }}>· אין נתוני גובה</span>}
+              {t('setup.gradeAdjust')}
+              {!hasProfile && <span style={{ fontSize: 11, color: 'var(--rp-text-dim)' }}>· {t('setup.noElevation')}</span>}
             </label>
 
             {preview.length > 0 && (
               <div style={{ marginTop: 14, padding: '9px 11px', borderRadius: 8,
                 background: 'var(--rp-surface-2)', border: '1px solid var(--rp-line)',
                 fontSize: 12, color: 'var(--rp-text-dim)' }}>
-                {preview.length} קטעים · קצב {formatPace(fastest)}–{formatPace(slowest)} / ק"מ · סה"כ {formatClock(goalSec)}
+                {t('setup.previewLine', { count: preview.length, fast: (U ? U.fmtPace(fastest) : formatPace(fastest)), slow: (U ? U.fmtPace(slowest) : formatPace(slowest)), per: (U ? U.paceUnit() : t('units.perKm')), total: formatClock(goalSec) })}
               </div>
             )}
           </>
@@ -764,9 +769,9 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
 
         <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
           <button className="rp-btn rp-btn-primary" disabled={!course || !goalOk}
-            onClick={build} style={{ flex: 1, justifyContent: 'center' }}>בנה תוכנית</button>
+            onClick={build} style={{ flex: 1, justifyContent: 'center' }}>{t('setup.build')}</button>
           <button className="rp-btn" onClick={startEmpty} style={{ flex: '0 0 auto' }}>
-            {course ? 'התחל ריק' : 'דלג'}
+            {course ? t('setup.startEmpty') : t('setup.skip')}
           </button>
         </div>
       </div>
@@ -801,7 +806,7 @@ function HubScreen({ isOwner, userName, onEnter }) {
       if (!Array.isArray(d.s) || !d.s.length) return null;
       let dist = 0; let sec = 0;
       for (const [km, pace] of d.s) { dist += +km || 0; sec += (+km || 0) * (+pace || 0); }
-      return { raceName: localStorage.getItem('rp-race') || 'התכנון שלי', dist, sec };
+      return { raceName: localStorage.getItem('rp-race') || t('hub.resumeDefault'), dist, sec };
     } catch (e) { return null; }
   }, []);
 
@@ -842,7 +847,7 @@ function HubScreen({ isOwner, userName, onEnter }) {
   return (
     <div className="rp-cq" style={{
       minHeight: '100vh', background: 'var(--rp-bg)', color: 'var(--rp-text)',
-      fontFamily: 'var(--rp-font-ui)', direction: 'rtl',
+      fontFamily: 'var(--rp-font-ui)', direction: I18N.dir,
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       padding: 'max(28px, env(safe-area-inset-top)) 22px 40px', gap: 26,
     }}>
@@ -852,28 +857,28 @@ function HubScreen({ isOwner, userName, onEnter }) {
         <div style={{ fontFamily: 'var(--rp-font-display)', fontSize: 26, fontWeight: 800,
           letterSpacing: '.14em', direction: 'ltr', marginTop: 14 }}>RACE PLAN</div>
         <div style={{ color: 'var(--rp-text-dim)', fontSize: 14, marginTop: 4 }}>
-          {userName ? `שלום ${userName}` : 'תכננו את המרוץ הבא שלכם'}
+          {userName ? t('hub.hello', { name: userName }) : t('hub.tagline')}
         </div>
       </div>
 
       <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Card primary onClick={() => setSetupOpen(true)} title="תכנון מרוץ חדש"
-          sub="מרחק או מסלול · זמן יעד · אסטרטגיה"
+        <Card primary onClick={() => setSetupOpen(true)} title={t('hub.newPlan')}
+          sub={t('hub.newPlanSub')}
           icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>} />
 
         {resume && (
-          <Card onClick={() => onEnter(null)} title="המשך תכנון נוכחי"
-            sub={`${resume.raceName} · ${formatKm(resume.dist)} ק"מ · ${formatClock(resume.sec)}`}
+          <Card onClick={() => onEnter(null)} title={t('hub.resume')}
+            sub={`${resume.raceName} · ${U ? U.fmtDist(resume.dist) : formatKm(resume.dist)} · ${formatClock(resume.sec)}`}
             icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8" /><path d="M3 3v5h5" /></svg>} />
         )}
 
-        <Card onClick={() => setSavedOpen(true)} title="התכנונים שלי"
-          sub={isOwner ? 'מאגר המתאמנים' : 'תכנונים שמורים בחשבון שלך'}
+        <Card onClick={() => setSavedOpen(true)} title={t('hub.myPlans')}
+          sub={isOwner ? t('hub.myPlansOwnerSub') : t('hub.myPlansSub')}
           icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>} />
 
         {isOwner && RaceAdminPanel && RP_FB && (
-          <Card onClick={() => setRaceAdminOpen(true)} title="ניהול מרוצים"
-            sub="הוספה · עריכה · הצגה והסתרה · מחיקה"
+          <Card onClick={() => setRaceAdminOpen(true)} title={t('hub.raceAdmin')}
+            sub={t('hub.raceAdminSub')}
             icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3Z" /><path d="M9 3v15M15 6v15" /></svg>} />
         )}
       </div>
@@ -881,7 +886,7 @@ function HubScreen({ isOwner, userName, onEnter }) {
       {setupOpen && (
         <RaceSetupSheet
           onClose={() => { setSetupOpen(false); setAthleteName(null); }}
-          defaultName={athleteName ? `המרוץ של ${athleteName}` : (resume ? resume.raceName : 'המרוץ שלי')}
+          defaultName={athleteName ? t('hub.athleteRaceName', { name: athleteName }) : (resume ? resume.raceName : t('hub.defaultRaceName'))}
           onBuild={(handoff) => {
             setSetupOpen(false);
             onEnter(athleteName ? { ...handoff, trainer: athleteName } : handoff);
@@ -919,7 +924,7 @@ function SignInScreen() {
     <div className="rp-cq" style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', gap: 22, padding: 28, textAlign: 'center',
-      background: 'var(--rp-bg)', color: 'var(--rp-text)', fontFamily: 'var(--rp-font-ui)', direction: 'rtl',
+      background: 'var(--rp-bg)', color: 'var(--rp-text)', fontFamily: 'var(--rp-font-ui)', direction: I18N.dir,
     }}>
       <img src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'LogoV2.png'}
         alt="RACE PLAN" style={{ width: 128, height: 128, borderRadius: 24 }} />
@@ -928,11 +933,11 @@ function SignInScreen() {
         RACE PLAN
       </div>
       <div style={{ color: 'var(--rp-text-dim)', fontSize: 15, maxWidth: 300 }}>
-        תכננו את המרוץ הבא שלכם
+        {t('signin.tagline')}
       </div>
       <button className="rp-btn rp-btn-primary" style={{ minHeight: 48, fontSize: 16, padding: '12px 26px' }}
         onClick={() => RP_FB && RP_FB.signIn()}>
-        התחברות עם Google
+        {t('signin.google')}
       </button>
     </div>
   );
@@ -1038,11 +1043,11 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
     && Math.abs(plan.totalDist - (p.course.dist || 0)) < Math.max(0.5, plan.totalDist * 0.05);
   const fileRef = React.useRef(null);
   const [raceName, setRaceName] = React.useState(
-    () => (seed && seed.raceName) || shareData?.r || localStorage.getItem('rp-race') || 'מרוץ העיר'
+    () => (seed && seed.raceName) || shareData?.r || localStorage.getItem('rp-race') || t('planner.defaultRaceName')
   );
   const [trainer, setTrainer] = React.useState(
     () => (seed && seed.trainer) || shareData?.t || localStorage.getItem('rp-trainer')
-      || (!isOwner && userName) || 'שם המתאמן'
+      || (!isOwner && userName) || t('planner.athleteNamePlaceholder')
   );
   const [toastMsg, setToastMsg] = React.useState('');
   const toastTimer = React.useRef(null);
@@ -1149,7 +1154,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
         goalSec: Math.round((plan.avgPace || 300) * (course.dist || 1)),
       });
     } catch (err) {
-      alert('לא ניתן לקרוא את קובץ ה-GPX:\n' + (err && err.message ? err.message : err));
+      alert(t('setup.cannotReadGpx') + ':\n' + (err && err.message ? err.message : err));
     }
     e.target.value = '';
   };
@@ -1179,10 +1184,10 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
     setShareOpen(false);
     const url = buildShareUrl();
     if (RP_EXPORT) {
-      const r = await RP_EXPORT.shareLink(url, raceName || 'תוכנית מרוץ');
-      if (r === 'copied') showToast('הקישור הועתק ללוח');
+      const r = await RP_EXPORT.shareLink(url, raceName || t('pdf.defaultTitle'));
+      if (r === 'copied') showToast(t('planner.linkCopied'));
     } else if (navigator.clipboard) {
-      navigator.clipboard.writeText(url).then(() => showToast('הקישור הועתק ללוח')).catch(() => {});
+      navigator.clipboard.writeText(url).then(() => showToast(t('planner.linkCopied'))).catch(() => {});
     }
   };
 
@@ -1190,10 +1195,10 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
     if (!RP_EXPORT || !printRef.current) { setShareOpen(false); window.print(); return; }
     setPdfBusy(true);
     try {
-      const r = await RP_EXPORT.sharePdf(printRef.current, pdfFilename(), raceName || 'תוכנית מרוץ');
-      if (r === 'downloaded') showToast('קובץ ה-PDF הורד');
+      const r = await RP_EXPORT.sharePdf(printRef.current, pdfFilename(), raceName || t('pdf.defaultTitle'));
+      if (r === 'downloaded') showToast(t('planner.pdfDownloaded'));
     } catch (e) {
-      showToast('יצירת ה-PDF נכשלה — נפתחת הדפסה');
+      showToast(t('planner.pdfFailed'));
       window.print();
     } finally {
       setPdfBusy(false);
@@ -1221,7 +1226,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
     }
     setShowNewPlanConfirm(false);
     p.reset();
-    setRaceName('מרוץ העיר');
+    setRaceName(t('planner.defaultRaceName'));
     setRaceDate('');
     setRaceTime('07:00');
     try {
@@ -1236,13 +1241,13 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   const saveToAthlete = () => {
     if (!AthleteDB) return;
     const name = (trainer || '').trim();
-    if (!name || name === 'שם המתאמן') { showToast('הגדירו שם מתאמן בכותרת'); return; }
+    if (!name || name === t('planner.athleteNamePlaceholder')) { showToast(t('planner.setAthleteName')); return; }
     let a = AthleteDB.findByName(name);
     if (!a) a = AthleteDB.addAthlete(name);
     AthleteDB.savePlan(a.id, {
       raceName, segments: p.segments, preset: p.activePreset, course: p.course,
     });
-    showToast('נשמר למתאמן ' + name);
+    showToast(t('planner.savedToAthlete', { name }));
   };
 
   // Load one of the user's own saved plans ("my plans")
@@ -1264,7 +1269,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   // (.rp-cq block); here we only set the page frame.
   const varsB = {
     fontFamily: 'var(--rp-font-ui)',
-    background: 'var(--rp-bg)', color: 'var(--rp-text)', direction: 'rtl',
+    background: 'var(--rp-bg)', color: 'var(--rp-text)', direction: I18N.dir,
     minHeight: '100vh', boxSizing: 'border-box',
   };
 
@@ -1348,22 +1353,22 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: 'var(--rp-font-ui)', fontSize: 'clamp(19px, 4.6vw, 25px)',
                 fontWeight: 800, lineHeight: 1.15, color: 'var(--rp-text)' }}>
-                <EditableText value={raceName} onChange={setRaceName} placeholder="שם המרוץ" />
+                <EditableText value={raceName} onChange={setRaceName} placeholder={t('planner.raceNamePlaceholder')} />
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9, alignItems: 'center' }}>
                 <span style={chipS}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 2v4M16 2v4" /></svg>
                   <input type="date" value={raceDate} onChange={(e) => setRaceDate(e.target.value)}
-                    aria-label="תאריך המרוץ" style={chipInputS(raceDate)} />
+                    aria-label={t('planner.raceDate')} style={chipInputS(raceDate)} />
                 </span>
                 <span style={chipS}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
                   <input type="time" value={raceTime} onChange={(e) => setRaceTime(e.target.value)}
-                    aria-label="שעת הזינוק" style={chipInputS(raceTime)} />
+                    aria-label={t('planner.startTime')} style={chipInputS(raceTime)} />
                 </span>
                 <span style={{ ...chipS, color: 'var(--rp-text-soft)' }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                  <EditableText value={trainer} onChange={handleTrainerChange} placeholder="שם המתאמן"
+                  <EditableText value={trainer} onChange={handleTrainerChange} placeholder={t('planner.athleteNamePlaceholder')}
                     style={{ color: 'var(--rp-text-soft)', fontSize: 12 }} />
                 </span>
               </div>
@@ -1382,16 +1387,16 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
             <div style={{ width: '100%', maxWidth: 292 }}>
               <ClockDisplay totalSec={plan.totalTime} onClick={() => setGoalOpen(true)}
-                caption="זמן מחושב · לחצו להגדרת יעד" />
+                caption={t('planner.computedTapForGoal')} />
             </div>
           </div>
 
           {/* strip */}
           <div style={{ display: 'flex', borderTop: '1px solid var(--rp-line)', marginTop: 14 }}>
             {[
-              [formatKm(plan.totalDist), 'ק"מ'],
-              [formatPace(plan.avgPace), 'קצב /ק"מ'],
-              ...(p.course && p.course.gain != null ? [['+' + p.course.gain, 'מ׳ טיפוס']] : []),
+              [U ? U.dispDistNum(plan.totalDist) : formatKm(plan.totalDist), U ? U.distUnit() : t('units.km')],
+              [U ? U.fmtPace(plan.avgPace) : formatPace(plan.avgPace), t('planner.pacePerUnit', { unit: U ? U.distUnit() : t('units.km') })],
+              ...(p.course && p.course.gain != null ? [['+' + (U ? U.elevInt(p.course.gain) : p.course.gain), U && U.imperial ? t('units.climbFt') : t('units.climb')]] : []),
             ].map(([v, k], i) => (
               <div key={i} style={{ flex: 1, textAlign: 'center', padding: '11px 4px 4px',
                 borderInlineStart: i ? '1px solid var(--rp-line)' : 'none' }}>
@@ -1408,13 +1413,16 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
             paceStep={1} distStep={0.01}
             onStepDist={p.stepDistance} onSetDist={p.setSegmentDistance}
             onStepPace={p.stepPace} onSetPace={p.setSegmentPace} onRemove={p.removeSegment}
-            onEditValue={ValueEditor ? (id, t, v) => setValueEditor({ id, type: t, value: v }) : null}
+            onEditValue={ValueEditor ? (id, ty, v) => setValueEditor({
+              id, type: ty,
+              value: U ? (ty === 'pace' ? U.dispPaceSec(v) : U.dispDist(v)) : v,
+            }) : null}
             elevations={segElevs} />
 
           <button className="rp-btn" onClick={p.addSegment}
             style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-            הוסף קטע
+            {t('planner.addSegment')}
           </button>
         </div>
 
@@ -1428,7 +1436,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           <button className="rp-btn" onClick={() => fileRef.current && fileRef.current.click()}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>
-            ייבוא GPX
+            {t('setup.importGpx')}
           </button>
 
           {isOwner && RouteLibrary && RP_FB && (
@@ -1436,9 +1444,9 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
               onClick={() => { setRouteLibInit(null); setShowRouteLib(true); }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" /></svg>
-              ספריית מסלולים
+              {t('setup.routeLibrary')}
               {pendingSubs > 0 && (
-                <span aria-label={`${pendingSubs} הצעות ממתינות`} style={{
+                <span aria-label={t('planner.pendingSubs', { n: pendingSubs })} style={{
                   position: 'absolute', top: -6, insetInlineStart: -6,
                   minWidth: 16, height: 16, padding: '0 4px', borderRadius: 999,
                   background: 'var(--rp-gold)', color: '#12172b', fontSize: 10, fontWeight: 800,
@@ -1452,7 +1460,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
             <button className="rp-btn" onClick={() => setShowMyPlans(true)}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
-              התכנונים שלי
+              {t('hub.myPlans')}
             </button>
           )}
 
@@ -1461,13 +1469,13 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
               <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
               <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
             </svg>
-            שיתוף
+            {t('planner.share')}
           </button>
 
           {MyPlansDB && RP_FB && !isOwner && (
             <button className="rp-btn" onClick={() => setShowNewPlanConfirm(true)}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-              תכנון חדש
+              {t('planner.newPlan')}
             </button>
           )}
 
@@ -1476,7 +1484,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
                 <polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
-              שמור למתאמן
+              {t('planner.saveToAthlete')}
             </button>
           )}
 
@@ -1484,14 +1492,14 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
             <button className="rp-btn" onClick={onGoHome}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
-              מסך הבית
+              {t('planner.home')}
             </button>
           )}
 
           <button className="rp-btn" onClick={onReset}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
-            איפוס
+            {t('planner.reset')}
           </button>
         </div>
 
@@ -1500,10 +1508,10 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           borderRadius: 'var(--rp-r-14)', padding: '12px 14px 4px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text-soft)' }}>
-              פרופיל קצב — לפי מרחק מצטבר
+              {t('chart.title')}
               {canEditBoundaries && showElevation && (
                 <span style={{ fontWeight: 500, color: 'var(--rp-text-dim)', fontSize: 11.5 }}>
-                  {'  ·  גררו את הקווים להתאמת מקטע לעלייה/ירידה'}
+                  {t('chart.dragHint')}
                 </span>
               )}
             </div>
@@ -1525,7 +1533,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
                   strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                 </svg>
-                פרופיל גובה
+                {t('chart.elevToggle')}
               </button>
             )}
           </div>
@@ -1543,7 +1551,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
         {p.course?.track && (
           <div style={{ marginTop: 12, background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
             borderRadius: 'var(--rp-r-14)', padding: '12px 14px 14px' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text-soft)', marginBottom: 8 }}>מפת המסלול</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text-soft)', marginBottom: 8 }}>{t('chart.mapTitle')}</div>
             <RouteMap track={p.course.track} height={210} />
           </div>
         )}
@@ -1553,7 +1561,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           <div style={{ marginTop: 16, background: '#161b22', border: '1px solid #232a34',
             borderRadius: 16, padding: '16px 16px 6px' }}>
             <div style={{ fontSize: 13.5, fontWeight: 600, color: '#aab2c0', marginBottom: 4 }}>
-              פרופיל גובה — מתוך המסלול
+              {t('chart.elevChartTitle')}
             </div>
             <ElevationChart profile={p.course.profile} colors={themeB} height={300}
               gain={p.course.gain} loss={p.course.loss} />
@@ -1579,7 +1587,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
       {showNewPlanConfirm && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 1001, background: 'rgba(0,0,0,.55)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', direction: 'rtl',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', direction: I18N.dir,
         }} onClick={(e) => { if (e.target === e.currentTarget) setShowNewPlanConfirm(false); }}>
           <div style={{
             background: 'var(--rp-surface)', border: '1px solid var(--rp-line-input)',
@@ -1587,20 +1595,20 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
             boxShadow: '0 16px 48px rgba(0,0,0,.7)', fontFamily: 'var(--rp-font-ui)',
           }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--rp-text)', marginBottom: 10 }}>
-              להתחיל תכנון חדש?
+              {t('planner.newPlanConfirmTitle')}
             </div>
             <div style={{ fontSize: 13, color: 'var(--rp-text-dim)', marginBottom: 22 }}>
-              אפשר לשמור את התכנון הנוכחי ל"התכנונים שלי" לפני שמתחילים.
+              {t('planner.newPlanConfirmBody')}
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button className="rp-btn rp-btn-primary" onClick={() => startNewPlan(true)}>
-                שמור והתחל
+                {t('planner.saveAndStart')}
               </button>
               <button className="rp-btn" onClick={() => startNewPlan(false)}>
-                התחל בלי לשמור
+                {t('planner.startWithoutSaving')}
               </button>
               <button className="rp-btn" onClick={() => setShowNewPlanConfirm(false)}>
-                ביטול
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -1633,11 +1641,11 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
 
       {ActionSheet && shareOpen && (
         <ActionSheet
-          title="שיתוף"
+          title={t('planner.share')}
           onClose={() => setShareOpen(false)}
           items={[
             {
-              label: 'שלח קישור', onClick: doShareLink,
+              label: t('planner.sendLink'), onClick: doShareLink,
               icon: (
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
@@ -1646,7 +1654,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
               ),
             },
             {
-              label: pdfBusy ? 'מכין PDF…' : 'שלח PDF', disabled: pdfBusy, onClick: doSharePdf,
+              label: pdfBusy ? t('planner.preparingPdf') : t('planner.sendPdf'), disabled: pdfBusy, onClick: doSharePdf,
               icon: (
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" />
@@ -1655,7 +1663,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
               ),
             },
             {
-              label: 'הדפסה', onClick: doPrint,
+              label: t('planner.print'), onClick: doPrint,
               icon: (
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
@@ -1675,7 +1683,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           onApply={(goalSec) => {
             p.replaceSegments(scalePlanToGoal(p.segments, goalSec));
             setGoalOpen(false);
-            showToast('הקצבים עודכנו · יעד ' + formatClock(goalSec));
+            showToast(t('planner.pacesUpdated', { goal: formatClock(goalSec) }));
           }}
         />
       )}
@@ -1684,12 +1692,15 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
         <ValueEditor
           type={valueEditor.type}
           value={valueEditor.value}
-          title={(valueEditor.type === 'pace' ? 'קצב' : 'מרחק') + ' · קטע '
-            + (p.segments.findIndex((s) => s.id === valueEditor.id) + 1)}
+          unitMajor={U ? U.distUnit() : undefined}
+          unitPace={U ? U.paceUnit() : undefined}
+          title={(valueEditor.type === 'pace' ? t('ve.pace') : t('ve.distance')) + ' · '
+            + t('planner.segmentN', { n: p.segments.findIndex((s) => s.id === valueEditor.id) + 1 })}
           onClose={() => setValueEditor(null)}
           onApply={(v) => {
-            if (valueEditor.type === 'pace') p.setSegmentPace(valueEditor.id, v);
-            else p.setSegmentDistance(valueEditor.id, v);
+            const si = U ? (valueEditor.type === 'pace' ? U.paceFromDisplaySec(v) : U.parseDist(v)) : v;
+            if (valueEditor.type === 'pace') p.setSegmentPace(valueEditor.id, si);
+            else p.setSegmentDistance(valueEditor.id, si);
             setValueEditor(null);
           }}
         />
