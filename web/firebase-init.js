@@ -8,7 +8,7 @@ import {
   signInWithRedirect, signInWithPopup, getRedirectResult, signOut,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
-  getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp, increment,
+  getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, increment,
   collection, getDocs, query, where,
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import {
@@ -147,16 +147,54 @@ async function savePlans(json) {
 function raceRef(id) { return doc(db, 'races', id); }
 let _racesCache = null;
 
+function isOwnerNow() { return !!currentUser && currentUser.tier === 'owner'; }
+
 async function racesList(force) {
   if (_racesCache && !force) return _racesCache;
+  const read = async (q) => (await getDocs(q)).docs.map((d) => ({ id: d.id, ...d.data() }));
   try {
-    const snap = await getDocs(collection(db, 'races'));
-    _racesCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (isOwnerNow()) {
+      // The owner curates the whole catalog, hidden races included.
+      _racesCache = await read(collection(db, 'races'));
+    } else {
+      // Everyone else only ever sees races flagged listed:true — the where()
+      // clause is also what firestore.rules checks to allow the list query.
+      _racesCache = await read(query(collection(db, 'races'), where('listed', '==', true)));
+      // Transitional: catalog predating the listed flag. Before the hardened
+      // rules ship, an unfiltered read still works; after, it throws and we
+      // fall through to whatever we already had.
+      if (_racesCache.length === 0) {
+        try { _racesCache = await read(collection(db, 'races')); } catch (e2) { /* rules enforced */ }
+      }
+    }
   } catch (e) { _racesCache = _racesCache || []; }
   return _racesCache;
 }
 
-function isOwnerNow() { return !!currentUser && currentUser.tier === 'owner'; }
+async function raceDelete(id) {
+  if (!isOwnerNow() || !id) return 'denied';
+  await deleteDoc(raceRef(id));
+  _racesCache = null;
+  return 'ok';
+}
+
+// One-time backfill: stamp listed:true on any race doc that predates the field,
+// so non-owner list queries (where listed == true) can see them. Idempotent —
+// only touches docs that are missing the flag.
+async function racesEnsureListed() {
+  if (!isOwnerNow()) return 0;
+  const all = await racesList(true);
+  const stale = all.filter((r) => r.listed === undefined);
+  let n = 0;
+  for (let i = 0; i < stale.length; i += 20) {
+    const chunk = stale.slice(i, i + 20);
+    // eslint-disable-next-line no-await-in-loop
+    await Promise.all(chunk.map((r) => setDoc(raceRef(r.id), { listed: true }, { merge: true })
+      .then(() => { n++; }).catch(() => {})));
+  }
+  if (n) _racesCache = null;
+  return n;
+}
 
 async function raceSave(id, data) {
   if (!isOwnerNow() || !id) return 'denied';
@@ -255,6 +293,7 @@ async function racesSeed(records) {
       return setDoc(raceRef(id), {
         ...rest,
         seed: true,
+        listed: rest.listed !== false,
         routeStatus: rest.routeStatus || 'none',
         createdAt: serverTimestamp(),
         updatedBy: currentUser.email,
@@ -278,6 +317,8 @@ window.RP_FIREBASE = {
   logVisit,
   racesList,
   raceSave,
+  raceDelete,
+  racesEnsureListed,
   racePutGpx,
   racesSeed,
   submissionId,

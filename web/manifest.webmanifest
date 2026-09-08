@@ -1,7 +1,7 @@
 {
-  "name": "RacePlan — מתכנן קצב לריצה",
-  "short_name": "RacePlan",
-  "description": "מתכנן קצב לריצה — RACE PLAN by Krispel",
+  "name": "RACE PLAN",
+  "short_name": "RACE PLAN",
+  "description": "RACE PLAN by Krispel",
   "lang": "he",
   "dir": "rtl",
   "start_url": "/",

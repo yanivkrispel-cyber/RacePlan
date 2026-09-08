@@ -38,6 +38,8 @@ const JSX_FILES = [
   'src/athletes.jsx',
   'src/myplans.jsx',
   'src/routes.jsx',
+  'src/exporting.jsx',
+  'src/valueeditor.jsx',
   'src/planner-b.jsx',
 ];
 

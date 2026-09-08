@@ -135,11 +135,8 @@ const AthleteDB = {
 function AthletePanel({
   onClose,
   currentTrainer,
-  currentRaceName,
-  currentSegments,
-  currentPreset,
-  currentCourse,
   onLoadPlan,
+  onPlanForAthlete,
 }) {
   const [db, setDb] = React.useState(() => AthleteDB._load());
   const [selId, setSelId] = React.useState(() => {
@@ -148,7 +145,6 @@ function AthletePanel({
   });
   const [newName, setNewName] = React.useState('');
   const [confirmDel, setConfirmDel] = React.useState(null);
-  const [savedFlash, setSavedFlash] = React.useState(false);
   const newNameRef = React.useRef(null);
 
   const refresh = () => setDb(AthleteDB._load());
@@ -172,21 +168,14 @@ function AthletePanel({
     setSelId(a.id);
   };
 
-  const handleSave = () => {
-    if (!selId) return;
-    AthleteDB.savePlan(selId, {
-      raceName: currentRaceName,
-      segments: currentSegments,
-      preset: currentPreset,
-      course: currentCourse,
-    });
-    refresh();
-    setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 2000);
-  };
-
   const handleLoad = (plan) => {
     onLoadPlan(plan, selAthlete?.name || '');
+    onClose();
+  };
+
+  const handlePlanNew = () => {
+    if (!selAthlete || !onPlanForAthlete) return;
+    onPlanForAthlete(selAthlete.name);
     onClose();
   };
 
@@ -339,26 +328,42 @@ function AthletePanel({
             </div>
           </div>
 
-          {/* Right column: Plans */}
+          {/* Right column: the selected athlete */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <div style={{ padding: '10px 18px 8px', fontSize: 11, fontWeight: 700,
               color: DIMMER, letterSpacing: '.07em', textTransform: 'uppercase',
               borderBottom: `1px solid ${COL_BORDER}` }}>
-              {selAthlete ? `תכניות — ${selAthlete.name}` : 'תכניות'}
+              {selAthlete ? selAthlete.name : 'מתאמן'}
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px' }}>
+            {selAthlete && onPlanForAthlete && (
+              <div style={{ padding: '12px 14px 4px' }}>
+                <button onClick={handlePlanNew} style={{
+                  width: '100%', background: ACCENT, border: 'none', borderRadius: 10,
+                  padding: '11px 16px', cursor: 'pointer', color: 'var(--rp-on-gold)',
+                  fontWeight: 800, fontSize: 14, fontFamily: 'inherit',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                  תכנן מרוץ ל{selAthlete.name}
+                </button>
+                {selAthlete.plans.length > 0 && (
+                  <div style={{ fontSize: 11, fontWeight: 700, color: DIMMER, letterSpacing: '.06em',
+                    textTransform: 'uppercase', margin: '14px 4px 2px' }}>תכנונים שמורים</div>
+                )}
+              </div>
+            )}
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '6px 14px 10px' }}>
               {!selAthlete && (
                 <div style={{ padding: '40px 20px', color: DIMMER, fontSize: 14, textAlign: 'center' }}>
-                  בחר מתאמן מהרשימה כדי לצפות בתכניות
+                  בחרו מתאמן מהרשימה, או הוסיפו חדש
                 </div>
               )}
               {selAthlete && selAthlete.plans.length === 0 && (
-                <div style={{ padding: '40px 20px', color: DIMMER, fontSize: 14, textAlign: 'center' }}>
-                  אין תכניות שמורות עדיין
-                  <div style={{ fontSize: 12, marginTop: 6 }}>
-                    לחץ "שמור תכנית" למטה כדי לשמור את התכנית הנוכחית
-                  </div>
+                <div style={{ padding: '24px 20px', color: DIMMER, fontSize: 13, textAlign: 'center' }}>
+                  אין עדיין תכנונים שמורים למתאמן הזה
                 </div>
               )}
               {selAthlete && selAthlete.plans.map(plan => (
@@ -413,38 +418,8 @@ function AthletePanel({
         }}>
           {selAthlete ? (
             <>
-              <button onClick={handleSave} style={{
-                background: savedFlash ? 'var(--rp-gold-soft)' : ACCENT,
-                border: 'none', borderRadius: 10, padding: '9px 18px',
-                cursor: 'pointer', color: 'var(--rp-on-gold)', fontWeight: 700,
-                fontSize: 13.5, fontFamily: 'inherit', transition: 'background .3s',
-                display: 'flex', alignItems: 'center', gap: 7,
-              }}>
-                {savedFlash ? (
-                  <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    נשמר!
-                  </>
-                ) : (
-                  <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                      <polyline points="17 21 17 13 7 13 7 21"/>
-                      <polyline points="7 3 7 8 15 8"/>
-                    </svg>
-                    שמור תכנית עבור {selAthlete.name}
-                  </>
-                )}
-              </button>
-              <span style={{ fontSize: 12, color: DIMMER }}>
-                {currentRaceName}
-                {currentCourse ? ` · GPX` : ''}
-                {' · '}
-                {currentSegments?.length ?? 0} קטעים
+              <span style={{ fontSize: 12.5, color: DIMMER }}>
+                {selAthlete.plans.length} תכנונים שמורים
               </span>
               <div style={{ marginInlineStart: 'auto' }}>
                 <button
@@ -458,7 +433,7 @@ function AthletePanel({
             </>
           ) : (
             <span style={{ fontSize: 13, color: DIMMER }}>
-              הוסף מתאמן חדש או בחר מתאמן קיים כדי לשמור תכנית
+              בחרו מתאמן כדי לתכנן לו מרוץ או לפתוח תכנון קיים
             </span>
           )}
         </div>

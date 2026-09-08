@@ -31,6 +31,16 @@ if (!document.getElementById('rp-core-styles')) {
   .rp-btn-primary{background:var(--rp-gold);border-color:var(--rp-gold);color:var(--rp-on-gold)}
   .rp-btn-primary:hover{filter:brightness(1.06);color:var(--rp-on-gold)}
 
+  /* tap-to-open value button (mobile-friendly alternative to the stepper) */
+  .rpt-val{appearance:none;font:inherit;font-weight:700;font-variant-numeric:tabular-nums;
+    background:var(--rp-field-bg);border:1px solid var(--rp-field-border);border-radius:9px;
+    color:var(--rp-text);cursor:pointer;min-height:40px;width:100%;max-width:100px;
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 8px;
+    transition:border-color .12s,background .12s}
+  .rpt-val:hover,.rpt-val:active{border-color:var(--rp-accent)}
+  .rpt-val .rpt-val-c{font-size:9px;color:var(--rp-text-dim)}
+  @container (max-width:600px){ .rpt-val{min-height:44px;max-width:none;font-size:15px} }
+
   /* ── segments table ── (col order: # · dist · pace · cumdist · [elev] · segT · cumT · del) */
   .rpt{--cols:38px 1.5fr 1.5fr .9fr .95fr 1fr 60px}
   .rpt.has-elev{--cols:38px 1.5fr 1.5fr .9fr .65fr .95fr 1fr 60px}
@@ -150,7 +160,7 @@ function ElevCell({ value }) {
   );
 }
 
-function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onStepPace, onSetPace, onRemove, showTotals = true, paceStep, distStep, elevations }) {
+function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onStepPace, onSetPace, onRemove, onEditValue, showTotals = true, paceStep, distStep, elevations }) {
   const { rows, totalDist, totalTime, avgPace } = plan;
   const hasElev = Array.isArray(elevations);
   return (
@@ -171,13 +181,25 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
             <div className="rpt-cell rpt-idx"><span className="rpt-idxbadge">{r.index}</span></div>
             <div className="rpt-cell rpt-dist">
               <span className="rpt-lbl">מרחק (ק"מ)</span>
-              <Stepper value={r.distance} type="dist" kind={stepperKind} step={distStep}
-                onStep={(d) => onStepDist(r.id, d)} onSet={(v) => onSetDist(r.id, v)} />
+              {onEditValue ? (
+                <button className="rpt-val" onClick={() => onEditValue(r.id, 'dist', r.distance)}>
+                  {formatKm(r.distance)}<span className="rpt-val-c">▾</span>
+                </button>
+              ) : (
+                <Stepper value={r.distance} type="dist" kind={stepperKind} step={distStep}
+                  onStep={(d) => onStepDist(r.id, d)} onSet={(v) => onSetDist(r.id, v)} />
+              )}
             </div>
             <div className="rpt-cell rpt-pace">
               <span className="rpt-lbl">קצב יעד</span>
-              <Stepper value={r.paceSec} type="pace" kind={stepperKind} step={paceStep}
-                onStep={(d) => onStepPace(r.id, d)} onSet={(v) => onSetPace(r.id, v)} />
+              {onEditValue ? (
+                <button className="rpt-val" onClick={() => onEditValue(r.id, 'pace', r.paceSec)}>
+                  {formatPace(r.paceSec)}<span className="rpt-val-c">▾</span>
+                </button>
+              ) : (
+                <Stepper value={r.paceSec} type="pace" kind={stepperKind} step={paceStep}
+                  onStep={(d) => onStepPace(r.id, d)} onSet={(v) => onSetPace(r.id, v)} />
+              )}
             </div>
             <div className="rpt-meta">
               <div className="rpt-cell rpt-cumdist">

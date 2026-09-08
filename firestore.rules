@@ -26,10 +26,13 @@ service cloud.firestore {
       }
     }
 
-    // The shared race library. Any signed-in user can browse it; only the
-    // coach adds / verifies routes.
+    // The shared race library. Any signed-in user can read a single race, but a
+    // list query is only allowed for the owner, or when it is scoped to
+    // listed == true — so hidden races never reach a non-owner. Only the coach
+    // adds / edits / removes races.
     match /races/{raceId} {
-      allow read:                 if signedIn();
+      allow get:                    if signedIn();
+      allow list:                   if isOwner() || (signedIn() && resource.data.listed == true);
       allow create, update, delete: if isOwner();
     }
 
