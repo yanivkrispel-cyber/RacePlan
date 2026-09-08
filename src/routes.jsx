@@ -13,6 +13,19 @@
 
 const { parseGpx, RouteMap } = window;
 const RP_FB_R = (typeof window !== 'undefined' && window.RP_FIREBASE) || null;
+const I18N = (typeof window !== 'undefined' && window.I18N) || null;
+const t = (I18N && I18N.t) || ((k) => k);
+const U = (typeof window !== 'undefined' && window.UNITS) || null;
+
+// course.source is stored as a stable code; resolve to a label at display time.
+// An unknown value (e.g. old data with a Hebrew label) is shown as-is.
+function sourceLabel(code) {
+  const map = {
+    library: 'source.library', community: 'source.community',
+    link: 'source.link', file: 'source.file', import: 'source.import',
+  };
+  return map[code] ? t(map[code]) : (code || '');
+}
 
 // keep ~N evenly-spaced samples (always including the last)
 function rl_downsample(arr, max) {
@@ -29,7 +42,8 @@ function flagFor(cc) {
   return cc.toUpperCase().replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
 }
 
-const DIST_LABEL = { marathon: 'מרתון', half_marathon: 'חצי מרתון' };
+// values are i18n keys — resolve with t() at render time
+const DIST_LABEL = { marathon: 'preset.marathon', half_marathon: 'preset.half' };
 const looksLikeXml = (s) => /^\s*<(\?xml|gpx)[\s>]/i.test(s || '');
 
 // Firestore Timestamp → "DD/MM" (best-effort; tolerates plain {seconds} too)
@@ -38,7 +52,8 @@ function fmtSubDate(ts) {
     : typeof ts.toMillis === 'function' ? ts.toMillis()
       : typeof ts.seconds === 'number' ? ts.seconds * 1000 : 0;
   if (!ms) return '';
-  try { return new Date(ms).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' }); }
+  const loc = (typeof window !== 'undefined' && window.I18N) ? window.I18N.locale : 'he-IL';
+  try { return new Date(ms).toLocaleDateString(loc, { day: '2-digit', month: '2-digit' }); }
   catch (e) { return ''; }
 }
 const round1 = (n) => Math.round(n * 10) / 10;
@@ -57,11 +72,11 @@ function decodeFlatCourse(rec, opts) {
   const track = [];
   for (let i = 0; i + 1 < tf.length; i += 2) track.push([tf[i], tf[i + 1]]);
   return {
-    name: opts.name || rec.nameHe || rec.name || rec.courseName || 'מסלול',
+    name: opts.name || rec.nameHe || rec.name || rec.courseName || '',
     dist: rec.distanceKm || (profile.length ? profile[profile.length - 1].d : 0),
     gain: rec.gain || 0,
     loss: rec.loss || 0,
-    source: opts.source || 'ספריית מסלולים',
+    source: opts.source || 'library',
     profile: profile.length ? profile : null,
     track: track.length ? track : null,
     lat: rec.startLat != null ? rec.startLat : (track.length ? track[0][0] : null),
@@ -71,14 +86,14 @@ function decodeFlatCourse(rec, opts) {
 
 // race doc  →  course object the planner understands (p.loadCourse)
 function courseFromRace(rc) {
-  return decodeFlatCourse(rc, { name: rc.nameHe || rc.name, source: 'ספריית מסלולים' });
+  return decodeFlatCourse(rc, { name: rc.nameHe || rc.name, source: 'library' });
 }
 
 // community submission doc  →  course object
 function courseFromSubmission(sub) {
   return decodeFlatCourse(sub, {
-    name: sub.courseName || sub.raceName || 'מסלול מהקהילה',
-    source: 'הצעה מהקהילה',
+    name: sub.courseName || sub.raceName || '',
+    source: 'community',
   });
 }
 
@@ -94,7 +109,7 @@ function buildSubmissionRecord(pending, race, user) {
     submitterUid: (user && user.uid) || '',
     submitterEmail: (user && user.email) || '',
     submitterName: (user && user.name) || '',
-    source: c.source || (pending && pending.sourceUrl ? 'קישור' : 'קובץ GPX'),
+    source: c.source || (pending && pending.sourceUrl ? 'link' : 'file'),
     sourceUrl: (pending && pending.sourceUrl) || null,
     distanceKm: round3(c.dist || 0),
     gain: Math.round(c.gain || 0),
@@ -115,9 +130,9 @@ function courseFromGpx(parsed, xml, fallbackName, source) {
     : null;
   const trk = rl_downsample(parsed.points.map((pt) => [pt.lat, pt.lon]), 500);
   const course = {
-    name: parsed.name || fallbackName || 'מסלול מיובא',
+    name: parsed.name || fallbackName || '',
     dist: parsed.totalDist, gain: parsed.elevGain, loss: parsed.elevLoss,
-    source: source || 'קישור', profile: prof, track: trk,
+    source: source || 'link', profile: prof, track: trk,
     lat: parsed.startLat, lon: parsed.startLon,
   };
   const profileFlat = prof ? prof.flatMap((p) => [round3(p.d), round1(p.ele)]) : null;
@@ -142,9 +157,9 @@ function makeRaceId(name, city, distance, taken) {
 
 function StatusBadge({ status }) {
   const map = {
-    available: ['מסלול זמין', 'var(--rp-gold)', 'var(--rp-gold-wash)', 'var(--rp-gold-line)'],
-    candidate: ['מועמד לפרסום', '#C9A24B', 'transparent', 'var(--rp-line)'],
-    none: ['מסלול טרם פורסם', 'var(--rp-text-dim)', 'transparent', 'var(--rp-line)'],
+    available: [t('routes.statusAvailable'), 'var(--rp-gold)', 'var(--rp-gold-wash)', 'var(--rp-gold-line)'],
+    candidate: [t('routes.statusCandidate'), '#C9A24B', 'transparent', 'var(--rp-line)'],
+    none: [t('routes.statusNone'), 'var(--rp-text-dim)', 'transparent', 'var(--rp-line)'],
   };
   const [txt, fg, bg, bd] = map[status] || map.none;
   return (
@@ -165,8 +180,8 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
   const [err, setErr] = React.useState('');
   const [note, setNote] = React.useState(
     !initialPending ? ''
-      : isOwner ? 'המסלול מהקובץ מוכן. בחרו מרוץ לשיוך ולחצו "שמור מסלול בספרייה".'
-        : 'המסלול מהקובץ מוכן. בחרו מרוץ ושלחו אותו למנהל המערכת לצירוף קבוע.'
+      : isOwner ? t('routes.pendingReadyOwner')
+        : t('routes.pendingReadyUser')
   );
   const [pending, setPending] = React.useState(initialPending || null); // { course, gpxText, profileFlat, trackFlat, sourceUrl }
   const [selId, setSelId] = React.useState('');
@@ -222,22 +237,20 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
     if (onRaceName) onRaceName(rc.nameHe || rc.name);
     setSelId(rc.id);
     setTab('link');
-    setNote(`למרוץ "${rc.nameHe || rc.name}" עדיין אין מסלול. העלו קובץ GPX או הדביקו קישור ישיר לקובץ .gpx.`);
+    setNote(t('routes.raceHasNoRoute', { name: rc.nameHe || rc.name }));
   };
 
   // shared tail: parsed GPX xml → pending course
-  const acceptGpx = (xml, sourceUrl, fallbackName, sourceLabel) => {
+  const acceptGpx = (xml, sourceUrl, fallbackName, sourceCode) => {
     if (!looksLikeXml(xml) && !/<trkpt|<rtept/i.test(xml)) {
-      throw new Error(sourceUrl ? 'הקישור לא מחזיר קובץ GPX' : 'הקובץ אינו קובץ GPX תקין');
+      throw new Error(sourceUrl ? t('routes.urlNotGpx') : t('routes.fileNotGpx'));
     }
     const parsed = parseGpx(xml);
-    const built = courseFromGpx(parsed, xml, parsed.name || fallbackName || raceName, sourceLabel);
+    const built = courseFromGpx(parsed, xml, parsed.name || fallbackName || raceName, sourceCode);
     built.sourceUrl = sourceUrl || null;
     setPending(built);
     setSubmitted(false);
-    setNote(isOwner
-      ? 'המסלול נטען. אפשר לצרף אותו לתוכנית, או לשמור אותו בספרייה למטה.'
-      : 'המסלול נטען. אפשר לצרף אותו לתוכנית שלך, או להציע אותו למנהל המערכת לצירוף קבוע למרוץ.');
+    setNote(isOwner ? t('routes.routeLoadedOwner') : t('routes.routeLoadedUser'));
   };
 
   const handleUrl = async () => {
@@ -246,11 +259,10 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
     setBusy(true); setErr(''); setNote('');
     try {
       const res = await fetch(url);
-      if (!res.ok) throw new Error('השרת החזיר ' + res.status);
-      acceptGpx(await res.text(), url, null, 'קישור');
+      if (!res.ok) throw new Error(t('routes.serverReturned', { status: res.status }));
+      acceptGpx(await res.text(), url, null, 'link');
     } catch (e) {
-      setErr('לא ניתן לטעון מהקישור: ' + (e && e.message ? e.message : e) +
-        '. ייתכן שהאתר חוסם טעינה ישירה מהדפדפן — הורידו את קובץ ה-GPX והעלו אותו כאן.');
+      setErr(t('routes.urlLoadFailed', { msg: (e && e.message ? e.message : e) }));
     } finally {
       setBusy(false);
     }
@@ -262,9 +274,9 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
     if (!file) return;
     setBusy(true); setErr(''); setNote('');
     try {
-      acceptGpx(await file.text(), null, file.name.replace(/\.gpx$/i, ''), 'קובץ GPX');
+      acceptGpx(await file.text(), null, file.name.replace(/\.gpx$/i, ''), 'file');
     } catch (er) {
-      setErr('לא ניתן לקרוא את הקובץ: ' + (er && er.message ? er.message : er));
+      setErr(t('routes.fileReadFailed', { msg: (er && er.message ? er.message : er) }));
     } finally {
       setBusy(false);
     }
@@ -279,7 +291,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
   const savePendingToLibrary = async () => {
     if (!pending || !isOwner || !RP_FB_R) return;
     const id = selId;
-    if (!id) { setErr('בחרו מרוץ מהרשימה לשיוך המסלול.'); return; }
+    if (!id) { setErr(t('routes.pickRaceForRoute')); return; }
     setBusy(true); setErr('');
     try {
       const gpxPath = await RP_FB_R.racePutGpx(id, pending.gpxText);
@@ -295,7 +307,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
       onLoadCourse(pending.course);
       onClose();
     } catch (e) {
-      setErr('שמירה נכשלה: ' + (e && e.message ? e.message : e));
+      setErr(t('routes.saveFailed', { msg: (e && e.message ? e.message : e) }));
     } finally {
       setBusy(false);
     }
@@ -304,9 +316,9 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
   // ── community: a signed-in (non-owner) user proposes the pending route ──
   const submitPending = async () => {
     if (!pending || !RP_FB_R || !RP_FB_R.submitRoute) return;
-    if (!selId) { setErr('בחרו מרוץ מהרשימה.'); return; }
+    if (!selId) { setErr(t('routes.pickRace')); return; }
     const race = (races || []).find((r) => r.id === selId);
-    if (!race) { setErr('המרוץ לא נמצא. רעננו ונסו שוב.'); return; }
+    if (!race) { setErr(t('routes.raceNotFound')); return; }
     setBusy(true); setErr('');
     try {
       const id = RP_FB_R.submissionId();
@@ -314,12 +326,12 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
       const user = (window.RP_FIREBASE && window.RP_FIREBASE.user) || null;
       const rec = buildSubmissionRecord({ ...pending, gpxPath: gpxPath || null }, race, user);
       const res = await RP_FB_R.submitRoute(id, rec);
-      if (res !== 'ok') throw new Error('השליחה נדחתה');
+      if (res !== 'ok') throw new Error(t('routes.submitRejected'));
       setSubmitted(true);
-      setNote('תודה! ההצעה נשלחה למנהל המערכת לבדיקה. המסלול כבר טעון בתוכנית שלך.');
+      setNote(t('routes.submitThanks'));
       onLoadCourse(pending.course);
     } catch (e) {
-      setErr('שליחת ההצעה נכשלה: ' + (e && e.message ? e.message : e));
+      setErr(t('routes.submitFailed', { msg: (e && e.message ? e.message : e) }));
     } finally {
       setBusy(false);
     }
@@ -343,13 +355,13 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
         contributor: s.submitterEmail || null,
         routeFrom: 'community',
       });
-      if (saveRes !== 'ok') throw new Error('שמירת המרוץ נדחתה');
+      if (saveRes !== 'ok') throw new Error(t('routes.raceSaveRejected'));
       await RP_FB_R.submissionReview(s.id, 'approved');
       setSubs((list) => (list || []).filter((x) => x.id !== s.id));
       await refresh(true);
-      setNote(`המסלול שולב במרוץ "${s.raceName || s.raceId}".`);
+      setNote(t('routes.routeMergedInto', { name: s.raceName || s.raceId }));
     } catch (e) {
-      setErr('אישור נכשל: ' + (e && e.message ? e.message : e));
+      setErr(t('routes.approveFailed', { msg: (e && e.message ? e.message : e) }));
     } finally {
       setSubBusy('');
     }
@@ -361,9 +373,9 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
     try {
       await RP_FB_R.submissionReview(s.id, 'rejected');
       setSubs((list) => (list || []).filter((x) => x.id !== s.id));
-      setNote('ההצעה נדחתה.');
+      setNote(t('routes.submissionRejected'));
     } catch (e) {
-      setErr('הדחייה נכשלה: ' + (e && e.message ? e.message : e));
+      setErr(t('routes.rejectFailed', { msg: (e && e.message ? e.message : e) }));
     } finally {
       setSubBusy('');
     }
@@ -381,10 +393,10 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
       const res = await fetch('races-seed.json', { cache: 'no-store' });
       const recs = await res.json();
       const n = await RP_FB_R.racesSeed(recs);
-      setNote(`נוספו ${n} מרוצים לספרייה.`);
+      setNote(t('routes.seedAdded', { n }));
       refresh(true);
     } catch (e) {
-      setErr('טעינת הקטלוג נכשלה: ' + (e && e.message ? e.message : e));
+      setErr(t('routes.seedFailed', { msg: (e && e.message ? e.message : e) }));
     } finally {
       setSeeding(false);
     }
@@ -394,7 +406,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
     if (!isOwner || !RP_FB_R) return;
     const name = nr.name.trim();
     const nameHe = nr.nameHe.trim();
-    if (!name && !nameHe) { setErr('צריך שם למרוץ (אנגלית או עברית).'); return; }
+    if (!name && !nameHe) { setErr(t('routes.needRaceName')); return; }
     setBusy(true); setErr(''); setNote('');
     try {
       const taken = new Set((races || []).map((r) => r.id));
@@ -419,9 +431,10 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
       setShowNewRace(false);
       await refresh(true);
       setSelId(id);
-      setNote(`המרוץ "${nameHe || name}" נוסף${pending ? ' — אפשר לשמור אליו את המסלול למטה.' : '.'}`);
+      setNote(pending ? t('routes.raceAddedWithPending', { name: nameHe || name })
+        : t('routes.raceAdded', { name: nameHe || name }));
     } catch (e) {
-      setErr('יצירת מרוץ נכשלה: ' + (e && e.message ? e.message : e));
+      setErr(t('routes.createRaceFailed', { msg: (e && e.message ? e.message : e) }));
     } finally {
       setBusy(false);
     }
@@ -455,7 +468,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
         position: 'fixed', inset: 0, zIndex,
         background: 'rgba(9,11,22,.78)', backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 20, direction: 'rtl', fontFamily: 'var(--rp-font-ui)', color: TEXT,
+        padding: 20, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: TEXT,
       }}
     >
       <style>{`
@@ -472,7 +485,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
         background: 'var(--rp-surface)', border: `1px solid ${BD}`,
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 640, maxHeight: '88vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        boxShadow: 'var(--rp-shadow-modal)', direction: 'rtl',
+        boxShadow: 'var(--rp-shadow-modal)', direction: I18N.dir,
       }}>
 
         {/* header */}
@@ -483,7 +496,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" />
             </svg>
-            <span style={{ fontSize: 17, fontWeight: 800 }}>ספריית מסלולים</span>
+            <span style={{ fontSize: 17, fontWeight: 800 }}>{t('routes.libraryTitle')}</span>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
             color: DIM, fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
@@ -491,10 +504,10 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
 
         {/* tabs */}
         <div style={{ display: 'flex', borderBottom: `1px solid ${BD}` }}>
-          {tabBtn('library', 'חיפוש מרוץ')}
-          {tabBtn('link', 'קובץ / קישור')}
+          {tabBtn('library', t('routes.tabSearch'))}
+          {tabBtn('link', t('routes.tabFile'))}
           {isOwner && tabBtn('inbox',
-            `הצעות מהקהילה${subs && subs.length ? ` (${subs.length})` : ''}`)}
+            t('routes.tabInbox') + (subs && subs.length ? ` (${subs.length})` : ''))}
         </div>
 
         {/* body */}
@@ -504,13 +517,13 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
             <>
               <input
                 value={q} onChange={(e) => setQ(e.target.value)} autoFocus
-                placeholder="שם מרוץ או עיר…"
+                placeholder={t('routes.searchPlaceholder')}
                 style={{ width: '100%', background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
                   borderRadius: 10, padding: '9px 12px', fontSize: 14, color: TEXT,
                   fontFamily: 'inherit', outline: 'none' }}
               />
               <div style={{ display: 'flex', gap: 6, margin: '10px 0 4px', alignItems: 'center', flexWrap: 'wrap' }}>
-                {[['all', 'הכל'], ['marathon', 'מרתון'], ['half_marathon', 'חצי מרתון']].map(([v, l]) => (
+                {[['all', t('routes.filterAll')], ['marathon', t('preset.marathon')], ['half_marathon', t('preset.half')]].map(([v, l]) => (
                   <button key={v} onClick={() => setDist(v)} style={{
                     padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                     borderRadius: 999, fontFamily: 'inherit',
@@ -526,7 +539,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                     background: showNewRace ? 'var(--rp-gold-wash)' : 'transparent',
                     color: showNewRace ? 'var(--rp-gold)' : DIM,
                     border: `1px solid ${showNewRace ? 'var(--rp-gold-line)' : BD}`,
-                  }}>{showNewRace ? 'ביטול' : '+ מרוץ חדש'}</button>
+                  }}>{showNewRace ? t('common.cancel') : t('routes.newRace')}</button>
                 )}
               </div>
 
@@ -534,38 +547,38 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                 <div style={{ margin: '8px 0 10px', padding: 12, border: `1px solid ${BD}`,
                   borderRadius: 10, background: 'var(--rp-surface-2)', display: 'grid', gap: 8 }}>
                   <input value={nr.name} onChange={setNrField('name')} style={fieldStyle}
-                    placeholder="שם באנגלית (למשל Eilat Marathon)" />
+                    placeholder={t('routes.nameEnPlaceholder')} />
                   <input value={nr.nameHe} onChange={setNrField('nameHe')} style={fieldStyle}
-                    placeholder="שם בעברית (אופציונלי)" />
+                    placeholder={t('routes.nameHePlaceholder')} />
                   <div style={{ display: 'flex', gap: 8 }}>
                     <input value={nr.city} onChange={setNrField('city')} style={{ ...fieldStyle, flex: 1 }}
-                      placeholder="עיר" />
+                      placeholder={t('routes.cityPlaceholder')} />
                     <input value={nr.cc} onChange={setNrField('cc')} maxLength={2}
                       style={{ ...fieldStyle, width: 96, flex: '0 0 auto', textTransform: 'uppercase' }}
-                      placeholder="מדינה" />
+                      placeholder={t('routes.countryPlaceholder')} />
                   </div>
                   <select value={nr.dist} onChange={setNrField('dist')} style={fieldStyle}>
-                    <option value="marathon">מרתון</option>
-                    <option value="half_marathon">חצי מרתון</option>
-                    <option value="custom">מרחק אחר</option>
+                    <option value="marathon">{t('preset.marathon')}</option>
+                    <option value="half_marathon">{t('preset.half')}</option>
+                    <option value="custom">{t('routes.distCustom')}</option>
                   </select>
                   <button onClick={createRace} disabled={busy} className="rp-btn rp-btn-primary">
-                    {busy ? 'שומר…' : 'צור מרוץ'}
+                    {busy ? t('common.saving') : t('routes.createRace')}
                   </button>
                 </div>
               )}
 
               {races === null && (
-                <div style={{ padding: 24, textAlign: 'center', color: DIM, fontSize: 13 }}>טוען…</div>
+                <div style={{ padding: 24, textAlign: 'center', color: DIM, fontSize: 13 }}>{t('common.loading')}</div>
               )}
 
               {races && races.length === 0 && (
                 <div style={{ padding: '16px 8px', textAlign: 'center', color: DIM, fontSize: 13 }}>
-                  הספרייה ריקה.
+                  {t('routes.libraryEmpty')}
                   {isOwner && (
                     <div style={{ marginTop: 10 }}>
                       <button onClick={runSeed} disabled={seeding} className="rp-btn rp-btn-primary">
-                        {seeding ? 'טוען…' : 'טען קטלוג מרוצים בסיסי'}
+                        {seeding ? t('common.loading') : t('routes.loadCatalog')}
                       </button>
                     </div>
                   )}
@@ -574,7 +587,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
 
               {races && races.length > 0 && filtered.length === 0 && (
                 <div style={{ padding: '16px 8px', textAlign: 'center', color: DIM, fontSize: 13 }}>
-                  אין תוצאות ל"{q}".
+                  {t('routes.noResults', { q })}
                 </div>
               )}
 
@@ -593,7 +606,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                         {rc.nameHe || rc.name}
                       </div>
                       <div style={{ fontSize: 11.5, color: DIM, marginTop: 2 }}>
-                        {rc.city}{rc.city ? ' · ' : ''}{DIST_LABEL[rc.distance] || ''}
+                        {rc.city}{rc.city ? ' · ' : ''}{DIST_LABEL[rc.distance] ? t(DIST_LABEL[rc.distance]) : ''}
                       </div>
                     </div>
                     <StatusBadge status={rc.routeStatus} />
@@ -604,7 +617,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
               {isOwner && races && races.length > 0 && races.length < 40 && (
                 <div style={{ marginTop: 12, textAlign: 'center' }}>
                   <button onClick={runSeed} disabled={seeding} className="rp-btn" style={{ fontSize: 12 }}>
-                    {seeding ? 'טוען…' : 'השלם קטלוג מרוצים בסיסי'}
+                    {seeding ? t('common.loading') : t('routes.completeCatalog')}
                   </button>
                 </div>
               )}
@@ -614,20 +627,19 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
           {tab === 'link' && (
             <>
               <div style={{ fontSize: 12.5, color: DIM, marginBottom: 10, lineHeight: 1.6 }}>
-                העלו קובץ <b>.gpx</b> מהמכשיר, או הדביקו כתובת ישירה לקובץ <b>.gpx</b>.
-                קישורי Strava/Komoot מלאים יתווספו בהמשך.
+                {t('routes.fileTabHint')}
               </div>
 
               <button onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}
                 className="rp-btn rp-btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-                {busy ? 'טוען…' : 'העלה קובץ GPX'}
+                {busy ? t('common.loading') : t('routes.uploadGpx')}
               </button>
               <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml,text/xml"
                 onChange={handleFile} style={{ display: 'none' }} />
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0' }}>
                 <span style={{ flex: 1, height: 1, background: BD }} />
-                <span style={{ fontSize: 11.5, color: DIM }}>או קישור</span>
+                <span style={{ fontSize: 11.5, color: DIM }}>{t('routes.orLink')}</span>
                 <span style={{ flex: 1, height: 1, background: BD }} />
               </div>
 
@@ -641,10 +653,10 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
               <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                 <button onClick={handleUrl} disabled={busy || !linkText.trim()}
                   className="rp-btn">
-                  {busy ? 'טוען…' : 'טען מקישור'}
+                  {busy ? t('common.loading') : t('routes.loadFromLink')}
                 </button>
                 {pending && (
-                  <button onClick={applyPending} className="rp-btn rp-btn-primary">צרף לתוכנית</button>
+                  <button onClick={applyPending} className="rp-btn rp-btn-primary">{t('routes.attachToPlan')}</button>
                 )}
               </div>
 
@@ -652,13 +664,13 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                 <div style={{ marginTop: 14, padding: 12, borderRadius: 10,
                   border: `1px solid ${BD}`, background: 'var(--rp-surface-2)' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
-                    שמירה בספרייה — שייכו למרוץ:
+                    {t('routes.saveToLibraryPick')}
                   </div>
                   <select value={selId} onChange={(e) => setSelId(e.target.value)}
                     style={{ width: '100%', background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
                       borderRadius: 8, padding: '8px 10px', fontSize: 13, color: TEXT,
                       fontFamily: 'inherit', outline: 'none' }}>
-                    <option value="">— בחרו מרוץ —</option>
+                    <option value="">{t('routes.pickRaceOption')}</option>
                     {(races || []).slice()
                       .sort((a, b) => String(a.name).localeCompare(b.name))
                       .map((rc) => (
@@ -669,7 +681,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                   </select>
                   <button onClick={savePendingToLibrary} disabled={busy || !selId}
                     className="rp-btn rp-btn-primary" style={{ marginTop: 10 }}>
-                    {busy ? 'שומר…' : 'שמור מסלול בספרייה'}
+                    {busy ? t('common.saving') : t('routes.saveRouteToLibrary')}
                   </button>
                 </div>
               )}
@@ -678,14 +690,14 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                 <div style={{ marginTop: 14, padding: 12, borderRadius: 10,
                   border: `1px solid ${BD}`, background: 'var(--rp-surface-2)' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
-                    הצעת המסלול למנהל המערכת — בחרו מרוץ:
+                    {t('routes.proposePick')}
                   </div>
                   <select value={selId} onChange={(e) => setSelId(e.target.value)}
                     disabled={submitted}
                     style={{ width: '100%', background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
                       borderRadius: 8, padding: '8px 10px', fontSize: 13, color: TEXT,
                       fontFamily: 'inherit', outline: 'none' }}>
-                    <option value="">— בחרו מרוץ —</option>
+                    <option value="">{t('routes.pickRaceOption')}</option>
                     {(races || []).slice()
                       .sort((a, b) => String(a.name).localeCompare(b.name))
                       .map((rc) => (
@@ -696,11 +708,10 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                   </select>
                   <button onClick={submitPending} disabled={busy || !selId || submitted}
                     className="rp-btn rp-btn-primary" style={{ marginTop: 10 }}>
-                    {submitted ? 'ההצעה נשלחה ✓' : busy ? 'שולח…' : 'שלח הצעה למנהל המערכת'}
+                    {submitted ? t('routes.submitSent') : busy ? t('routes.submitting') : t('routes.submitToAdmin')}
                   </button>
                   <div style={{ fontSize: 11, color: DIM, marginTop: 6, lineHeight: 1.5 }}>
-                    מנהל המערכת יבדוק את המסלול ויחליט אם לצרף אותו דרך קבע למרוץ.
-                    עד אז המסלול זמין לתוכנית שלכם.
+                    {t('routes.submitExplain')}
                   </div>
                 </div>
               )}
@@ -710,11 +721,11 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
           {tab === 'inbox' && isOwner && (
             <>
               {subs === null && (
-                <div style={{ padding: 24, textAlign: 'center', color: DIM, fontSize: 13 }}>טוען…</div>
+                <div style={{ padding: 24, textAlign: 'center', color: DIM, fontSize: 13 }}>{t('common.loading')}</div>
               )}
               {subs && subs.length === 0 && (
                 <div style={{ padding: '16px 8px', textAlign: 'center', color: DIM, fontSize: 13 }}>
-                  אין הצעות ממתינות מהקהילה.
+                  {t('routes.inboxEmpty')}
                 </div>
               )}
               {subs && subs.map((s) => {
@@ -727,12 +738,12 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                       style={{ cursor: 'pointer', padding: '10px 12px' }}>
                       <div style={{ fontSize: 13.5, fontWeight: 700 }}>{s.raceName || s.raceId}</div>
                       <div style={{ fontSize: 11.5, color: DIM, marginTop: 2 }}>
-                        {s.submitterEmail || 'משתמש'} · {round1(s.distanceKm || 0)} ק"מ ·
-                        {' '}↑{Math.round(s.gain || 0)} ↓{Math.round(s.loss || 0)} · {fmtSubDate(s.createdAt)}
+                        {s.submitterEmail || t('routes.user')} · {U ? U.fmtDist(s.distanceKm || 0, 1) : round1(s.distanceKm || 0)} ·
+                        {' '}↑{U ? U.elevInt(s.gain || 0) : Math.round(s.gain || 0)} ↓{U ? U.elevInt(s.loss || 0) : Math.round(s.loss || 0)} · {fmtSubDate(s.createdAt)}
                       </div>
                       {(s.courseName || s.source) && (
                         <div style={{ fontSize: 11, color: DIM, marginTop: 2 }}>
-                          {[s.courseName, s.source].filter(Boolean).join(' · ')}
+                          {[s.courseName, s.source ? sourceLabel(s.source) : ''].filter(Boolean).join(' · ')}
                         </div>
                       )}
                     </div>
@@ -740,13 +751,13 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                       <div style={{ padding: '0 12px 12px' }}>
                         {RouteMap && trk.length > 1 && <RouteMap track={trk} height={160} />}
                         <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                          <button className="rp-btn" onClick={() => previewSub(s)}>טען לתצוגה</button>
+                          <button className="rp-btn" onClick={() => previewSub(s)}>{t('routes.previewLoad')}</button>
                           <button className="rp-btn rp-btn-primary" disabled={subBusy === s.id}
                             onClick={() => approveSub(s)}>
-                            {subBusy === s.id ? 'מאשר…' : 'אשר ושייך למרוץ'}
+                            {subBusy === s.id ? t('routes.approving') : t('routes.approveAndAttach')}
                           </button>
                           <button className="rp-btn" disabled={subBusy === s.id}
-                            onClick={() => rejectSub(s)}>דחה</button>
+                            onClick={() => rejectSub(s)}>{t('routes.reject')}</button>
                         </div>
                       </div>
                     )}
@@ -781,7 +792,7 @@ window.RouteLibrary = RouteLibrary;
 // / delete on a multi-select. New races via the same "+ מרוץ חדש" form as the
 // route library.
 const DIST_OPTS = [
-  ['marathon', 'מרתון'], ['half_marathon', 'חצי מרתון'], ['custom', 'מרחק אחר'],
+  ['marathon', 'preset.marathon'], ['half_marathon', 'preset.half'], ['custom', 'routes.distCustom'],
 ];
 const KM_FOR = { marathon: 42.195, half_marathon: 21.0975 };
 
@@ -822,7 +833,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
       try {
         if (RP_FB_R && RP_FB_R.racesEnsureListed) {
           const n = await RP_FB_R.racesEnsureListed();
-          if (alive && n) setNote(`סומנו ${n} מרוצים ותיקים כ"מוצג".`);
+          if (alive && n) setNote(t('routes.backfilled', { n }));
         }
       } catch (e) { /* non-fatal */ }
       if (alive) load(true);
@@ -855,10 +866,10 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
     setBusy(r.id); setErr('');
     try {
       const res = await RP_FB_R.raceSave(r.id, { listed: next });
-      if (res !== 'ok') throw new Error('העדכון נדחה');
+      if (res !== 'ok') throw new Error(t('routes.updateRejected'));
       patch(r.id, { listed: next });
     } catch (e) {
-      setErr('לא ניתן לעדכן: ' + (e && e.message ? e.message : e));
+      setErr(t('routes.cannotUpdate', { msg: (e && e.message ? e.message : e) }));
     } finally { setBusy(''); }
   };
 
@@ -878,7 +889,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
     if (!RP_FB_R || !ef) return;
     const name = ef.name.trim();
     const nameHe = ef.nameHe.trim();
-    if (!name && !nameHe) { setErr('צריך שם למרוץ (עברית או אנגלית).'); return; }
+    if (!name && !nameHe) { setErr(t('routes.needRaceName')); return; }
     setBusy(r.id); setErr('');
     const cc = ef.cc.trim().toUpperCase().slice(0, 2);
     const tier = Math.max(1, Math.min(5, parseInt(ef.tier, 10) || 3));
@@ -890,12 +901,12 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
     next.search = buildSearch({ ...r, ...next });
     try {
       const res = await RP_FB_R.raceSave(r.id, next);
-      if (res !== 'ok') throw new Error('השמירה נדחתה');
+      if (res !== 'ok') throw new Error(t('routes.saveRejected'));
       patch(r.id, next);
       closeEdit();
-      setNote(`"${nameHe || name}" עודכן.`);
+      setNote(t('routes.raceUpdated', { name: nameHe || name }));
     } catch (e) {
-      setErr('שמירה נכשלה: ' + (e && e.message ? e.message : e));
+      setErr(t('routes.saveFailed', { msg: (e && e.message ? e.message : e) }));
     } finally { setBusy(''); }
   };
 
@@ -908,23 +919,23 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
     };
     try {
       const res = await RP_FB_R.raceSave(r.id, cleared);
-      if (res !== 'ok') throw new Error('הפעולה נדחתה');
+      if (res !== 'ok') throw new Error(t('routes.actionRejected'));
       patch(r.id, cleared);
       setDetachId('');
-      setNote(`המסלול נותק מ"${r.nameHe || r.name}".`);
+      setNote(t('routes.routeDetachedFrom', { name: r.nameHe || r.name }));
     } catch (e) {
-      setErr('ניתוק המסלול נכשל: ' + (e && e.message ? e.message : e));
+      setErr(t('routes.detachFailed', { msg: (e && e.message ? e.message : e) }));
     } finally { setBusy(''); }
   };
 
   // ── attach a route while editing (file upload or a direct .gpx link) ────
   const acceptRouteGpx = (xml, sourceUrl, fallbackName) => {
     if (!looksLikeXml(xml) && !/<trkpt|<rtept/i.test(xml)) {
-      throw new Error(sourceUrl ? 'הקישור לא מחזיר קובץ GPX' : 'הקובץ אינו קובץ GPX תקין');
+      throw new Error(sourceUrl ? t('routes.urlNotGpx') : t('routes.fileNotGpx'));
     }
     const parsed = parseGpx(xml);
     const built = courseFromGpx(parsed, xml, parsed.name || fallbackName,
-      sourceUrl ? 'קישור' : 'קובץ GPX');
+      sourceUrl ? 'link' : 'file');
     setPend({
       course: built.course, gpxText: built.gpxText,
       profileFlat: built.profileFlat, trackFlat: built.trackFlat,
@@ -940,7 +951,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
     try {
       acceptRouteGpx(await file.text(), null, file.name.replace(/\.gpx$/i, ''));
     } catch (er) {
-      setErr('קריאת הקובץ נכשלה: ' + (er && er.message ? er.message : er));
+      setErr(t('routes.fileReadFailed', { msg: (er && er.message ? er.message : er) }));
     } finally { setRouteLoading(false); }
   };
 
@@ -950,11 +961,10 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
     setRouteLoading(true); setErr('');
     try {
       const res = await fetch(url);
-      if (!res.ok) throw new Error('השרת החזיר ' + res.status);
+      if (!res.ok) throw new Error(t('routes.serverReturned', { status: res.status }));
       acceptRouteGpx(await res.text(), url);
     } catch (e) {
-      setErr('טעינת המסלול מהקישור נכשלה: ' + (e && e.message ? e.message : e)
-        + '. ייתכן שהאתר חוסם טעינה ישירה — הורידו את הקובץ והעלו אותו.');
+      setErr(t('routes.urlLoadFailed', { msg: (e && e.message ? e.message : e) }));
     } finally { setRouteLoading(false); }
   };
 
@@ -976,12 +986,12 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
         sourceUrl: pend.sourceUrl || null,
       };
       const res = await RP_FB_R.raceSave(r.id, next);
-      if (res !== 'ok') throw new Error('השמירה נדחתה');
+      if (res !== 'ok') throw new Error(t('routes.saveRejected'));
       patch(r.id, next);
       setPend(null); setRouteUrl('');
-      setNote(`מסלול צורף ל"${r.nameHe || r.name}" · ${round1(c.dist || 0)} ק"מ.`);
+      setNote(t('routes.routeAttachedTo', { name: r.nameHe || r.name, dist: U ? U.fmtDist(c.dist || 0, 1) : round1(c.dist || 0) }));
     } catch (e) {
-      setErr('צירוף המסלול נכשל: ' + (e && e.message ? e.message : e));
+      setErr(t('routes.attachFailed', { msg: (e && e.message ? e.message : e) }));
     } finally { setBusy(''); }
   };
 
@@ -990,13 +1000,13 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
     setBusy(r.id); setErr('');
     try {
       const res = await RP_FB_R.raceDelete(r.id);
-      if (res !== 'ok') throw new Error('המחיקה נדחתה');
+      if (res !== 'ok') throw new Error(t('routes.deleteRejected'));
       setRaces((list) => (list || []).filter((x) => x.id !== r.id));
       setSel((s) => { const n = new Set(s); n.delete(r.id); return n; });
       setConfirmId('');
-      setNote(`"${r.nameHe || r.name}" נמחק מהקטלוג.`);
+      setNote(t('routes.raceDeleted', { name: r.nameHe || r.name }));
     } catch (e) {
-      setErr('מחיקה נכשלה: ' + (e && e.message ? e.message : e));
+      setErr(t('routes.deleteFailed', { msg: (e && e.message ? e.message : e) }));
     } finally { setBusy(''); }
   };
 
@@ -1023,9 +1033,9 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
     }
     setSel(new Set());
     setBusy('');
-    setNote(kind === 'delete' ? `${ok} מרוצים נמחקו.`
-      : kind === 'show' ? `${ok} מרוצים סומנו כ"מוצג".`
-        : `${ok} מרוצים הוסתרו.`);
+    setNote(kind === 'delete' ? t('routes.bulkDeleted', { ok })
+      : kind === 'show' ? t('routes.bulkShown', { ok })
+        : t('routes.bulkHidden', { ok }));
   };
 
   const toggleSel = (id) => setSel((s) => {
@@ -1041,7 +1051,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
     if (!RP_FB_R) return;
     const name = nr.name.trim();
     const nameHe = nr.nameHe.trim();
-    if (!name && !nameHe) { setErr('צריך שם למרוץ (אנגלית או עברית).'); return; }
+    if (!name && !nameHe) { setErr(t('routes.needRaceName')); return; }
     setBusy('*'); setErr(''); setNote('');
     try {
       const taken = new Set((races || []).map((r) => r.id));
@@ -1055,13 +1065,13 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
       };
       rec.search = buildSearch(rec);
       const res = await RP_FB_R.raceSave(id, rec);
-      if (res !== 'ok') throw new Error('היצירה נדחתה');
+      if (res !== 'ok') throw new Error(t('routes.createRejected'));
       setNr({ name: '', nameHe: '', city: '', cc: '', dist: 'marathon' });
       setShowNewRace(false);
       await load(true);
-      setNote(`המרוץ "${nameHe || name}" נוסף לקטלוג.`);
+      setNote(t('routes.raceAddedToCatalog', { name: nameHe || name }));
     } catch (e) {
-      setErr('יצירת מרוץ נכשלה: ' + (e && e.message ? e.message : e));
+      setErr(t('routes.createRaceFailed', { msg: (e && e.message ? e.message : e) }));
     } finally { setBusy(''); }
   };
 
@@ -1096,7 +1106,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
         position: 'fixed', inset: 0, zIndex,
         background: 'rgba(9,11,22,.78)', backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 20, direction: 'rtl', fontFamily: 'var(--rp-font-ui)', color: TEXT,
+        padding: 20, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: TEXT,
       }}
     >
       <style>{`
@@ -1112,7 +1122,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
         background: 'var(--rp-surface)', border: `1px solid ${BD}`,
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 680, maxHeight: '88vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        boxShadow: 'var(--rp-shadow-modal)', direction: 'rtl',
+        boxShadow: 'var(--rp-shadow-modal)', direction: I18N.dir,
       }}>
 
         {/* header */}
@@ -1123,10 +1133,10 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3Z" /><path d="M9 3v15M15 6v15" />
             </svg>
-            <span style={{ fontSize: 17, fontWeight: 800 }}>ניהול מרוצים</span>
+            <span style={{ fontSize: 17, fontWeight: 800 }}>{t('routes.adminTitle')}</span>
             {races && (
               <span style={{ fontSize: 11.5, color: DIM }}>
-                {shownCount} מוצגים · {races.length} סה"כ
+                {t('routes.shownOfTotal', { shown: shownCount, total: races.length })}
               </span>
             )}
           </div>
@@ -1138,22 +1148,22 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
         <div style={{ padding: '12px 16px 8px', borderBottom: `1px solid ${BD}` }}>
           <input
             value={q} onChange={(e) => setQ(e.target.value)} autoFocus
-            placeholder="שם מרוץ או עיר…"
+            placeholder={t('routes.searchPlaceholder')}
             style={{ width: '100%', background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
               borderRadius: 10, padding: '9px 12px', fontSize: 14, color: TEXT,
               fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
           />
           <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            {[['all', 'הכל'], ['shown', 'מוצגים'], ['hidden', 'מוסתרים']].map(([v, l]) => (
+            {[['all', t('routes.filterAll')], ['shown', t('routes.filterShown')], ['hidden', t('routes.filterHidden')]].map(([v, l]) => (
               <button key={v} onClick={() => setVis(v)} style={pill(vis === v)}>{l}</button>
             ))}
             <span style={{ width: 1, height: 18, background: BD, margin: '0 2px' }} />
-            {[['all', 'כל המרחקים'], ['marathon', 'מרתון'], ['half_marathon', 'חצי מרתון']].map(([v, l]) => (
+            {[['all', t('routes.filterAllDist')], ['marathon', t('preset.marathon')], ['half_marathon', t('preset.half')]].map(([v, l]) => (
               <button key={v} onClick={() => setDist(v)} style={pill(dist === v)}>{l}</button>
             ))}
             <button onClick={() => { setShowNewRace((v) => !v); setErr(''); }}
               style={{ ...pill(showNewRace), marginInlineStart: 'auto' }}>
-              {showNewRace ? 'ביטול' : '+ מרוץ חדש'}
+              {showNewRace ? t('common.cancel') : t('routes.newRace')}
             </button>
           </div>
 
@@ -1161,21 +1171,21 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
             <div style={{ margin: '10px 0 4px', padding: 12, border: `1px solid ${BD}`,
               borderRadius: 10, background: 'var(--rp-surface-2)', display: 'grid', gap: 8 }}>
               <input value={nr.nameHe} onChange={setNrField('nameHe')} style={fieldStyle}
-                placeholder="שם בעברית" />
+                placeholder={t('routes.nameHeShort')} />
               <input value={nr.name} onChange={setNrField('name')} style={fieldStyle}
-                placeholder="שם באנגלית (אופציונלי)" />
+                placeholder={t('routes.nameEnShort')} />
               <div style={{ display: 'flex', gap: 8 }}>
                 <input value={nr.city} onChange={setNrField('city')} style={{ ...fieldStyle, flex: 1 }}
-                  placeholder="עיר" />
+                  placeholder={t('routes.cityPlaceholder')} />
                 <input value={nr.cc} onChange={setNrField('cc')} maxLength={2}
                   style={{ ...fieldStyle, width: 92, flex: '0 0 auto', textTransform: 'uppercase' }}
-                  placeholder="מדינה" />
+                  placeholder={t('routes.countryPlaceholder')} />
               </div>
               <select value={nr.dist} onChange={setNrField('dist')} style={fieldStyle}>
-                {DIST_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                {DIST_OPTS.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
               </select>
               <button onClick={createRace} disabled={busy === '*'} className="rp-btn rp-btn-primary">
-                {busy === '*' ? 'שומר…' : 'צור מרוץ'}
+                {busy === '*' ? t('common.saving') : t('routes.createRace')}
               </button>
             </div>
           )}
@@ -1186,16 +1196,16 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
             padding: '9px 16px', borderBottom: `1px solid ${BD}`, background: 'var(--rp-gold-wash)' }}>
             <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--rp-gold)' }}>
-              נבחרו {sel.size}
+              {t('routes.selectedN', { n: sel.size })}
             </span>
-            <button disabled={busy === '*'} onClick={() => bulk('show')} style={miniBtn()}>הצג</button>
-            <button disabled={busy === '*'} onClick={() => bulk('hide')} style={miniBtn()}>הסתר</button>
+            <button disabled={busy === '*'} onClick={() => bulk('show')} style={miniBtn()}>{t('routes.show')}</button>
+            <button disabled={busy === '*'} onClick={() => bulk('hide')} style={miniBtn()}>{t('routes.hide')}</button>
             <button disabled={busy === '*'} onClick={() => bulk('delete')}
               style={miniBtn({ color: 'var(--rp-danger, #d9736a)', borderColor: 'var(--rp-danger, #d9736a)' })}>
-              {busy === '*' ? 'מוחק…' : 'מחק'}
+              {busy === '*' ? t('common.deleting') : t('common.delete')}
             </button>
             <button onClick={() => setSel(new Set())} style={{ ...miniBtn(), marginInlineStart: 'auto' }}>
-              נקה בחירה
+              {t('routes.clearSelection')}
             </button>
           </div>
         )}
@@ -1203,11 +1213,11 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
         {/* list */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '6px 16px 14px', minHeight: 0 }}>
           {races === null && (
-            <div style={{ padding: 24, textAlign: 'center', color: DIM, fontSize: 13 }}>טוען…</div>
+            <div style={{ padding: 24, textAlign: 'center', color: DIM, fontSize: 13 }}>{t('common.loading')}</div>
           )}
           {races && races.length === 0 && (
             <div style={{ padding: '16px 8px', textAlign: 'center', color: DIM, fontSize: 13 }}>
-              אין מרוצים בקטלוג. הוסיפו מרוץ חדש למעלה.
+              {t('routes.catalogEmpty')}
             </div>
           )}
           {races && races.length > 0 && (
@@ -1215,7 +1225,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
               fontSize: 11.5, color: DIM }}>
               <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelAll}
                 style={{ accentColor: 'var(--rp-gold)' }} />
-              <span>בחר הכל ({filtered.length})</span>
+              <span>{t('routes.selectAll', { n: filtered.length })}</span>
             </div>
           )}
 
@@ -1240,81 +1250,81 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
                       <span style={{ fontSize: 13.5, fontWeight: 700 }}>{r.nameHe || r.name}</span>
                       {!shown && (
                         <span style={{ fontSize: 10, fontWeight: 700, color: DIM,
-                          border: `1px solid ${BD}`, borderRadius: 999, padding: '1px 7px' }}>מוסתר</span>
+                          border: `1px solid ${BD}`, borderRadius: 999, padding: '1px 7px' }}>{t('routes.hidden')}</span>
                       )}
                     </div>
                     <div style={{ fontSize: 11.5, color: DIM, marginTop: 2 }}>
-                      {[r.city, DIST_LABEL[r.distance] || 'מרחק אחר',
-                        hasRoute ? 'מסלול זמין' : 'ללא מסלול'].filter(Boolean).join(' · ')}
+                      {[r.city, DIST_LABEL[r.distance] ? t(DIST_LABEL[r.distance]) : t('routes.distCustom'),
+                        hasRoute ? t('routes.routeAvailable') : t('routes.noRoute')].filter(Boolean).join(' · ')}
                     </div>
 
                     {editing && ef && (
                       <div style={{ display: 'grid', gap: 7, marginTop: 10 }}>
                         <input value={ef.nameHe} onChange={(e) => setEf((s) => ({ ...s, nameHe: e.target.value }))}
-                          style={fieldStyle} placeholder="שם בעברית" />
+                          style={fieldStyle} placeholder={t('routes.nameHeShort')} />
                         <input value={ef.name} onChange={(e) => setEf((s) => ({ ...s, name: e.target.value }))}
-                          style={fieldStyle} placeholder="שם באנגלית" />
+                          style={fieldStyle} placeholder={t('routes.nameEnShort2')} />
                         <div style={{ display: 'flex', gap: 7 }}>
                           <input value={ef.city} onChange={(e) => setEf((s) => ({ ...s, city: e.target.value }))}
-                            style={{ ...fieldStyle, flex: 1 }} placeholder="עיר" />
+                            style={{ ...fieldStyle, flex: 1 }} placeholder={t('routes.cityPlaceholder')} />
                           <input value={ef.cc} maxLength={2}
                             onChange={(e) => setEf((s) => ({ ...s, cc: e.target.value }))}
                             style={{ ...fieldStyle, width: 80, flex: '0 0 auto', textTransform: 'uppercase' }}
-                            placeholder="מדינה" />
+                            placeholder={t('routes.countryPlaceholder')} />
                         </div>
                         <div style={{ display: 'flex', gap: 7 }}>
                           <select value={ef.dist} onChange={(e) => setEf((s) => ({ ...s, dist: e.target.value }))}
                             style={{ ...fieldStyle, flex: 1 }}>
-                            {DIST_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                            {DIST_OPTS.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
                           </select>
                           <input type="number" min="1" max="5" value={ef.tier}
                             onChange={(e) => setEf((s) => ({ ...s, tier: e.target.value }))}
-                            style={{ ...fieldStyle, width: 96, flex: '0 0 auto' }} aria-label="עדיפות" />
+                            style={{ ...fieldStyle, width: 96, flex: '0 0 auto' }} aria-label={t('routes.priority')} />
                         </div>
-                        <div style={{ fontSize: 10.5, color: DIM }}>עדיפות 1–5 (1 = ראש הרשימה)</div>
+                        <div style={{ fontSize: 10.5, color: DIM }}>{t('routes.priorityHint')}</div>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button onClick={() => saveEdit(r)} disabled={rowBusy}
                             className="rp-btn rp-btn-primary" style={{ flex: 1, justifyContent: 'center' }}>
-                            {rowBusy ? 'שומר…' : 'שמור'}
+                            {rowBusy ? t('common.saving') : t('common.save')}
                           </button>
-                          <button onClick={closeEdit} className="rp-btn">ביטול</button>
+                          <button onClick={closeEdit} className="rp-btn">{t('common.cancel')}</button>
                         </div>
 
                         {/* route: attach / replace / detach */}
                         <div style={{ marginTop: 2, padding: 10, border: `1px solid ${BD}`,
                           borderRadius: 8 }}>
                           <div style={{ fontSize: 11.5, fontWeight: 700, color: DIM, marginBottom: 8 }}>
-                            מסלול
+                            {t('routes.route')}
                           </div>
 
                           {hasRoute && detachId !== r.id && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8,
                               flexWrap: 'wrap', marginBottom: 8 }}>
                               <span style={{ fontSize: 12 }}>
-                                מסלול מצורף · {round1(r.distanceKm || 0)} ק"מ
+                                {t('routes.routeAttached')} · {U ? U.fmtDist(r.distanceKm || 0, 1) : round1(r.distanceKm || 0)}
                                 {(r.gain || r.loss)
-                                  ? ` · ↑${Math.round(r.gain || 0)} ↓${Math.round(r.loss || 0)}` : ''}
+                                  ? ` · ↑${U ? U.elevInt(r.gain || 0) : Math.round(r.gain || 0)} ↓${U ? U.elevInt(r.loss || 0) : Math.round(r.loss || 0)}` : ''}
                               </span>
                               <button disabled={rowBusy} onClick={() => setDetachId(r.id)}
-                                style={miniBtn()}>ניתוק</button>
+                                style={miniBtn()}>{t('routes.detach')}</button>
                             </div>
                           )}
                           {hasRoute && detachId === r.id && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8,
                               flexWrap: 'wrap', marginBottom: 8 }}>
-                              <span style={{ fontSize: 11.5, color: DIM }}>לנתק את המסלול?</span>
+                              <span style={{ fontSize: 11.5, color: DIM }}>{t('routes.detachQ')}</span>
                               <button disabled={rowBusy} onClick={() => detachRoute(r)}
                                 style={miniBtn({ color: 'var(--rp-gold)', borderColor: 'var(--rp-gold-line)' })}>
-                                {rowBusy ? 'מנתק…' : 'כן, נתק'}
+                                {rowBusy ? t('routes.detaching') : t('routes.yesDetach')}
                               </button>
-                              <button onClick={() => setDetachId('')} style={miniBtn()}>ביטול</button>
+                              <button onClick={() => setDetachId('')} style={miniBtn()}>{t('common.cancel')}</button>
                             </div>
                           )}
 
                           <button onClick={() => routeFileRef.current && routeFileRef.current.click()}
                             disabled={routeLoading} className="rp-btn"
                             style={{ width: '100%', justifyContent: 'center' }}>
-                            {routeLoading ? 'טוען…' : 'העלה קובץ GPX'}
+                            {routeLoading ? t('common.loading') : t('routes.uploadGpx')}
                           </button>
                           <input ref={routeFileRef} type="file"
                             accept=".gpx,application/gpx+xml,text/xml"
@@ -1322,7 +1332,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0' }}>
                             <span style={{ flex: 1, height: 1, background: BD }} />
-                            <span style={{ fontSize: 11, color: DIM }}>או קישור</span>
+                            <span style={{ fontSize: 11, color: DIM }}>{t('routes.orLink')}</span>
                             <span style={{ flex: 1, height: 1, background: BD }} />
                           </div>
                           <div style={{ display: 'flex', gap: 7 }}>
@@ -1331,33 +1341,33 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
                               placeholder="https://…/route.gpx"
                               style={{ ...fieldStyle, flex: 1, direction: 'ltr' }} />
                             <button onClick={loadRouteUrl} disabled={routeLoading || !routeUrl.trim()}
-                              className="rp-btn" style={{ flex: '0 0 auto' }}>טען</button>
+                              className="rp-btn" style={{ flex: '0 0 auto' }}>{t('common.load')}</button>
                           </div>
 
                           {pend && (
                             <div style={{ marginTop: 10, padding: 9, borderRadius: 8,
                               background: 'var(--rp-surface)', border: `1px solid ${BD}` }}>
                               <div style={{ fontSize: 12, fontWeight: 700 }}>
-                                {pend.course.name || 'מסלול חדש'}
+                                {pend.course.name || t('routes.newRouteLabel')}
                               </div>
                               <div style={{ fontSize: 11.5, color: DIM, marginTop: 2 }}>
-                                {round1(pend.course.dist || 0)} ק"מ · ↑{Math.round(pend.course.gain || 0)}
-                                {' '}↓{Math.round(pend.course.loss || 0)}
-                                {pend.course.profile ? '' : ' · אין נתוני גובה'}
+                                {U ? U.fmtDist(pend.course.dist || 0, 1) : round1(pend.course.dist || 0)} · ↑{U ? U.elevInt(pend.course.gain || 0) : Math.round(pend.course.gain || 0)}
+                                {' '}↓{U ? U.elevInt(pend.course.loss || 0) : Math.round(pend.course.loss || 0)}
+                                {pend.course.profile ? '' : ' · ' + t('setup.noElevation')}
                               </div>
                               {hasRoute && (
                                 <div style={{ fontSize: 11, color: 'var(--rp-danger, #d9736a)', marginTop: 4 }}>
-                                  המרוץ כבר כולל מסלול — שמירה תחליף אותו.
+                                  {t('routes.willReplaceRoute')}
                                 </div>
                               )}
                               <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
                                 <button onClick={() => saveRoute(r)} disabled={rowBusy}
                                   className="rp-btn rp-btn-primary"
                                   style={{ flex: 1, justifyContent: 'center' }}>
-                                  {rowBusy ? 'שומר…' : hasRoute ? 'החלף מסלול' : 'שמור מסלול'}
+                                  {rowBusy ? t('common.saving') : hasRoute ? t('routes.replaceRoute') : t('routes.saveRoute')}
                                 </button>
                                 <button onClick={() => { setPend(null); setRouteUrl(''); }}
-                                  className="rp-btn">בטל</button>
+                                  className="rp-btn">{t('common.cancel')}</button>
                               </div>
                             </div>
                           )}
@@ -1369,30 +1379,30 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 9 }}>
                         <button disabled={rowBusy} onClick={() => toggleListed(r)}
                           style={miniBtn(shown ? {} : { color: 'var(--rp-gold)', borderColor: 'var(--rp-gold-line)' })}>
-                          {rowBusy ? '…' : shown ? 'הסתר' : 'הצג'}
+                          {rowBusy ? '…' : shown ? t('routes.hide') : t('routes.show')}
                         </button>
-                        <button disabled={rowBusy} onClick={() => startEdit(r)} style={miniBtn()}>עריכה</button>
+                        <button disabled={rowBusy} onClick={() => startEdit(r)} style={miniBtn()}>{t('routes.edit')}</button>
                         <button disabled={rowBusy} onClick={() => startEdit(r)}
                           style={miniBtn(hasRoute ? {} : { color: 'var(--rp-gold)', borderColor: 'var(--rp-gold-line)' })}>
-                          {hasRoute ? 'החלף מסלול' : 'הוסף מסלול'}
+                          {hasRoute ? t('routes.replaceRoute') : t('routes.addRoute')}
                         </button>
                         {confirmId !== r.id && (
                           <button disabled={rowBusy} onClick={() => { setConfirmId(r.id); setDetachId(''); }}
                             style={miniBtn({ color: 'var(--rp-danger, #d9736a)', borderColor: 'var(--rp-danger, #d9736a)' })}>
-                            מחיקה
+                            {t('common.delete')}
                           </button>
                         )}
                         {confirmId === r.id && (
                           <>
                             <span style={{ fontSize: 11.5, color: 'var(--rp-danger, #d9736a)', alignSelf: 'center' }}>
-                              למחוק לצמיתות?
+                              {t('routes.deletePermanentlyQ')}
                             </span>
                             <button disabled={rowBusy} onClick={() => del(r)}
                               style={miniBtn({ color: '#fff', background: 'var(--rp-danger, #d9736a)',
                                 borderColor: 'var(--rp-danger, #d9736a)' })}>
-                              {rowBusy ? 'מוחק…' : 'מחק'}
+                              {rowBusy ? t('common.deleting') : t('common.delete')}
                             </button>
-                            <button onClick={() => setConfirmId('')} style={miniBtn()}>ביטול</button>
+                            <button onClick={() => setConfirmId('')} style={miniBtn()}>{t('common.cancel')}</button>
                           </>
                         )}
                       </div>
@@ -1405,7 +1415,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
 
           {races && races.length > 0 && filtered.length === 0 && (
             <div style={{ padding: '16px 8px', textAlign: 'center', color: DIM, fontSize: 13 }}>
-              אין תוצאות לסינון הנוכחי.
+              {t('routes.noFilterResults')}
             </div>
           )}
 
@@ -1437,4 +1447,5 @@ window.RP_ROUTES = {
   },
   buildSubmissionRecord,
   courseFromSubmission,
+  sourceLabel,
 };

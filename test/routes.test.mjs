@@ -35,9 +35,9 @@ console.log('\n── decodeFlatCourse ──');
     trackFlat: [32.1, 34.8, 32.2, 34.9],
     distanceKm: 2, gain: 10, loss: 5, startLat: 32.1, startLon: 34.8,
   };
-  const c = H.decodeFlatCourse(rec, { name: 'X', source: 'S' });
+  const c = H.decodeFlatCourse(rec, { name: 'X', source: 'link' });
   assert(c.name === 'X', 'name from opts');
-  assert(c.source === 'S', 'source from opts');
+  assert(c.source === 'link', 'source from opts');
   assert(c.profile.length === 3, 'profile decoded to 3 points');
   assert(approx(c.profile[1].d, 1) && approx(c.profile[1].ele, 20), 'profile pair [1]');
   assert(c.track.length === 2 && approx(c.track[0][0], 32.1), 'track decoded');
@@ -64,7 +64,7 @@ console.log('── courseFromRace / courseFromSubmission ──');
   const rc = { nameHe: 'מרתון חיפה', name: 'Haifa', profileFlat: [0, 0, 5, 120], trackFlat: [32.8, 35, 32.81, 35.01] };
   const c = H.courseFromRace(rc);
   assert(c.name === 'מרתון חיפה', 'race uses nameHe');
-  assert(c.source === 'ספריית מסלולים', 'race source label');
+  assert(c.source === 'library', 'race source code');
 
   const sub = {
     courseName: 'לופ הכרמל', raceName: 'מרתון חיפה',
@@ -73,7 +73,7 @@ console.log('── courseFromRace / courseFromSubmission ──');
   };
   const s = H.courseFromSubmission(sub);
   assert(s.name === 'לופ הכרמל', 'submission uses courseName');
-  assert(s.source === 'הצעה מהקהילה', 'submission source label');
+  assert(s.source === 'community', 'submission source code');
   assert(s.profile.length === 3 && s.track.length === 2, 'submission decoded');
 
   const s2 = H.courseFromSubmission({ raceName: 'מרוץ X', trackFlat: [] });
@@ -114,12 +114,12 @@ console.log('── buildSubmissionRecord ──');
   assert(r.startLat === null && r.startLon === null, 'no coords -> null');
   assert(r.raceName === '', 'no race name -> empty string');
   assert(r.profileFlat === null, 'no profileFlat -> null');
-  assert(r.source === 'קישור', 'sourceUrl present -> "קישור"');
+  assert(r.source === 'link', 'sourceUrl present -> "link"');
   assert(r.gpxPath === null, 'no gpxPath -> null');
 }
 {
   const r = H.buildSubmissionRecord({ course: { name: 'R', dist: 5 }, trackFlat: [] }, { id: 'x' }, null);
-  assert(r.source === 'קובץ GPX', 'no source, no url -> "קובץ GPX"');
+  assert(r.source === 'file', 'no source, no url -> "file"');
 }
 
 console.log('── fmtSubDate ──');
