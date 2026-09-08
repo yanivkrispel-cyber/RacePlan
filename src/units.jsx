@@ -112,6 +112,20 @@ const UNITS = (() => {
     return { system, imperial: isImp() };
   }
 
+  // Apply a signed-in user's saved unit preference when there is no local choice.
+  try {
+    if (win.RP_FIREBASE && win.RP_FIREBASE.ready) {
+      win.RP_FIREBASE.ready.then(() => {
+        try {
+          const pu = win.RP_FIREBASE.profile && win.RP_FIREBASE.profile.units;
+          let hadLocal = false;
+          try { hadLocal = !!win.localStorage.getItem('rp-units'); } catch (e) {}
+          if (pu && !hadLocal) setSystem(pu);
+        } catch (e) {}
+      }).catch(() => {});
+    }
+  } catch (e) {}
+
   return {
     get system() { return system; },
     get imperial() { return isImp(); },

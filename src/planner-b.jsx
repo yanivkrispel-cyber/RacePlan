@@ -789,10 +789,70 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
   ), document.body);
 }
 
+// ── SettingsSheet ───────────────────────────────────────────────────────
+// Language + measurement units. Changes take effect immediately (the root
+// subscribes via I18N.useI18n / UNITS.useUnits) and persist to localStorage +
+// the signed-in user's profile.
+function SettingsSheet({ onClose }) {
+  const [, force] = React.useState(0);
+  const bump = () => force((x) => x + 1);
+  const locale = I18N ? I18N.locale : 'he';
+  const system = U ? U.system : 'metric';
+  const locales = I18N ? I18N.locales : ['he'];
+  const names = (I18N && I18N.localeNames) || { he: 'he', en: 'en', fr: 'fr', es: 'es' };
+
+  const row = (active, label, onClick, key) => (
+    <button key={key} onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+      width: '100%', padding: '11px 14px', borderRadius: 10, cursor: 'pointer',
+      fontFamily: 'inherit', fontSize: 14, fontWeight: 600, marginBottom: 6,
+      background: active ? 'var(--rp-gold-wash)' : 'var(--rp-surface-2)',
+      border: `1px solid ${active ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
+      color: active ? 'var(--rp-gold)' : 'var(--rp-text)',
+    }}>
+      <span>{label}</span>
+      {active && (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+      )}
+    </button>
+  );
+
+  return ReactDOM.createPortal((
+    <div className="rp-cq-scope" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1300, background: 'rgba(9,11,22,.80)',
+        backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 18, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
+      <div style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
+        borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 380,
+        boxShadow: 'var(--rp-shadow-modal)', padding: '16px 18px 18px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div style={{ fontSize: 16, fontWeight: 800 }}>{t('settings.title')}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--rp-text-dim)', fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
+        </div>
+
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--rp-text-dim)',
+          letterSpacing: '.06em', textTransform: 'uppercase', margin: '2px 2px 8px' }}>{t('settings.language')}</div>
+        {locales.map((l) => row(locale === l, names[l] || l,
+          () => { if (I18N) { I18N.setLocale(l); bump(); } }, l))}
+
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--rp-text-dim)',
+          letterSpacing: '.06em', textTransform: 'uppercase', margin: '14px 2px 8px' }}>{t('settings.units')}</div>
+        {row(system === 'metric', t('settings.metric'),
+          () => { if (U) { U.setSystem('metric'); bump(); } }, 'metric')}
+        {row(system === 'imperial', t('settings.imperial'),
+          () => { if (U) { U.setSystem('imperial'); bump(); } }, 'imperial')}
+      </div>
+    </div>
+  ), document.body);
+}
+
 // ── HubScreen ────────────────────────────────────────────────────────────
 // Post-sign-in home: plan a new race, resume the current one, or open a saved
 // plan. onEnter(handoff) drops the user into the planner.
 function HubScreen({ isOwner, userName, onEnter }) {
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [setupOpen, setSetupOpen] = React.useState(false);
   const [savedOpen, setSavedOpen] = React.useState(false);
   const [raceAdminOpen, setRaceAdminOpen] = React.useState(false);
@@ -914,6 +974,19 @@ function HubScreen({ isOwner, userName, onEnter }) {
       {raceAdminOpen && isOwner && RaceAdminPanel && (
         <RaceAdminPanel onClose={() => setRaceAdminOpen(false)} />
       )}
+
+      <button onClick={() => setSettingsOpen(true)} aria-label={t('settings.title')}
+        style={{ position: 'fixed', top: 'calc(12px + env(safe-area-inset-top))', insetInlineEnd: 14,
+          width: 38, height: 38, borderRadius: 999, cursor: 'pointer',
+          background: 'var(--rp-surface)', border: '1px solid var(--rp-line)', color: 'var(--rp-text-dim)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.22.66.22 1v.09c0 .68.38 1.29 1 1.51H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
+      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
     </div>
   );
 }
@@ -955,6 +1028,11 @@ function openStraightToPlanner() {
 }
 
 function PlannerB() {
+  // Subscribe the whole tree to language + units switches (nothing here is
+  // React.memo'd, so a root re-render re-runs every t()/UNITS call below).
+  if (I18N && I18N.useI18n) I18N.useI18n();
+  if (U && U.useUnits) U.useUnits();
+
   const [fbUser, setFbUser] = React.useState(() => (RP_FB ? RP_FB.user : undefined));
   React.useEffect(() => (RP_FB ? RP_FB.onAuth((u) => setFbUser(u)) : undefined), []);
 
@@ -1065,6 +1143,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   const [goalOpen, setGoalOpen] = React.useState(false);
   const [valueEditor, setValueEditor] = React.useState(null); // { id, type, value }
   const [showNewPlanConfirm, setShowNewPlanConfirm] = React.useState(false);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [showRouteLib, setShowRouteLib] = React.useState(false);
   const [routeLibInit, setRouteLibInit] = React.useState(null);
   const [lastRoute, setLastRoute] = React.useState(null);
@@ -1501,6 +1580,13 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
               <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
             {t('planner.reset')}
           </button>
+
+          <button className="rp-btn" onClick={() => setSettingsOpen(true)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.22.66.22 1v.09c0 .68.38 1.29 1 1.51H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+            {t('settings.open')}
+          </button>
         </div>
 
         {/* pace chart */}
@@ -1718,6 +1804,8 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           />
         </div>
       )}
+
+      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
 
       <CopyToast show={!!toastMsg} text={toastMsg} />
     </div>

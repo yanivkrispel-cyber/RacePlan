@@ -1540,6 +1540,21 @@ const I18N = (() => {
     return { t, locale, dir: RP_RTL.has(locale) ? 'rtl' : 'ltr' };
   }
 
+  // If the user is signed in and has a saved locale preference, apply it — but
+  // only when there is no explicit local choice (?lang= or a previous switch).
+  try {
+    if (win.RP_FIREBASE && win.RP_FIREBASE.ready) {
+      win.RP_FIREBASE.ready.then(() => {
+        try {
+          const pl = win.RP_FIREBASE.profile && win.RP_FIREBASE.profile.locale;
+          let hadLocal = false;
+          try { hadLocal = !!win.localStorage.getItem('rp-locale'); } catch (e) {}
+          if (pl && !hadLocal) setLocale(pl);
+        } catch (e) {}
+      }).catch(() => {});
+    }
+  } catch (e) {}
+
   return {
     t,
     get locale() { return locale; },

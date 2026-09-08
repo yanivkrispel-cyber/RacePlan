@@ -3,12 +3,13 @@
 // (DICTS + resolveLocale/applyParams/pluralCategory/lookup/makeT) is evaluated.
 // Run with: node test/i18n.test.mjs
 
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', 'src');
+const JSX = readdirSync(SRC).filter((f) => f.endsWith('.jsx'));
 
 let passed = 0, failed = 0;
 function assert(cond, msg) {
@@ -103,6 +104,81 @@ console.log('── makeT (interpolation + fallback) ──');
   // here every key exists, so just assert fr resolves and interpolates
   assert(t('setup.previewLine', { count: 3, fast: '5:00', slow: '5:30', per: '/ km', total: '25:00' })
     .indexOf('{') === -1, 'fr previewLine fully interpolated');
+}
+
+console.log('── translations differ from Hebrew ──');
+{
+  // A value that still equals its he counterpart in en/fr/es is almost always
+  // an un-translated string. Whitelist brand names / symbols / shared tokens.
+  const SAME_OK = new Set([
+    'signin.google',        // "…with Google" — brand kept, checked loosely below
+  ]);
+  const SYMBOLIC = (v) => /^[\s\d.,:%°+\-–—·/×xX()✓]*$/.test(v) || /^\{[^}]+\}/.test(v);
+  let untranslated = 0;
+  for (const key of Object.keys(H.DICTS.he)) {
+    if (SAME_OK.has(key)) continue;
+    const he = H.DICTS.he[key];
+    if (SYMBOLIC(he)) continue;
+    for (const loc of ['en', 'fr', 'es']) {
+      if (H.DICTS[loc][key] === he) {
+        untranslated++;
+        if (untranslated <= 12) console.error(`      ${loc} ${key}: still "${he}"`);
+      }
+    }
+  }
+  assert(untranslated === 0, `no en/fr/es value equals its Hebrew source (${untranslated})`);
+}
+
+console.log('── every t() key in src exists in the he dictionary ──');
+{
+  const known = new Set(Object.keys(H.DICTS.he));
+  // also accept plural bases: a key used with {count} may only have .one/.other
+  const pluralBases = new Set();
+  for (const k of known) { const m = k.match(/^(.*)\.(one|two|few|many|other)$/); if (m) pluralBases.add(m[1]); }
+  const reCall = /\bt\(\s*'([a-zA-Z][\w.]*?)'/g;
+  const missing = [];
+  for (const f of JSX) {
+    if (f === 'i18n.jsx') continue;
+    const txt = readFileSync(join(SRC, f), 'utf8');
+    let m;
+    while ((m = reCall.exec(txt))) {
+      const key = m[1];
+      if (key.endsWith('.')) continue; // dynamic: t('ns.' + variable)
+      if (!known.has(key) && !pluralBases.has(key)) missing.push(`src/${f}: t('${key}')`);
+    }
+  }
+  if (missing.length) [...new Set(missing)].slice(0, 20).forEach((x) => console.error('      ' + x));
+  assert(missing.length === 0, `all t('…') keys are defined (${[...new Set(missing)].length} unknown)`);
+}
+
+console.log('── no Hebrew literals left outside i18n.jsx ──');
+{
+  const reHeb = /[א-ת]/;
+  const offenders = [];
+  for (const f of JSX) {
+    if (f === 'i18n.jsx') continue;
+    const txt = readFileSync(join(SRC, f), 'utf8');
+    txt.split('\n').forEach((line, i) => {
+      const noComment = line.replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '');
+      if (reHeb.test(noComment)) offenders.push(`src/${f}:${i + 1}  ${line.trim().slice(0, 80)}`);
+    });
+  }
+  if (offenders.length) offenders.slice(0, 20).forEach((o) => console.error('      ' + o));
+  assert(offenders.length === 0, `no Hebrew string literals outside i18n.jsx (${offenders.length})`);
+}
+
+console.log('── no physical directional CSS in src ──');
+{
+  const rePhysical = /(margin|padding)(Right|Left)\s*:|textAlign\s*:\s*['"](right|left)['"]/;
+  const offenders = [];
+  for (const f of JSX) {
+    const txt = readFileSync(join(SRC, f), 'utf8');
+    txt.split('\n').forEach((line, i) => {
+      if (rePhysical.test(line)) offenders.push(`src/${f}:${i + 1}  ${line.trim().slice(0, 80)}`);
+    });
+  }
+  if (offenders.length) offenders.slice(0, 20).forEach((o) => console.error('      ' + o));
+  assert(offenders.length === 0, `no physical margin/padding/text-align in src/ (${offenders.length})`);
 }
 
 // ── Summary ────────────────────────────────────────────────────────────
