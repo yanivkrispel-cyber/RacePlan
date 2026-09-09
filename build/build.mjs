@@ -31,6 +31,8 @@ const JSX_FILES = [
   'src/i18n.jsx',
   'src/engine.jsx',
   'src/units.jsx',
+  'src/heat-tables.jsx',
+  'src/heat.jsx',
   'src/chart.jsx',
   'src/shared.jsx',
   'src/core.jsx',

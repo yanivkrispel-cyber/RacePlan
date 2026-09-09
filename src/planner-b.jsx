@@ -4,7 +4,7 @@ const { useRacePlan, formatPace, formatClock, parseClock, formatKm, PaceChart,
         LogoSlot, ZoneLegend, SegmentsTable, PRESETS, generatePlan,
         parseGpx, ElevationChart, RouteMap, round2, clearSavedPlan,
         AthleteDB, AthletePanel, MyPlansDB, MyPlansPanel, RouteLibrary, RaceAdminPanel,
-        PrintableSummary, ActionSheet, RP_EXPORT, ValueEditor,
+        PrintableSummary, ActionSheet, RP_EXPORT, ValueEditor, RP_HEAT,
         computeSegmentElevations, buildPlanSegments } = window;
 const I18N = window.I18N;
 const t = (I18N && I18N.t) || ((k) => k);
@@ -118,57 +118,97 @@ function WeatherCard({ weather, status }) {
     );
   }
   if (!weather) return null;
+  const isHistorical = weather.source === 'historical-avg';
   const wet = weather.precipProb > 50;
   return (
-    <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap', alignItems: 'stretch',
-      background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
+    <div style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
       borderRadius: 'var(--rp-r-12)', overflow: 'hidden', marginBottom: 10 }}>
+      <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap', alignItems: 'stretch' }}>
 
-      {/* temperature */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', flex: '1 1 auto' }}>
-        <span style={{ fontSize: 26, lineHeight: 1 }}>{_weatherIcon(weather.code)}</span>
-        <div>
-          <div style={{ fontFamily: 'var(--rp-font-display)', fontSize: 21, fontWeight: 800,
-            color: 'var(--rp-text)', lineHeight: 1 }}>{weather.temp}°C</div>
-          <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>{t('weather.feelsLike', { temp: weather.feelsLike })}</div>
-        </div>
-      </div>
-
-      <div style={{ width: 1, background: 'var(--rp-line)', alignSelf: 'stretch', margin: '8px 0' }} />
-
-      {/* wind */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', flex: '1 1 auto' }}>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--rp-gold)" strokeWidth="2.2"
-          strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0,
-            transform: `rotate(${weather.windDir}deg)`, transition: 'transform var(--rp-t-phase)' }}>
-          <line x1="12" y1="20" x2="12" y2="4" />
-          <polyline points="5 11 12 4 19 11" />
-        </svg>
-        <div>
-          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--rp-text)', lineHeight: 1 }}>
-            {U ? Math.round(U.dispSpeed(weather.windSpeed)) : weather.windSpeed} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--rp-text-dim)' }}>{U ? U.speedUnit() : t('units.kmh')}</span>
+        {/* temperature + humidity */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', flex: '1 1 auto' }}>
+          <span style={{ fontSize: 26, lineHeight: 1 }}>{isHistorical ? '📊' : _weatherIcon(weather.code)}</span>
+          <div>
+            <div style={{ fontFamily: 'var(--rp-font-display)', fontSize: 21, fontWeight: 800,
+              color: 'var(--rp-text)', lineHeight: 1 }}>{weather.temp}°C</div>
+            <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>
+              {isHistorical
+                ? t('weather.humidityOnly', { pct: weather.humidityPct })
+                : t('weather.feelsLike', { temp: weather.feelsLike })}
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>{t('weather.wind', { dir: _windDirLabel(weather.windDir) })}</div>
         </div>
-      </div>
 
-      <div style={{ width: 1, background: 'var(--rp-line)', alignSelf: 'stretch', margin: '8px 0' }} />
+        {!isHistorical && <div style={{ width: 1, background: 'var(--rp-line)', alignSelf: 'stretch', margin: '8px 0' }} />}
 
-      {/* precipitation */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', flex: '1 1 auto' }}>
-        <svg width="18" height="18" viewBox="0 0 24 24"
-          fill={wet ? 'var(--rp-gold)' : 'var(--rp-text-dim)'}
-          stroke={wet ? 'var(--rp-gold)' : 'var(--rp-text-dim)'} strokeWidth="1" style={{ flexShrink: 0 }}>
-          <path d="M12 2C6 10 4 14 4 16a8 8 0 0 0 16 0c0-2-2-6-8-14z" />
-        </svg>
-        <div>
-          <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1,
-            color: wet ? 'var(--rp-gold)' : 'var(--rp-text)' }}>
-            {weather.precipProb}%
+        {/* wind */}
+        {!isHistorical && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', flex: '1 1 auto' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--rp-gold)" strokeWidth="2.2"
+              strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0,
+                transform: `rotate(${weather.windDir}deg)`, transition: 'transform var(--rp-t-phase)' }}>
+              <line x1="12" y1="20" x2="12" y2="4" />
+              <polyline points="5 11 12 4 19 11" />
+            </svg>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--rp-text)', lineHeight: 1 }}>
+                {U ? Math.round(U.dispSpeed(weather.windSpeed)) : weather.windSpeed} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--rp-text-dim)' }}>{U ? U.speedUnit() : t('units.kmh')}</span>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>{t('weather.wind', { dir: _windDirLabel(weather.windDir) })}</div>
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>{t('weather.rainChance')}</div>
+        )}
+
+        {!isHistorical && <div style={{ width: 1, background: 'var(--rp-line)', alignSelf: 'stretch', margin: '8px 0' }} />}
+
+        {/* precipitation */}
+        {!isHistorical && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', flex: '1 1 auto' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24"
+              fill={wet ? 'var(--rp-gold)' : 'var(--rp-text-dim)'}
+              stroke={wet ? 'var(--rp-gold)' : 'var(--rp-text-dim)'} strokeWidth="1" style={{ flexShrink: 0 }}>
+              <path d="M12 2C6 10 4 14 4 16a8 8 0 0 0 16 0c0-2-2-6-8-14z" />
+            </svg>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1,
+                color: wet ? 'var(--rp-gold)' : 'var(--rp-text)' }}>
+                {weather.precipProb}%
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>{t('weather.rainChance')}</div>
+            </div>
+          </div>
+        )}
+      </div>
+      {isHistorical && (
+        <div style={{ padding: '6px 18px 10px', fontSize: 10.5, color: 'var(--rp-text-dim)' }}>
+          {t('weather.historicalNote')}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Heat/humidity impact on the current plan's pace — a starting estimate, not
+// a hard number (see docs/HEAT.md for the model + its caveats).
+function HeatAdvisoryCard({ advisory, onApply }) {
+  if (!advisory) return null;
+  const per = U ? U.paceUnit() : t('units.perKm');
+  const deltaDisp = Math.round(U ? U.dispPaceSec(advisory.deltaSecPerKm) : advisory.deltaSecPerKm);
+  const warnKey = advisory.warnings[0]; // one is plenty; they rarely combine usefully
+  return (
+    <div style={{ background: 'var(--rp-gold-wash)', border: '1px solid var(--rp-gold-line)',
+      borderRadius: 'var(--rp-r-12)', padding: '11px 16px', marginBottom: 10,
+      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 20, flex: '0 0 auto' }}>🌡️</span>
+      <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text)' }}>
+          {t('heat.summary', { sec: deltaDisp, unit: per })}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 2 }}>
+          {warnKey ? t('heat.warn.' + warnKey) : t('heat.disclaimer')}
         </div>
       </div>
+      <button className="rp-btn" style={{ flex: '0 0 auto' }} onClick={onApply}>{t('heat.applyButton')}</button>
     </div>
   );
 }
@@ -243,15 +283,15 @@ function CopyToast({ show, text }) {
 // A button that fires once on tap and auto-repeats (accelerating) while held —
 // so h/m/s can be set entirely by tapping, no keyboard.
 function HoldButton({ delta, onStep, children, style, ariaLabel }) {
-  const t = React.useRef(null);
-  const stop = () => { if (t.current) { clearTimeout(t.current); t.current = null; } };
+  const timer = React.useRef(null);
+  const stop = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
   React.useEffect(() => stop, []);
   const start = (e) => {
     e.preventDefault();
     onStep(delta);
     let gap = 300;
-    const tick = () => { onStep(delta); gap = Math.max(45, gap * 0.82); t.current = setTimeout(tick, gap); };
-    t.current = setTimeout(tick, 380);
+    const tick = () => { onStep(delta); gap = Math.max(45, gap * 0.82); timer.current = setTimeout(tick, gap); };
+    timer.current = setTimeout(tick, 380);
   };
   return (
     <button type="button" aria-label={ariaLabel || (delta < 0 ? t('common.decrease') : t('common.add'))}
@@ -1175,31 +1215,114 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
       setWeatherStatus('idle');
       return;
     }
+    let cancelled = false;
     setWeatherStatus('loading');
     setWeather(null);
     const hour = raceTime
       ? Math.min(23, Math.round(parseInt(raceTime.split(':')[0], 10) + parseInt(raceTime.split(':')[1] || '0', 10) / 60))
       : 7;
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-      `&hourly=temperature_2m,apparent_temperature,windspeed_10m,winddirection_10m,precipitation_probability,weathercode` +
-      `&timezone=auto&start_date=${raceDate}&end_date=${raceDate}`;
-    fetch(url)
-      .then((r) => r.json())
-      .then((data) => {
+    const daysOut = Math.round((new Date(raceDate + 'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
+
+    // Within Open-Meteo's live forecast window: real forecast for that hour.
+    const loadForecast = () => {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+        `&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,windspeed_10m,winddirection_10m,precipitation_probability,weathercode` +
+        `&timezone=auto&start_date=${raceDate}&end_date=${raceDate}`;
+      return fetch(url).then((r) => r.json()).then((data) => {
         const h = data.hourly;
-        if (!h || !h.temperature_2m) { setWeatherStatus('idle'); return; }
-        setWeather({
+        if (!h || !isFinite(h.temperature_2m?.[hour])) return null;
+        return {
+          source: 'forecast',
           temp: Math.round(h.temperature_2m[hour]),
+          humidityPct: Math.round(h.relative_humidity_2m[hour]),
           feelsLike: Math.round(h.apparent_temperature[hour]),
           windSpeed: Math.round(h.windspeed_10m[hour]),
           windDir: Math.round(h.winddirection_10m[hour]),
           precipProb: h.precipitation_probability?.[hour] ?? 0,
           code: h.weathercode[hour],
-        });
+        };
+      });
+    };
+
+    // Race is further out than the forecast horizon: average the same
+    // calendar date over the last few years as a "typical conditions"
+    // estimate (clearly labelled — not a live forecast).
+    const loadHistoricalAverage = () => {
+      const [, mm, dd] = raceDate.split('-');
+      const thisYear = new Date().getFullYear();
+      const years = [1, 2, 3].map((n) => thisYear - n);
+      return Promise.all(years.map((y) => {
+        const d = `${y}-${mm}-${dd}`;
+        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}` +
+          `&hourly=temperature_2m,relative_humidity_2m&timezone=auto&start_date=${d}&end_date=${d}`;
+        return fetch(url).then((r) => r.json()).then((data) => {
+          const h = data.hourly;
+          if (!h || !isFinite(h.temperature_2m?.[hour])) return null;
+          return { temp: h.temperature_2m[hour], humidityPct: h.relative_humidity_2m[hour] };
+        }).catch(() => null);
+      })).then((rows) => {
+        const ok = rows.filter(Boolean);
+        if (!ok.length) return null;
+        return {
+          source: 'historical-avg',
+          temp: Math.round(ok.reduce((a, r) => a + r.temp, 0) / ok.length),
+          humidityPct: Math.round(ok.reduce((a, r) => a + r.humidityPct, 0) / ok.length),
+        };
+      });
+    };
+
+    const load = daysOut <= 15 ? loadForecast : loadHistoricalAverage;
+    load()
+      .then((w) => {
+        if (cancelled) return;
+        if (!w) { setWeatherStatus('idle'); return; }
+        setWeather(w);
         setWeatherStatus('ok');
       })
-      .catch(() => setWeatherStatus('idle'));
+      .catch(() => { if (!cancelled) setWeatherStatus('idle'); });
+    return () => { cancelled = true; };
   }, [p.course?.lat, p.course?.lon, raceDate, raceTime]);
+
+  // The heat model's "effort mode" expects an ideal-conditions pace as input.
+  // Freeze that baseline in state the moment a fresh weather reading arrives
+  // (not on every render) — otherwise, after the user applies the
+  // suggestion, the plan's average pace already includes the heat penalty,
+  // and re-running the same transform on it would double-count the
+  // slowdown. This must be React state (not a ref): a ref mutation doesn't
+  // itself trigger the re-render that lets the memo below pick it up.
+  const [heatBaselinePace, setHeatBaselinePace] = React.useState(null);
+  const [heatApplied, setHeatApplied] = React.useState(false);
+  React.useEffect(() => {
+    setHeatBaselinePace(weather ? plan.avgPace : null);
+    setHeatApplied(false);
+    // plan.avgPace intentionally excluded — this should only re-arm on a new
+    // weather reading (new course/date/time), not on every plan edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weather]);
+
+  // Heat/humidity pace impact vs. that frozen baseline (see docs/HEAT.md).
+  // null when there's nothing useful to show (no weather yet, already
+  // applied for this reading, or conditions are in the "no adjustment" band).
+  const heatAdvisory = React.useMemo(() => {
+    if (!RP_HEAT || !weather || heatApplied) return null;
+    if (!isFinite(weather.temp) || !isFinite(weather.humidityPct)) return null;
+    if (!(heatBaselinePace > 0) || !(plan.totalDist > 0)) return null;
+    const deltaSec = RP_HEAT.paceDeltaSec(heatBaselinePace, weather.temp, weather.humidityPct);
+    if (deltaSec < 1) return null; // negligible — don't bother the user
+    const adjustedGoalSec = Math.round((heatBaselinePace + deltaSec) * plan.totalDist);
+    return {
+      deltaSecPerKm: deltaSec,
+      adjustedGoalSec,
+      warnings: RP_HEAT.warnings(weather.temp, weather.humidityPct),
+    };
+  }, [weather, heatApplied, heatBaselinePace, plan.totalDist]);
+
+  const applyHeatAdjustment = () => {
+    if (!heatAdvisory) return;
+    p.replaceSegments(scalePlanToGoal(p.segments, heatAdvisory.adjustedGoalSec));
+    setHeatApplied(true);
+    showToast(t('heat.applied'));
+  };
 
   const onGpx = async (e) => {
     const file = e.target.files && e.target.files[0];
@@ -1506,6 +1629,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
         </div>
 
         <WeatherCard weather={weather} status={weatherStatus} />
+        <HeatAdvisoryCard advisory={heatAdvisory} onApply={applyHeatAdjustment} />
 
         {/* actions — all visible, centred, wrapping (sticky bottom bar on phones) */}
         <div className="rp-toolbar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap',

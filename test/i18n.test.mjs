@@ -159,7 +159,9 @@ console.log('── no Hebrew literals left outside i18n.jsx ──');
     if (f === 'i18n.jsx') continue;
     const txt = readFileSync(join(SRC, f), 'utf8');
     txt.split('\n').forEach((line, i) => {
-      const noComment = line.replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '');
+      // strip a trailing \r (CRLF checkouts) first — otherwise `.` can't
+      // reach end-of-string on a `//...$` comment and the strip silently no-ops
+      const noComment = line.replace(/\r$/, '').replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '');
       if (reHeb.test(noComment)) offenders.push(`src/${f}:${i + 1}  ${line.trim().slice(0, 80)}`);
     });
   }
