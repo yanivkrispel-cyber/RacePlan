@@ -12,15 +12,15 @@ const z2 = (n) => String(n).padStart(2, '0');
 // small accelerating hold-repeat button (mirrors planner-b's HoldButton, kept
 // local so this file has no cross-module dependency)
 function HoldBtn({ delta, onStep, children, ariaLabel }) {
-  const t = React.useRef(null);
-  const stop = () => { if (t.current) { clearTimeout(t.current); t.current = null; } };
+  const timer = React.useRef(null);
+  const stop = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
   React.useEffect(() => stop, []);
   const start = (e) => {
     e.preventDefault();
     onStep(delta);
     let gap = 320;
-    const tick = () => { onStep(delta); gap = Math.max(45, gap * 0.82); t.current = setTimeout(tick, gap); };
-    t.current = setTimeout(tick, 400);
+    const tick = () => { onStep(delta); gap = Math.max(45, gap * 0.82); timer.current = setTimeout(tick, gap); };
+    timer.current = setTimeout(tick, 400);
   };
   return (
     <button type="button" aria-label={ariaLabel || (delta < 0 ? t('common.decrease') : t('common.add'))}
