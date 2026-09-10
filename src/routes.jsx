@@ -500,7 +500,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
           {tab === 'library' && (
             <>
               <input
-                value={q} onChange={(e) => setQ(e.target.value)} autoFocus
+                value={q} onChange={(e) => setQ(e.target.value)}
                 placeholder={t('routes.searchPlaceholder')}
                 style={{ width: '100%', background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
                   borderRadius: 10, padding: '9px 12px', fontSize: 14, color: TEXT,
