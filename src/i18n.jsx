@@ -397,6 +397,8 @@ const DICTS = {
     'view3d.play': 'הפעל',
     'view3d.pause': 'השהה',
     'view3d.close': 'סגירה',
+    'view3d.startGate': 'זינוק',
+    'view3d.finishGate': 'סיום',
   },
 
   en: {
@@ -773,6 +775,8 @@ const DICTS = {
     'view3d.play': 'Play',
     'view3d.pause': 'Pause',
     'view3d.close': 'Close',
+    'view3d.startGate': 'START',
+    'view3d.finishGate': 'FINISH',
   },
 
   fr: {
@@ -1149,6 +1153,8 @@ const DICTS = {
     'view3d.play': 'Lecture',
     'view3d.pause': 'Pause',
     'view3d.close': 'Fermer',
+    'view3d.startGate': 'DÉPART',
+    'view3d.finishGate': 'ARRIVÉE',
   },
 
   es: {
@@ -1525,6 +1531,8 @@ const DICTS = {
     'view3d.play': 'Reproducir',
     'view3d.pause': 'Pausa',
     'view3d.close': 'Cerrar',
+    'view3d.startGate': 'SALIDA',
+    'view3d.finishGate': 'META',
   },
 };
 

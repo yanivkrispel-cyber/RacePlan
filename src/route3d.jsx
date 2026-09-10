@@ -86,6 +86,142 @@ function makeRoadTexture(THREE) {
   return tex;
 }
 
+function _fmtClock(totalSec) {
+  const s = Math.max(0, Math.round(totalSec));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const mm = String(m).padStart(2, '0'), ss = String(sec).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
+
+// The stable (side, up) frame at sample index i — world-up × tangent, same
+// construction buildRoadStrips uses below, reused here to plant gates and
+// split signs flush with the road's own orientation at that point.
+function frameAt(THREE, points, i) {
+  const n = points.length;
+  const up = new THREE.Vector3(0, 1, 0);
+  const prev = points[Math.max(0, i - 1)], next = points[Math.min(n - 1, i + 1)];
+  const tangent = new THREE.Vector3().subVectors(next, prev);
+  if (tangent.lengthSq() < 1e-8) tangent.set(1, 0, 0); else tangent.normalize();
+  const side = new THREE.Vector3().crossVectors(up, tangent);
+  if (side.lengthSq() < 1e-8) side.set(1, 0, 0); else side.normalize();
+  const localUp = new THREE.Vector3().crossVectors(tangent, side).normalize();
+  return { tangent, side, up: localUp };
+}
+
+// A start/finish arch: two posts planted either side of the road plus a
+// banner spanning between them near the top, textured with the given label.
+// `checkered` swaps the banner background for a finish-flag check pattern.
+function makeBannerTexture(THREE, label, checkered) {
+  const w = 512, h = 160;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (checkered) {
+    const cell = 20;
+    for (let y = 0; y < h; y += cell) {
+      for (let x = 0; x < w; x += cell) {
+        ctx.fillStyle = ((x / cell + y / cell) % 2 === 0) ? '#12141a' : '#f4f2ea';
+        ctx.fillRect(x, y, cell, cell);
+      }
+    }
+    ctx.fillStyle = 'rgba(10,12,18,.74)';
+    ctx.fillRect(0, h * 0.3, w, h * 0.4);
+  } else {
+    ctx.fillStyle = '#1E6FEB';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(255,255,255,.08)';
+    ctx.fillRect(0, 0, w, h * 0.5);
+  }
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '700 74px Heebo, system-ui, sans-serif';
+  ctx.fillText(label, w / 2, h / 2 + 4);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function buildGate(THREE, points, index, roadWidth, roadThickness, label, checkered, postColor) {
+  const { tangent, side, up } = frameAt(THREE, points, index);
+  const base = points[index];
+  const postHeight = roadWidth * 3.2;
+  const postRadius = roadWidth * 0.05;
+  const halfSpan = roadWidth / 2 + roadWidth * 0.18;
+
+  const group = new THREE.Group();
+  const postMat = new THREE.MeshStandardMaterial({ color: postColor, roughness: 0.55, metalness: 0.25 });
+  const postGeo = new THREE.CylinderGeometry(postRadius, postRadius, postHeight, 10);
+  [1, -1].forEach((sgn) => {
+    const post = new THREE.Mesh(postGeo, postMat);
+    post.position.copy(base).addScaledVector(side, sgn * halfSpan).addScaledVector(up, postHeight / 2 + roadThickness / 2);
+    post.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
+    group.add(post);
+  });
+
+  const bannerWidth = halfSpan * 2;
+  const bannerHeight = postHeight * 0.3;
+  const banner = new THREE.Mesh(
+    new THREE.PlaneGeometry(bannerWidth, bannerHeight),
+    new THREE.MeshStandardMaterial({ map: makeBannerTexture(THREE, label, checkered), side: THREE.DoubleSide, roughness: 0.85 }),
+  );
+  banner.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(side, up, tangent));
+  banner.position.copy(base).addScaledVector(up, postHeight * 0.88 + roadThickness / 2);
+  group.add(banner);
+  return group;
+}
+
+// A roadside km-marker sign: a thin post with a camera-facing sprite on top
+// (Sprite billboards automatically in Three.js, so the text always reads
+// correctly regardless of orbit angle) showing the checkpoint's cumulative
+// distance and cumulative planned time — the same pair of numbers a real
+// pacing/split sign on a race course would carry.
+function makeSignTexture(THREE, line1, line2) {
+  const w = 300, h = 190;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#f7f4ea';
+  ctx.fillRect(0, 0, w, h);
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = '#12315c';
+  ctx.strokeRect(5, 5, w - 10, h - 10);
+  ctx.fillStyle = '#12315c';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '700 46px Heebo, system-ui, sans-serif';
+  ctx.fillText(line1, w / 2, h * 0.4);
+  ctx.font = '600 34px Heebo, system-ui, sans-serif';
+  ctx.fillText(line2, w / 2, h * 0.74);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function buildSplitSign(THREE, points, index, roadWidth, roadThickness, distText, timeText) {
+  const { side, up } = frameAt(THREE, points, index);
+  const base = points[index];
+  const postHeight = roadWidth * 2.1;
+
+  const group = new THREE.Group();
+  const post = new THREE.Mesh(
+    new THREE.CylinderGeometry(roadWidth * 0.035, roadWidth * 0.035, postHeight, 8),
+    new THREE.MeshStandardMaterial({ color: 0x2a2e38, roughness: 0.7 }),
+  );
+  const sideOffset = roadWidth / 2 + roadWidth * 0.28;
+  const basePos = base.clone().addScaledVector(side, sideOffset);
+  post.position.copy(basePos).addScaledVector(up, postHeight / 2 + roadThickness / 2);
+  post.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
+  group.add(post);
+
+  const signW = roadWidth * 1.5, signH = signW * (190 / 300);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeSignTexture(THREE, distText, timeText) }));
+  sprite.scale.set(signW, signH, 1);
+  sprite.position.copy(basePos).addScaledVector(up, postHeight + roadThickness / 2 + signH * 0.45);
+  group.add(sprite);
+  return group;
+}
+
 // Build a flat road ribbon following `points`, using a stable custom frame
 // (world-up × tangent) rather than the curve's own Frenet frames — Frenet
 // frames can twist/roll unpredictably along the long near-flat stretches a
@@ -262,7 +398,7 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
     scene.add(new THREE.Line(geo, dropMat));
   }
 
-  // ── Start / finish markers ──
+  // ── Start / finish markers + gates ──
   const markerGeo = new THREE.SphereGeometry(tubeRadius * 1.8, 16, 16);
   const startMesh = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({ color: 0x8091BE, emissive: 0x1a1f33 }));
   startMesh.position.copy(points[0]); startMesh.position.y += SURFACE_Y;
@@ -270,6 +406,18 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   const finishMesh = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({ color: 0xC15A2E, emissive: 0x2a0f05 }));
   finishMesh.position.copy(points[points.length - 1]); finishMesh.position.y += SURFACE_Y;
   scene.add(finishMesh);
+
+  scene.add(buildGate(THREE, points, 0, roadWidth, roadThickness, t('view3d.startGate'), false, 0x8091BE));
+  scene.add(buildGate(THREE, points, points.length - 1, roadWidth, roadThickness, t('view3d.finishGate'), true, 0xC15A2E));
+
+  // ── Split signs — one per interior plan-segment boundary, showing the
+  // checkpoint's cumulative distance and cumulative planned time, like a
+  // real course's pacing/km-marker signage ──
+  (rows || []).slice(0, -1).forEach((r) => {
+    const idx = Math.max(0, Math.min(points.length - 1, Math.round((r.cumDist / (totalDist || 1)) * (points.length - 1))));
+    const distText = U ? U.fmtDist(r.cumDist) : `${r.cumDist.toFixed(1)} km`;
+    scene.add(buildSplitSign(THREE, points, idx, roadWidth, roadThickness, distText, _fmtClock(r.cumTime)));
+  });
 
   // ── The runner ──
   const runner = new THREE.Mesh(
