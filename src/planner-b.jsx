@@ -596,6 +596,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
   const [course, setCourse] = React.useState(null); // {name,dist,profile?,track?,...}
   const [customKm, setCustomKm] = React.useState('');
   const [routeOpen, setRouteOpen] = React.useState(false);
+  const [entryMode, setEntryMode] = React.useState(null); // null | 'route' | 'distance'
   const fileRef = React.useRef(null);
 
   const [gh, setGh] = React.useState(0);
@@ -707,42 +708,76 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
             color: 'var(--rp-text-dim)', fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
         </div>
 
-        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', marginBottom: 7 }}>{t('setup.distance')}</div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {(PRESETS || []).map((pr) => chip(
-            !!course && Math.abs((course.dist || 0) - pr.km) < 0.05 && !course.profile,
-            (window.presetLabel ? window.presetLabel(pr) : pr.km), () => pickPreset(pr.km, presetName(pr)), pr.km))}
-        </div>
-        <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
-          <input value={customKm} onChange={(e) => setCustomKm(e.target.value)}
-            inputMode="decimal" placeholder={U && U.imperial ? t('setup.customMi') : t('setup.customKm')}
-            style={{ flex: 1, background: 'var(--rp-surface-2)', border: '1px solid var(--rp-line-input)',
-              borderRadius: 8, padding: '8px 10px', fontSize: 13, color: 'var(--rp-text)',
-              fontFamily: 'inherit', outline: 'none' }} />
-          <button onClick={pickCustom} className="rp-btn" style={{ flex: '0 0 auto' }}>{t('common.add')}</button>
-        </div>
+        <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml,text/xml"
+          onChange={onGpxFile} style={{ display: 'none' }} />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0 4px' }}>
-          <div style={{ flex: 1, height: 1, background: 'var(--rp-line)' }} />
-          <span style={{ fontSize: 11, color: 'var(--rp-text-dim)' }}>{t('setup.fromRoute')}</span>
-          <div style={{ flex: 1, height: 1, background: 'var(--rp-line)' }} />
-        </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {RouteLibrary && (
-            <button className="rp-btn" style={{ flex: 1, justifyContent: 'center' }}
-              onClick={() => setRouteOpen(true)}>{t('setup.routeLibrary')}</button>
-          )}
-          <button className="rp-btn" style={{ flex: 1, justifyContent: 'center' }}
-            onClick={() => fileRef.current && fileRef.current.click()}>{t('setup.importGpx')}</button>
-          <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml,text/xml"
-            onChange={onGpxFile} style={{ display: 'none' }} />
-        </div>
+        {!course && !entryMode && (
+          <>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', marginBottom: 8 }}>
+              {t('setup.howToStart')}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <HubCard primary onClick={() => setEntryMode('route')}
+                title={t('setup.hasRoute')} sub={t('setup.hasRouteSub')}
+                icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" /></svg>} />
+              <HubCard onClick={() => setEntryMode('distance')}
+                title={t('setup.justDistance')} sub={t('setup.justDistanceSub')}
+                icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="4" y1="12" x2="20" y2="12" /><circle cx="4" cy="12" r="2.2" fill="currentColor" stroke="none" /><circle cx="20" cy="12" r="2.2" fill="currentColor" stroke="none" /></svg>} />
+            </div>
+          </>
+        )}
+
+        {!course && entryMode === 'route' && (
+          <>
+            <button onClick={() => setEntryMode(null)} className="rp-btn" style={{ marginBottom: 10, fontSize: 12.5, padding: '6px 10px' }}>
+              {I18N.dir === 'rtl' ? '›' : '‹'} {t('common.back')}
+            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {RouteLibrary && (
+                <HubCard primary onClick={() => setRouteOpen(true)}
+                  title={t('setup.routeLibrary')} sub={t('setup.routeLibrarySub')}
+                  icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" /></svg>} />
+              )}
+              <HubCard onClick={() => fileRef.current && fileRef.current.click()}
+                title={t('setup.importGpx')} sub={t('setup.importGpxSub')}
+                icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>} />
+            </div>
+          </>
+        )}
+
+        {!course && entryMode === 'distance' && (
+          <>
+            <button onClick={() => setEntryMode(null)} className="rp-btn" style={{ marginBottom: 10, fontSize: 12.5, padding: '6px 10px' }}>
+              {I18N.dir === 'rtl' ? '›' : '‹'} {t('common.back')}
+            </button>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', marginBottom: 7 }}>{t('setup.distance')}</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {(PRESETS || []).map((pr) => chip(
+                !!course && Math.abs((course.dist || 0) - pr.km) < 0.05 && !course.profile,
+                (window.presetLabel ? window.presetLabel(pr) : pr.km), () => pickPreset(pr.km, presetName(pr)), pr.km))}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
+              <input value={customKm} onChange={(e) => setCustomKm(e.target.value)}
+                inputMode="decimal" placeholder={U && U.imperial ? t('setup.customMi') : t('setup.customKm')}
+                style={{ flex: 1, background: 'var(--rp-surface-2)', border: '1px solid var(--rp-line-input)',
+                  borderRadius: 8, padding: '8px 10px', fontSize: 13, color: 'var(--rp-text)',
+                  fontFamily: 'inherit', outline: 'none' }} />
+              <button onClick={pickCustom} className="rp-btn" style={{ flex: '0 0 auto' }}>{t('common.add')}</button>
+            </div>
+          </>
+        )}
 
         {course && (
-          <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--rp-gold)',
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 12.5, color: 'var(--rp-gold)',
             background: 'var(--rp-gold-wash)', border: '1px solid var(--rp-gold-line)',
             borderRadius: 8, padding: '8px 10px' }}>
-            {course.name} · {U ? U.fmtDist(course.dist) : formatKm(course.dist)}{course.profile ? ' · ' + t('setup.hasProfile') : ''}
+            <span style={{ flex: 1, minWidth: 0 }}>
+              {course.name} · {U ? U.fmtDist(course.dist) : formatKm(course.dist)}{course.profile ? ' · ' + t('setup.hasProfile') : ''}
+            </span>
+            <button onClick={() => { setCourse(null); setEntryMode(null); }}
+              style={{ flex: '0 0 auto', background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--rp-gold)', fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+                textDecoration: 'underline', padding: 0 }}>{t('setup.change')}</button>
           </div>
         )}
 
@@ -891,6 +926,34 @@ function SettingsSheet({ onClose }) {
 // ── HubScreen ────────────────────────────────────────────────────────────
 // Post-sign-in home: plan a new race, resume the current one, or open a saved
 // plan. onEnter(handoff) drops the user into the planner.
+// Shared tappable row: icon box + title + subtitle + chevron. Used for the
+// Hub's top-level cards and reused inside RaceSetupSheet's entry fork so the
+// "how do I start" choice reads as the same kind of decision as the Hub's.
+function HubCard({ onClick, primary, icon, title, sub }) {
+  return (
+    <button onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'start',
+      padding: '16px 18px', borderRadius: 16, cursor: 'pointer', fontFamily: 'inherit',
+      background: primary
+        ? 'linear-gradient(180deg,var(--rp-surface-2),var(--rp-surface))' : 'var(--rp-surface)',
+      border: `1px solid ${primary ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
+      boxShadow: primary ? 'var(--rp-shadow)' : 'none',
+    }}>
+      <span style={{ flex: '0 0 auto', width: 40, height: 40, borderRadius: 12,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        background: primary ? 'var(--rp-gold)' : 'var(--rp-gold-wash)',
+        color: primary ? 'var(--rp-on-gold)' : 'var(--rp-gold)',
+        border: primary ? 'none' : '1px solid var(--rp-gold-line)' }}>{icon}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 15, fontWeight: 800, color: 'var(--rp-text)' }}>{title}</span>
+        {sub && <span style={{ display: 'block', fontSize: 12, color: 'var(--rp-text-dim)', marginTop: 2,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span>}
+      </span>
+      <span style={{ flex: '0 0 auto', color: 'var(--rp-text-dim)' }}>‹</span>
+    </button>
+  );
+}
+
 function HubScreen({ isOwner, userName, onEnter }) {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [setupOpen, setSetupOpen] = React.useState(false);
@@ -921,28 +984,7 @@ function HubScreen({ isOwner, userName, onEnter }) {
     });
   };
 
-  const Card = ({ onClick, primary, icon, title, sub }) => (
-    <button onClick={onClick} style={{
-      display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'start',
-      padding: '16px 18px', borderRadius: 16, cursor: 'pointer', fontFamily: 'inherit',
-      background: primary
-        ? 'linear-gradient(180deg,var(--rp-surface-2),var(--rp-surface))' : 'var(--rp-surface)',
-      border: `1px solid ${primary ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
-      boxShadow: primary ? 'var(--rp-shadow)' : 'none',
-    }}>
-      <span style={{ flex: '0 0 auto', width: 40, height: 40, borderRadius: 12,
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        background: primary ? 'var(--rp-gold)' : 'var(--rp-gold-wash)',
-        color: primary ? 'var(--rp-on-gold)' : 'var(--rp-gold)',
-        border: primary ? 'none' : '1px solid var(--rp-gold-line)' }}>{icon}</span>
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 15, fontWeight: 800, color: 'var(--rp-text)' }}>{title}</span>
-        {sub && <span style={{ display: 'block', fontSize: 12, color: 'var(--rp-text-dim)', marginTop: 2,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span>}
-      </span>
-      <span style={{ flex: '0 0 auto', color: 'var(--rp-text-dim)' }}>‹</span>
-    </button>
-  );
+  const Card = HubCard;
 
   return (
     <div className="rp-cq" style={{
