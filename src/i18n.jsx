@@ -385,6 +385,9 @@ const DICTS = {
     'chart.dragHint': '  ·  גררו את הקווים להתאמת מקטע לעלייה/ירידה',
     'chart.elevToggle': 'פרופיל גובה',
     'chart.mapTitle': 'מפת המסלול',
+    'chart.mapGradeDescent': 'ירידה',
+    'chart.mapGradeFlat': 'שטוח',
+    'chart.mapGradeClimb': 'עלייה',
     'chart.elevChartTitle': 'פרופיל גובה — מתוך המסלול',
   },
 
@@ -750,6 +753,9 @@ const DICTS = {
     'chart.dragHint': '  ·  drag the lines to align a segment to a climb/descent',
     'chart.elevToggle': 'Elevation',
     'chart.mapTitle': 'Route map',
+    'chart.mapGradeDescent': 'Descent',
+    'chart.mapGradeFlat': 'Flat',
+    'chart.mapGradeClimb': 'Climb',
     'chart.elevChartTitle': 'Elevation profile — from the route',
   },
 
@@ -1115,6 +1121,9 @@ const DICTS = {
     'chart.dragHint': '  ·  faites glisser les lignes pour aligner un segment sur une montée/descente',
     'chart.elevToggle': 'Altimétrie',
     'chart.mapTitle': 'Carte du parcours',
+    'chart.mapGradeDescent': 'Descente',
+    'chart.mapGradeFlat': 'Plat',
+    'chart.mapGradeClimb': 'Montée',
     'chart.elevChartTitle': 'Profil altimétrique — depuis le parcours',
   },
 
@@ -1480,6 +1489,9 @@ const DICTS = {
     'chart.dragHint': '  ·  arrastra las líneas para ajustar un tramo a una subida/bajada',
     'chart.elevToggle': 'Altimetría',
     'chart.mapTitle': 'Mapa de la ruta',
+    'chart.mapGradeDescent': 'Bajada',
+    'chart.mapGradeFlat': 'Llano',
+    'chart.mapGradeClimb': 'Subida',
     'chart.elevChartTitle': 'Perfil de altimetría — de la ruta',
   },
 };

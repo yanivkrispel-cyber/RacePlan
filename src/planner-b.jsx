@@ -1203,6 +1203,13 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   // Only let boundaries be dragged when the plan actually spans the route.
   const canEditBoundaries = !!p.course?.profile && p.segments.length > 1
     && Math.abs(plan.totalDist - (p.course.dist || 0)) < Math.max(0.5, plan.totalDist * 0.05);
+
+  // Interior segment boundaries, for the split markers on the route map —
+  // the start and finish are already marked separately, so skip the last row.
+  const mapSplits = React.useMemo(
+    () => plan.rows.slice(0, -1).map((r) => ({ cumDist: r.cumDist, paceSec: r.paceSec, zone: r.zone })),
+    [plan.rows],
+  );
   const fileRef = React.useRef(null);
   const [raceName, setRaceName] = React.useState(
     () => (seed && seed.raceName) || shareData?.r || localStorage.getItem('rp-race') || t('planner.defaultRaceName')
@@ -1806,7 +1813,21 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           <div style={{ marginTop: 12, background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
             borderRadius: 'var(--rp-r-14)', padding: '12px 14px 14px' }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text-soft)', marginBottom: 8 }}>{t('chart.mapTitle')}</div>
-            <RouteMap track={p.course.track} height={210} />
+            <RouteMap track={p.course.track} profile={p.course.profile} splits={mapSplits} height={210} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', marginTop: 10 }}>
+              {p.course.profile && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--rp-text-dim)' }}>
+                  <span style={{ width: 28, height: 6, borderRadius: 3,
+                    background: 'linear-gradient(90deg,#7C9BD6,#9BA0B7,#C36079)' }} />
+                  <span>{t('chart.mapGradeDescent')}</span>
+                  <span>·</span>
+                  <span>{t('chart.mapGradeFlat')}</span>
+                  <span>·</span>
+                  <span>{t('chart.mapGradeClimb')}</span>
+                </div>
+              )}
+              {mapSplits.length > 0 && <ZoneLegend colors={themeB} dim="var(--rp-text-dim)" />}
+            </div>
           </div>
         )}
 
