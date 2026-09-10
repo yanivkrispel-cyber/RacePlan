@@ -1,9 +1,11 @@
 // route3d.jsx — an immersive 3D flyover of the route: the GPX track drawn as
-// an elevation-exaggerated ribbon (so real climbs/descents are actually
-// visible as relief, not just implied by color) colored by pace zone, with a
-// runner marker that flies along it at the plan's real relative pace —
-// faster on downhill/fast segments, slower on climbs — compressed into a
-// short, watchable loop. Drag to orbit, wheel/pinch to zoom, or scrub.
+// an elevation-exaggerated road (so real climbs/descents are actually
+// visible as relief, not just implied by color), paved like real pavement
+// with the "blue line" elite marathons paint down the tangent for the TV
+// broadcast (Boston, NYC, Berlin, ...), with a runner marker that flies
+// along it at the plan's real relative pace — faster on downhill/fast
+// segments, slower on climbs — compressed into a short, watchable loop.
+// Drag to orbit, wheel/pinch to zoom, or scrub.
 //
 // Three.js is lazy-loaded from a CDN only the first time this view opens —
 // never on the initial page-load critical path (same pattern as the PDF
@@ -32,9 +34,6 @@ function ensureThree() {
   return _threePromise;
 }
 
-// Same zone colors as themeB.zones in planner-b.jsx (kept local — see
-// map.jsx / valueeditor.jsx for the same no-cross-module-dependency habit).
-const ZONE_HEX = { fast: 0xC15A2E, target: 0xC9A24B, easy: 0x8091BE };
 const TARGET_ANIM_SEC = 16; // full-course loop length, regardless of race duration
 
 function _haversineKm(a, b) {
@@ -59,9 +58,82 @@ function _interpEle(profile, dKm) {
   return a.ele + f * (b.ele - a.ele);
 }
 
-function _zoneAt(rows, dKm) {
-  for (const r of rows) if (dKm <= r.cumDist + 1e-6) return r.zone;
-  return rows.length ? rows[rows.length - 1].zone : 'target';
+// A small procedural canvas texture: dark asphalt with the "blue line" world
+// marathons paint down the tangent (shortest-route) line, for that unmistakable
+// broadcast-course look. Tiled along the road's length via UVs baked directly
+// into the strip geometry below (so the line itself always reads as one
+// continuous stripe — only the asphalt speckle repeats).
+function makeRoadTexture(THREE) {
+  const w = 128, h = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#3c3f45';
+  ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 900; i++) {
+    ctx.fillStyle = `rgba(${Math.random() < 0.5 ? '0,0,0' : '255,255,255'},${(Math.random() * 0.12).toFixed(2)})`;
+    ctx.fillRect(Math.random() * w, Math.random() * h, 1.4, 1.4);
+  }
+  const lineH = h * 0.16;
+  ctx.fillStyle = '#1E6FEB';
+  ctx.fillRect(0, h / 2 - lineH / 2, w, lineH);
+  ctx.fillStyle = 'rgba(255,255,255,.2)';
+  ctx.fillRect(0, h / 2 - lineH / 2, w, lineH * 0.28);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+// Build a flat road ribbon following `points`, using a stable custom frame
+// (world-up × tangent) rather than the curve's own Frenet frames — Frenet
+// frames can twist/roll unpredictably along the long near-flat stretches a
+// running route mostly consists of (invisible on a round tube, glaringly
+// wrong on a flat slab). Returns the top driving surface (textured) plus two
+// side walls so the road reads as a solid strip from any camera angle.
+function buildRoadStrips(THREE, points, width, thickness, uMax) {
+  const n = points.length;
+  const up = new THREE.Vector3(0, 1, 0);
+  const topL = [], topR = [], botL = [], botR = [];
+  for (let i = 0; i < n; i++) {
+    const prev = points[Math.max(0, i - 1)], next = points[Math.min(n - 1, i + 1)];
+    const tangent = new THREE.Vector3().subVectors(next, prev);
+    if (tangent.lengthSq() < 1e-8) tangent.set(1, 0, 0); else tangent.normalize();
+    const side = new THREE.Vector3().crossVectors(up, tangent);
+    if (side.lengthSq() < 1e-8) side.set(1, 0, 0); else side.normalize();
+    const localUp = new THREE.Vector3().crossVectors(tangent, side).normalize();
+    const p = points[i];
+    topL.push(p.clone().addScaledVector(side, width / 2).addScaledVector(localUp, thickness / 2));
+    topR.push(p.clone().addScaledVector(side, -width / 2).addScaledVector(localUp, thickness / 2));
+    botL.push(p.clone().addScaledVector(side, width / 2).addScaledVector(localUp, -thickness / 2));
+    botR.push(p.clone().addScaledVector(side, -width / 2).addScaledVector(localUp, -thickness / 2));
+  }
+
+  function strip(a, b, vA, vB, textured) {
+    const positions = [], uvs = [], indices = [];
+    for (let i = 0; i < n; i++) {
+      positions.push(a[i].x, a[i].y, a[i].z, b[i].x, b[i].y, b[i].z);
+      const u = (i / (n - 1)) * (textured ? uMax : 1);
+      uvs.push(u, vA, u, vB);
+    }
+    for (let i = 0; i < n - 1; i++) {
+      const a0 = i * 2, b0 = i * 2 + 1, a1 = (i + 1) * 2, b1 = (i + 1) * 2 + 1;
+      indices.push(a0, a1, b0, b0, a1, b1);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  return {
+    topGeo: strip(topL, topR, 0, 1, true),
+    leftWallGeo: strip(topL, botL, 0, 1, false),
+    rightWallGeo: strip(topR, botR, 0, 1, false),
+  };
 }
 
 // Resample the track to even distance steps (smooths out however the raw GPX
@@ -147,33 +219,34 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   grid.position.y = -0.4;
   scene.add(grid);
 
-  // ── The ribbon, colored along its length by pace zone ──
-  const tubeRadius = Math.max(0.35, TARGET_SIZE * 0.006);
+  // ── The road surface: a flat, paved ribbon with the "blue line" real
+  // marathons paint down the tangent line for the broadcast cameras ──
+  const roadWidth = Math.max(1.4, TARGET_SIZE * 0.024);
+  const roadThickness = roadWidth * 0.22;
+  const tubeRadius = roadWidth * 0.32; // scale reference for markers/shadow below
   const tubularSegments = Math.max(150, STEPS * 2);
-  const tubeGeo = new THREE.TubeGeometry(curve, tubularSegments, tubeRadius, 8, false);
-  const uv = tubeGeo.attributes.uv;
-  const colorArr = new Float32Array(uv.count * 3);
-  const col = new THREE.Color();
-  for (let i = 0; i < uv.count; i++) {
-    const dKm = uv.getX(i) * totalKm;
-    const zone = rows && rows.length ? _zoneAt(rows, dKm) : 'target';
-    col.setHex(ZONE_HEX[zone] || ZONE_HEX.target);
-    colorArr[i * 3] = col.r; colorArr[i * 3 + 1] = col.g; colorArr[i * 3 + 2] = col.b;
-  }
-  tubeGeo.setAttribute('color', new THREE.BufferAttribute(colorArr, 3));
-  const tubeMesh = new THREE.Mesh(tubeGeo,
-    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.08 }));
-  scene.add(tubeMesh);
+  const roadWorldLength = totalKm * 1000 * scale;
+  const repeatX = Math.max(4, Math.round(roadWorldLength / 6));
+  const roadTexture = makeRoadTexture(THREE);
+  const { topGeo, leftWallGeo, rightWallGeo } = buildRoadStrips(THREE, points, roadWidth, roadThickness, repeatX);
+
+  scene.add(new THREE.Mesh(topGeo, new THREE.MeshStandardMaterial({
+    map: roadTexture, roughness: 0.92, metalness: 0.02, side: THREE.DoubleSide,
+  })));
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x1b1e26, roughness: 0.95 });
+  scene.add(new THREE.Mesh(leftWallGeo, wallMat));
+  scene.add(new THREE.Mesh(rightWallGeo, wallMat));
 
   // "Already run" reveal — a brighter overlay whose draw range grows with
   // progress, so the travelled portion visibly lights up while playing.
-  const revealGeo = tubeGeo.clone();
+  const revealGeo = topGeo.clone();
   revealGeo.setDrawRange(0, 0);
   const revealMesh = new THREE.Mesh(revealGeo, new THREE.MeshStandardMaterial({
-    vertexColors: true, emissive: 0x14100a, emissiveIntensity: 0.4, roughness: 0.28, metalness: 0.18,
+    map: roadTexture, emissive: 0x2a2010, emissiveIntensity: 0.55, roughness: 0.7, side: THREE.DoubleSide,
   }));
   scene.add(revealMesh);
-  const revealIndexCount = revealGeo.index ? revealGeo.index.count : revealGeo.attributes.position.count;
+  const revealIndexCount = revealGeo.index.count;
+  const SURFACE_Y = roadThickness / 2 + 0.05; // lift markers/runner onto the road surface, not its centerline
 
   // ── Ground "shadow" ribbon + drop-lines, purely for depth cues ──
   const groundCurve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(p.x, -0.35, p.z)));
@@ -192,10 +265,10 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   // ── Start / finish markers ──
   const markerGeo = new THREE.SphereGeometry(tubeRadius * 1.8, 16, 16);
   const startMesh = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({ color: 0x8091BE, emissive: 0x1a1f33 }));
-  startMesh.position.copy(points[0]);
+  startMesh.position.copy(points[0]); startMesh.position.y += SURFACE_Y;
   scene.add(startMesh);
   const finishMesh = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({ color: 0xC15A2E, emissive: 0x2a0f05 }));
-  finishMesh.position.copy(points[points.length - 1]);
+  finishMesh.position.copy(points[points.length - 1]); finishMesh.position.y += SURFACE_Y;
   scene.add(finishMesh);
 
   // ── The runner ──
@@ -317,7 +390,8 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   }
 
   function updateRunner(frac) {
-    runner.position.copy(curve.getPointAt(Math.max(0, Math.min(1, frac))));
+    const pos = curve.getPointAt(Math.max(0, Math.min(1, frac)));
+    runner.position.set(pos.x, pos.y + SURFACE_Y, pos.z);
     revealGeo.setDrawRange(0, Math.round(revealIndexCount * frac));
     if (onProgress) onProgress(frac);
   }
