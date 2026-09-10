@@ -175,7 +175,6 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
   const [q, setQ] = React.useState('');
   const [dist, setDist] = React.useState('all');
   const [tab, setTab] = React.useState(initialPending ? 'link' : 'library');
-  const [linkText, setLinkText] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState('');
   const [note, setNote] = React.useState(
@@ -251,21 +250,6 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
     setPending(built);
     setSubmitted(false);
     setNote(isOwner ? t('routes.routeLoadedOwner') : t('routes.routeLoadedUser'));
-  };
-
-  const handleUrl = async () => {
-    const url = linkText.trim();
-    if (!url) return;
-    setBusy(true); setErr(''); setNote('');
-    try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(t('routes.serverReturned', { status: res.status }));
-      acceptGpx(await res.text(), url, null, 'link');
-    } catch (e) {
-      setErr(t('routes.urlLoadFailed', { msg: (e && e.message ? e.message : e) }));
-    } finally {
-      setBusy(false);
-    }
   };
 
   const handleFile = async (e) => {
@@ -505,7 +489,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
         {/* tabs */}
         <div style={{ display: 'flex', borderBottom: `1px solid ${BD}` }}>
           {tabBtn('library', t('routes.tabSearch'))}
-          {tabBtn('link', t('routes.tabFile'))}
+          {tab === 'link' && tabBtn('link', t('routes.tabFile'))}
           {isOwner && tabBtn('inbox',
             t('routes.tabInbox') + (subs && subs.length ? ` (${subs.length})` : ''))}
         </div>
@@ -637,28 +621,11 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
               <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml,text/xml"
                 onChange={handleFile} style={{ display: 'none' }} />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0' }}>
-                <span style={{ flex: 1, height: 1, background: BD }} />
-                <span style={{ fontSize: 11.5, color: DIM }}>{t('routes.orLink')}</span>
-                <span style={{ flex: 1, height: 1, background: BD }} />
-              </div>
-
-              <input
-                type="url" value={linkText} onChange={(e) => setLinkText(e.target.value)}
-                placeholder="https://…/route.gpx"
-                style={{ width: '100%', background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
-                  borderRadius: 10, padding: '10px 12px', fontSize: 13, color: TEXT,
-                  fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', direction: 'ltr' }}
-              />
-              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-                <button onClick={handleUrl} disabled={busy || !linkText.trim()}
-                  className="rp-btn">
-                  {busy ? t('common.loading') : t('routes.loadFromLink')}
-                </button>
-                {pending && (
+              {pending && (
+                <div style={{ marginTop: 10 }}>
                   <button onClick={applyPending} className="rp-btn rp-btn-primary">{t('routes.attachToPlan')}</button>
-                )}
-              </div>
+                </div>
+              )}
 
               {isOwner && pending && (
                 <div style={{ marginTop: 14, padding: 12, borderRadius: 10,

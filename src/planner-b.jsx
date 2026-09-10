@@ -739,7 +739,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
                   icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" /></svg>} />
               )}
               <HubCard onClick={() => fileRef.current && fileRef.current.click()}
-                title={t('setup.importGpx')} sub={t('setup.importGpxSub')}
+                title={t('setup.myRoute')} sub={t('setup.importGpxSub')}
                 icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>} />
             </div>
           </>
@@ -842,13 +842,15 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
             border: '1px solid var(--rp-danger, #d9736a)', borderRadius: 8, padding: '8px 10px' }}>{err}</div>
         )}
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-          <button className="rp-btn rp-btn-primary" disabled={!course || !goalOk}
-            onClick={build} style={{ flex: 1, justifyContent: 'center' }}>{t('setup.build')}</button>
-          <button className="rp-btn" onClick={startEmpty} style={{ flex: '0 0 auto' }}>
-            {course ? t('setup.startEmpty') : t('setup.skip')}
-          </button>
-        </div>
+        {course && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <button className="rp-btn rp-btn-primary" disabled={!goalOk}
+              onClick={build} style={{ flex: 1, justifyContent: 'center' }}>{t('setup.build')}</button>
+            <button className="rp-btn" onClick={startEmpty} style={{ flex: '0 0 auto' }}>
+              {t('setup.startEmpty')}
+            </button>
+          </div>
+        )}
       </div>
 
       {RouteLibrary && routeOpen && (
