@@ -39,6 +39,7 @@ const JSX_FILES = [
   'src/gpx.jsx',
   'src/elevation.jsx',
   'src/map.jsx',
+  'src/route3d.jsx',
   'src/athletes.jsx',
   'src/myplans.jsx',
   'src/routes.jsx',

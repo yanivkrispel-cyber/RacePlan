@@ -2,7 +2,7 @@
 // responsive, with GPX course import. No canvas, no separate mobile frame.
 const { useRacePlan, formatPace, formatClock, parseClock, formatKm, PaceChart,
         LogoSlot, ZoneLegend, SegmentsTable, PRESETS, generatePlan,
-        parseGpx, ElevationChart, RouteMap, round2, clearSavedPlan,
+        parseGpx, ElevationChart, RouteMap, Route3DView, round2, clearSavedPlan,
         AthleteDB, AthletePanel, MyPlansDB, MyPlansPanel, RouteLibrary, RaceAdminPanel,
         PrintableSummary, ActionSheet, RP_EXPORT, ValueEditor, RP_HEAT,
         computeSegmentElevations, buildPlanSegments } = window;
@@ -1210,6 +1210,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
     () => plan.rows.slice(0, -1).map((r) => ({ cumDist: r.cumDist, paceSec: r.paceSec, zone: r.zone })),
     [plan.rows],
   );
+  const [show3D, setShow3D] = React.useState(false);
   const fileRef = React.useRef(null);
   const [raceName, setRaceName] = React.useState(
     () => (seed && seed.raceName) || shareData?.r || localStorage.getItem('rp-race') || t('planner.defaultRaceName')
@@ -1812,8 +1813,28 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
         {p.course?.track && (
           <div style={{ marginTop: 12, background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
             borderRadius: 'var(--rp-r-14)', padding: '12px 14px 14px' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text-soft)', marginBottom: 8 }}>{t('chart.mapTitle')}</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text-soft)' }}>{t('chart.mapTitle')}</div>
+              {Route3DView && (
+                <button onClick={() => setShow3D(true)} style={{
+                  display: 'flex', alignItems: 'center', gap: 5, background: 'transparent',
+                  border: '1px solid var(--rp-gold-line)', borderRadius: 'var(--rp-r-8)', padding: '5px 10px',
+                  cursor: 'pointer', fontSize: 11.5, fontWeight: 600, minHeight: 32, color: 'var(--rp-gold)',
+                }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2l9 4.9v10.2L12 22l-9-4.9V6.9L12 2z" />
+                    <path d="M12 22V12M21 6.9L12 12 3 6.9" />
+                  </svg>
+                  {t('chart.view3d')}
+                </button>
+              )}
+            </div>
             <RouteMap track={p.course.track} profile={p.course.profile} splits={mapSplits} height={210} />
+            {show3D && (
+              <Route3DView track={p.course.track} profile={p.course.profile} rows={plan.rows}
+                totalDist={plan.totalDist} raceName={raceName} onClose={() => setShow3D(false)} />
+            )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', marginTop: 10 }}>
               {p.course.profile && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--rp-text-dim)' }}>

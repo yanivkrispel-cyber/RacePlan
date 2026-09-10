@@ -389,6 +389,14 @@ const DICTS = {
     'chart.mapGradeFlat': 'שטוח',
     'chart.mapGradeClimb': 'עלייה',
     'chart.elevChartTitle': 'פרופיל גובה — מתוך המסלול',
+    'chart.view3d': 'תלת מימד',
+    'view3d.title': 'תצוגת תלת מימד',
+    'view3d.loading': 'טוען תצוגת תלת מימד…',
+    'view3d.loadError': 'לא ניתן לטעון את התצוגה התלת ממדית. בדקו את החיבור לאינטרנט ונסו שוב.',
+    'view3d.dragHint': 'גררו לסיבוב  ·  גלגלת/צביטה להתקרבות',
+    'view3d.play': 'הפעל',
+    'view3d.pause': 'השהה',
+    'view3d.close': 'סגירה',
   },
 
   en: {
@@ -757,6 +765,14 @@ const DICTS = {
     'chart.mapGradeFlat': 'Flat',
     'chart.mapGradeClimb': 'Climb',
     'chart.elevChartTitle': 'Elevation profile — from the route',
+    'chart.view3d': '3D View',
+    'view3d.title': '3D route view',
+    'view3d.loading': 'Loading 3D view…',
+    'view3d.loadError': "Couldn't load the 3D view. Check your connection and try again.",
+    'view3d.dragHint': 'Drag to rotate  ·  scroll/pinch to zoom',
+    'view3d.play': 'Play',
+    'view3d.pause': 'Pause',
+    'view3d.close': 'Close',
   },
 
   fr: {
@@ -1125,6 +1141,14 @@ const DICTS = {
     'chart.mapGradeFlat': 'Plat',
     'chart.mapGradeClimb': 'Montée',
     'chart.elevChartTitle': 'Profil altimétrique — depuis le parcours',
+    'chart.view3d': 'Vue 3D',
+    'view3d.title': 'Vue 3D du parcours',
+    'view3d.loading': 'Chargement de la vue 3D…',
+    'view3d.loadError': 'Impossible de charger la vue 3D. Vérifiez votre connexion et réessayez.',
+    'view3d.dragHint': 'Glissez pour pivoter  ·  molette/pincement pour zoomer',
+    'view3d.play': 'Lecture',
+    'view3d.pause': 'Pause',
+    'view3d.close': 'Fermer',
   },
 
   es: {
@@ -1493,6 +1517,14 @@ const DICTS = {
     'chart.mapGradeFlat': 'Llano',
     'chart.mapGradeClimb': 'Subida',
     'chart.elevChartTitle': 'Perfil de altimetría — de la ruta',
+    'chart.view3d': 'Vista 3D',
+    'view3d.title': 'Vista 3D de la ruta',
+    'view3d.loading': 'Cargando vista 3D…',
+    'view3d.loadError': 'No se pudo cargar la vista 3D. Comprueba tu conexión e inténtalo de nuevo.',
+    'view3d.dragHint': 'Arrastra para girar  ·  rueda/pellizco para zoom',
+    'view3d.play': 'Reproducir',
+    'view3d.pause': 'Pausa',
+    'view3d.close': 'Cerrar',
   },
 };
 
