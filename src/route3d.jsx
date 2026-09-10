@@ -11,6 +11,11 @@
 const t = (window.I18N && window.I18N.t) || ((k) => k);
 const I18N = window.I18N;
 const U = window.UNITS;
+const ElevationChart = window.ElevationChart;
+// Local dark-chrome palette for the side elevation chart — kept local
+// (no cross-module dependency, see map.jsx for the same habit) rather than
+// pulling in planner-b.jsx's themeB.
+const ELEV_COLORS = { line: '#F5C24A', grid: 'rgba(255,255,255,.1)', textDim: 'rgba(255,255,255,.5)' };
 
 const THREE_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
 let _threePromise = null;
@@ -208,12 +213,20 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   const target = new THREE.Vector3(0, TARGET_SIZE * 0.06, 0);
   let lastInteraction = 0;
 
+  // Ground floor for the camera itself: never let orbiting bring the eye
+  // below world y=0 — the route's own lowest point (everything is built on
+  // (ele - minEle), so the course's deepest point already sits at y=0) —
+  // recomputed every call since target/radius both drift (camera-follow,
+  // zoom). GROUND_MARGIN keeps the camera a hair above the ground plane
+  // rather than exactly grazing it.
+  const GROUND_MARGIN = 0.6;
   function applyCamera() {
-    const p = Math.max(0.12, Math.min(Math.PI - 0.12, polar));
+    const maxPolar = Math.acos(Math.max(-1, Math.min(1, (GROUND_MARGIN - target.y) / radius)));
+    polar = Math.max(0.12, Math.min(maxPolar, polar));
     camera.position.set(
-      target.x + radius * Math.sin(p) * Math.sin(azimuth),
-      target.y + radius * Math.cos(p),
-      target.z + radius * Math.sin(p) * Math.cos(azimuth),
+      target.x + radius * Math.sin(polar) * Math.sin(azimuth),
+      target.y + radius * Math.cos(polar),
+      target.z + radius * Math.sin(polar) * Math.cos(azimuth),
     );
     camera.lookAt(target);
   }
@@ -354,7 +367,7 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   };
 }
 
-function Route3DView({ track, profile, rows, totalDist, raceName, onClose }) {
+function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, onClose }) {
   const mountRef = React.useRef(null);
   const scrubRef = React.useRef(null);
   const distRef = React.useRef(null);
@@ -411,16 +424,38 @@ function Route3DView({ track, profile, rows, totalDist, raceName, onClose }) {
         }}>×</button>
       </div>
 
-      <div ref={mountRef} style={{ flex: 1, position: 'relative', touchAction: 'none' }}>
-        {status !== 'ready' && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', color: 'rgba(255,255,255,.6)', fontSize: 13, textAlign: 'center', padding: 24 }}>
-            {status === 'loading' ? t('view3d.loading') : t('view3d.loadError')}
+      <style>{`
+        .rp-view3d-body { flex: 1; display: flex; min-height: 0; }
+        .rp-view3d-elev { width: 260px; flex: 0 0 auto; border-inline-start: 1px solid rgba(255,255,255,.08);
+          padding: 10px 12px; display: flex; flex-direction: column; }
+        @media (max-width: 640px) {
+          .rp-view3d-body { flex-direction: column; }
+          .rp-view3d-elev { width: 100%; height: 130px; border-inline-start: none;
+            border-top: 1px solid rgba(255,255,255,.08); }
+        }
+      `}</style>
+      <div className="rp-view3d-body">
+        <div ref={mountRef} style={{ flex: 1, position: 'relative', touchAction: 'none', minWidth: 0 }}>
+          {status !== 'ready' && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', color: 'rgba(255,255,255,.6)', fontSize: 13, textAlign: 'center', padding: 24 }}>
+              {status === 'loading' ? t('view3d.loading') : t('view3d.loadError')}
+            </div>
+          )}
+          {status === 'ready' && (
+            <div style={{ position: 'absolute', top: 10, insetInlineStart: 12, fontSize: 11,
+              color: 'rgba(255,255,255,.45)', pointerEvents: 'none' }}>{t('view3d.dragHint')}</div>
+          )}
+        </div>
+        {status === 'ready' && ElevationChart && (
+          <div className="rp-view3d-elev">
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'rgba(255,255,255,.55)', marginBottom: 4 }}>
+              {t('chart.elevChartTitle')}
+            </div>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center' }}>
+              <ElevationChart profile={profile} colors={ELEV_COLORS} height={200} gain={gain} loss={loss} />
+            </div>
           </div>
-        )}
-        {status === 'ready' && (
-          <div style={{ position: 'absolute', top: 10, insetInlineStart: 12, fontSize: 11,
-            color: 'rgba(255,255,255,.45)', pointerEvents: 'none' }}>{t('view3d.dragHint')}</div>
         )}
       </div>
 
