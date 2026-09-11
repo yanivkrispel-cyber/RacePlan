@@ -1164,7 +1164,6 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   const [goalOpen, setGoalOpen] = React.useState(false);
   const [valueEditor, setValueEditor] = React.useState(null); // { id, type, value }
   const [showNewPlanConfirm, setShowNewPlanConfirm] = React.useState(false);
-  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [showRouteLib, setShowRouteLib] = React.useState(false);
   const [routeLibInit, setRouteLibInit] = React.useState(null);
   const [lastRoute, setLastRoute] = React.useState(null);
@@ -1500,10 +1499,20 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
             background: color-mix(in srgb, var(--rp-surface) 92%, transparent);
             backdrop-filter: blur(8px);
             border: 1px solid var(--rp-line); border-radius: var(--rp-r-12);
-            padding: 8px !important; margin: 4px 0 12px !important; gap: 6px !important;
+            padding: 5px !important; margin: 3px 0 8px !important; gap: 4px !important;
             box-shadow: 0 8px 24px rgba(0,0,0,.45);
             flex-wrap: wrap; justify-content: center; }
-          .rp-toolbar .rp-btn { flex: 0 0 auto; padding: 10px 12px !important; font-size: 13px !important; }
+          .rp-toolbar .rp-btn { flex: 0 0 auto; padding: 6px 10px !important; font-size: 11.5px !important; }
+          /* Icon-only on phones for the self-explanatory actions (share,
+             save-to-athlete, home, reset) — keeps the sticky bar to one row
+             instead of two, which is what actually avoids it ever overlapping
+             the totals row above (see the sticky-clamp math in the commit
+             this replaces). Import GPX keeps its text: "import" alone isn't
+             obvious from an icon. Settings was dropped from this bar entirely
+             — it's reachable from the Hub screen's own gear icon instead. */
+          .rp-btn-iconify { padding: 8px !important; }
+          .rp-btn-iconify .rp-btn-label { display: none; }
+          .rp-btn-iconify svg { width: 17px !important; height: 17px !important; }
           .rp-header { flex-wrap: wrap; gap: 8px 12px !important; }
           .rp-brand { display: none !important; }
           .rp-stats { display: grid !important; grid-template-columns: 1fr 1fr; }
@@ -1652,12 +1661,12 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
             </button>
           )}
 
-          <button className="rp-btn" disabled={pdfBusy} onClick={() => setShareOpen(true)}>
+          <button className="rp-btn rp-btn-iconify" aria-label={t('planner.share')} disabled={pdfBusy} onClick={() => setShareOpen(true)}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
               <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
             </svg>
-            {t('planner.share')}
+            <span className="rp-btn-label">{t('planner.share')}</span>
           </button>
 
           {MyPlansDB && RP_FB && !isOwner && (
@@ -1668,33 +1677,26 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           )}
 
           {isOwner && AthleteDB && (
-            <button className="rp-btn" onClick={saveToAthlete}>
+            <button className="rp-btn rp-btn-iconify" aria-label={t('planner.saveToAthlete')} onClick={saveToAthlete}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
                 <polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
-              {t('planner.saveToAthlete')}
+              <span className="rp-btn-label">{t('planner.saveToAthlete')}</span>
             </button>
           )}
 
           {onGoHome && (
-            <button className="rp-btn" onClick={onGoHome}>
+            <button className="rp-btn rp-btn-iconify" aria-label={t('planner.home')} onClick={onGoHome}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
-              {t('planner.home')}
+              <span className="rp-btn-label">{t('planner.home')}</span>
             </button>
           )}
 
-          <button className="rp-btn" onClick={onReset}>
+          <button className="rp-btn rp-btn-iconify" aria-label={t('planner.reset')} onClick={onReset}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
-            {t('planner.reset')}
-          </button>
-
-          <button className="rp-btn" onClick={() => setSettingsOpen(true)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.22.66.22 1v.09c0 .68.38 1.29 1 1.51H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-            {t('settings.open')}
+            <span className="rp-btn-label">{t('planner.reset')}</span>
           </button>
         </div>
 
@@ -1949,8 +1951,6 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           />
         </div>
       )}
-
-      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
 
       <CopyToast show={!!toastMsg} text={toastMsg} />
     </div>
