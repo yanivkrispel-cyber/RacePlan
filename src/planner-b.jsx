@@ -1834,6 +1834,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
             {show3D && (
               <Route3DView track={p.course.track} profile={p.course.profile} rows={plan.rows}
                 totalDist={plan.totalDist} raceName={raceName} gain={p.course.gain} loss={p.course.loss}
+                weather={weather} raceTime={raceTime}
                 onClose={() => setShow3D(false)} />
             )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', marginTop: 10 }}>

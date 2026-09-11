@@ -244,27 +244,94 @@ function buildSplitSign(THREE, curve, u, roadWidth, roadThickness, distText, tim
   return group;
 }
 
-// A soft dusk-toned sky dome — a huge inward-facing hemisphere with a
-// vertex-colored gradient (dark zenith fading to a warm horizon) — instead of
+// A dusk-toned sky dome — a huge inward-facing hemisphere with a
+// vertex-colored gradient (dark zenith fading to a horizon tone) — instead of
 // a flat void behind the scene. Kept out of the fog calculation (it sits at
 // an "infinite" distance where the fog formula would otherwise just paint it
 // a flat fog color, erasing the gradient) so foreground objects still fade
 // naturally while the sky itself stays a real backdrop that turns with the
-// camera as you orbit.
-function makeSkyDome(THREE, radius, topColor, horizonColor) {
+// camera as you orbit. Per-vertex height weights are precomputed once so
+// `setColors` — called every frame to drive the day/weather atmosphere — is
+// just a cheap lerp per vertex, no trig/pow recomputation.
+function makeSkyDome(THREE, radius) {
   const geo = new THREE.SphereGeometry(radius, 64, 40, 0, Math.PI * 2, 0, Math.PI / 2 + 0.2);
-  const pos = geo.attributes.position;
-  const colors = new Float32Array(pos.count * 3);
-  const top = new THREE.Color(topColor), bottom = new THREE.Color(horizonColor);
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const yNorm = Math.max(0, Math.min(1, pos.getY(i) / radius));
-    c.copy(bottom).lerp(top, Math.pow(yNorm, 1.6));
-    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+  const posAttr = geo.attributes.position;
+  const weights = new Float32Array(posAttr.count);
+  for (let i = 0; i < posAttr.count; i++) {
+    const yNorm = Math.max(0, Math.min(1, posAttr.getY(i) / radius));
+    weights[i] = Math.pow(yNorm, 1.6);
   }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const colorAttr = new THREE.BufferAttribute(new Float32Array(posAttr.count * 3), 3);
+  geo.setAttribute('color', colorAttr);
   const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false });
-  return new THREE.Mesh(geo, mat);
+  const mesh = new THREE.Mesh(geo, mat);
+  const mix = new THREE.Color();
+  function setColors(topColor, horizonColor) {
+    const arr = colorAttr.array;
+    for (let i = 0; i < weights.length; i++) {
+      mix.copy(horizonColor).lerp(topColor, weights[i]);
+      arr[i * 3] = mix.r; arr[i * 3 + 1] = mix.g; arr[i * 3 + 2] = mix.b;
+    }
+    colorAttr.needsUpdate = true;
+  }
+  return { mesh, setColors };
+}
+
+// Day/night colour keyframes (hour-of-day -> palette). Interpolated linearly
+// between the two bracketing keyframes so the scene's light can move
+// smoothly through the actual clock time the plan covers — from the race's
+// real start time to its real (estimated) finish time — rather than being a
+// generic, meaningless sunrise-to-sunset sweep.
+const DAY_KEYFRAMES = [
+  { h: 0, top: 0x03040a, horizon: 0x0a0a18, sun: 0x1a2035, sunI: 0.15, hemiSky: 0x1b2440, hemiGround: 0x0c0a10, hemiI: 0.35 },
+  { h: 5.5, top: 0x0b1330, horizon: 0x5a3a52, sun: 0xff9d6c, sunI: 0.55, hemiSky: 0x445088, hemiGround: 0x2c1f1a, hemiI: 0.55 },
+  { h: 7, top: 0x1c355e, horizon: 0xffb37a, sun: 0xffdaa8, sunI: 0.95, hemiSky: 0x6d84b8, hemiGround: 0x33291d, hemiI: 0.75 },
+  { h: 12, top: 0x2f6fb8, horizon: 0xbcd6ee, sun: 0xffffff, sunI: 1.15, hemiSky: 0x8fa8d8, hemiGround: 0x362b20, hemiI: 0.9 },
+  { h: 17, top: 0x2a5490, horizon: 0xffc98a, sun: 0xffdca0, sunI: 0.95, hemiSky: 0x7690c0, hemiGround: 0x362a1e, hemiI: 0.85 },
+  { h: 19, top: 0x14203f, horizon: 0xd8683f, sun: 0xff7a4c, sunI: 0.6, hemiSky: 0x445088, hemiGround: 0x2c1f1a, hemiI: 0.6 },
+  { h: 21, top: 0x080b1c, horizon: 0x2c2040, sun: 0x3a2a44, sunI: 0.2, hemiSky: 0x232c50, hemiGround: 0x140f14, hemiI: 0.4 },
+  { h: 24, top: 0x03040a, horizon: 0x0a0a18, sun: 0x1a2035, sunI: 0.15, hemiSky: 0x1b2440, hemiGround: 0x0c0a10, hemiI: 0.35 },
+];
+function daylightAt(hour) {
+  const h = ((hour % 24) + 24) % 24;
+  let a = DAY_KEYFRAMES[0], b = DAY_KEYFRAMES[1];
+  for (let i = 0; i < DAY_KEYFRAMES.length - 1; i++) {
+    if (h >= DAY_KEYFRAMES[i].h && h <= DAY_KEYFRAMES[i + 1].h) { a = DAY_KEYFRAMES[i]; b = DAY_KEYFRAMES[i + 1]; break; }
+  }
+  const f = b.h > a.h ? (h - a.h) / (b.h - a.h) : 0;
+  return { f, a, b };
+}
+
+// Real forecast weather (already fetched for the heat-adjusted-pace card)
+// reused here to set the 3D scene's mood — this is the actual weather the
+// plan expects on race day, not a decorative preset.
+function weatherKindFromCode(code) {
+  if (code == null) return 'clear';
+  if (code === 0) return 'clear';
+  if (code === 1 || code === 2 || code === 3) return 'cloudy';
+  if (code === 45 || code === 48) return 'fog';
+  return 'rain'; // drizzle/rain/showers/snow/thunderstorm all read as "wet weather" visually
+}
+const WEATHER_FILTERS = {
+  clear: { tint: 0x000000, tintAmount: 0, sunMult: 1, hemiMult: 1, fogMult: 1, wet: 0, rain: false },
+  cloudy: { tint: 0x6b6f7a, tintAmount: 0.35, sunMult: 0.55, hemiMult: 1.1, fogMult: 1.4, wet: 0.12, rain: false },
+  fog: { tint: 0x9aa3ad, tintAmount: 0.68, sunMult: 0.35, hemiMult: 1.15, fogMult: 6, wet: 0.08, rain: false },
+  rain: { tint: 0x2a2e38, tintAmount: 0.5, sunMult: 0.4, hemiMult: 1.05, fogMult: 2.6, wet: 0.55, rain: true },
+};
+
+// A simple falling-rain particle volume, centered on the scene, active only
+// when the real forecast calls for wet weather.
+function buildRain(THREE, count, areaSize, height) {
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    positions[i * 3] = (Math.random() - 0.5) * areaSize;
+    positions[i * 3 + 1] = Math.random() * height;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * areaSize;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xbcd6ff, size: 0.55, transparent: true, opacity: 0.5, depthWrite: false });
+  return { points: new THREE.Points(geo, mat), positions, count, height };
 }
 
 // Build a flat road ribbon following `points`, using a stable custom frame
@@ -352,8 +419,20 @@ function buildSamples(track, profile, steps) {
 // down; mutates `stateRef.current` with a `playing` flag and a `seek(frac)`
 // function the React shell can drive from its own controls.
 function mount3D(THREE, container, data, onProgress, stateRef) {
-  const { track, profile, rows, totalDist } = data;
+  const { track, profile, rows, totalDist, weather, raceTime } = data;
   if (!track || track.length < 2) throw new Error('route3d: no track');
+
+  // ── Playback timing, computed early so the atmosphere pass below can map
+  // animation progress to real clock time (race start hour -> estimated
+  // finish hour). ──
+  const checkpoints = [{ cumTime: 0, cumDist: 0 }].concat((rows || []).map((r) => ({ cumTime: r.cumTime, cumDist: r.cumDist })));
+  const totalTime = checkpoints[checkpoints.length - 1].cumTime || 1;
+  const speedMult = totalTime / TARGET_ANIM_SEC;
+  const [startH, startM] = (raceTime || '07:00').split(':').map(Number);
+  const startHour = (isFinite(startH) ? startH : 7) + (isFinite(startM) ? startM : 0) / 60;
+  const finishHour = startHour + totalTime / 3600;
+  const weatherKind = weatherKindFromCode(weather && weather.code);
+  const weatherFilter = WEATHER_FILTERS[weatherKind] || WEATHER_FILTERS.clear;
 
   const STEPS = Math.max(60, Math.min(240, Math.round((totalDist || 5) * 24)));
   const { samples, totalKm } = buildSamples(track, profile, STEPS);
@@ -389,11 +468,12 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   for (let i = 0; i <= ROAD_STEPS; i++) roadPoints.push(curve.getPointAt(i / ROAD_STEPS));
 
   // ── Scene ──
-  const HORIZON_COLOR = 0x2e2438;
+  const BASE_FOG_DENSITY = 0.0022;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x05070d);
-  scene.fog = new THREE.FogExp2(HORIZON_COLOR, 0.0022);
-  scene.add(makeSkyDome(THREE, 3000, 0x05060f, HORIZON_COLOR));
+  scene.fog = new THREE.FogExp2(0x2e2438, BASE_FOG_DENSITY);
+  const sky = makeSkyDome(THREE, 3000);
+  scene.add(sky.mesh);
 
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -404,13 +484,29 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;';
   container.appendChild(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight(0x565f92, 0x241c17, 0.85));
+  const hemi = new THREE.HemisphereLight(0x565f92, 0x241c17, 0.85);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffe3b0, 1.0);
   sun.position.set(80, 65, -35);
   scene.add(sun);
 
+  // A dark, subtly glossy floor (replaces a purely technical grid) plus a
+  // faint grid overlay for scale reference, plus a soft, low-opacity mirrored
+  // copy of the road's own surface beneath it — a cheap but effective hint of
+  // reflection (a true planar-mirror render pass isn't worth the extra
+  // complexity/cost here) that reads as "premium wet-look pavement" rather
+  // than a CAD viewport.
+  const FLOOR_Y = -0.42;
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a0c14, roughness: 0.22, metalness: 0.35 });
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(TARGET_SIZE * 9, TARGET_SIZE * 9), floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = FLOOR_Y;
+  scene.add(floor);
+
   const grid = new THREE.GridHelper(TARGET_SIZE * 2.2, 22, 0x2a3346, 0x1a2030);
-  grid.position.y = -0.4;
+  grid.position.y = FLOOR_Y + 0.01;
+  grid.material.transparent = true;
+  grid.material.opacity = 0.35;
   scene.add(grid);
 
   // ── The road surface: a flat, paved ribbon with the "blue line" real
@@ -423,12 +519,25 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   const roadTexture = makeRoadTexture(THREE);
   const { topGeo, leftWallGeo, rightWallGeo } = buildRoadStrips(THREE, roadPoints, roadWidth, roadThickness, repeatX);
 
+  // Wet-weather forecasts make the pavement itself read as rain-slicked —
+  // lower roughness / a touch of metalness reads as a sheen under the sun.
+  const wet = weatherFilter.wet;
   scene.add(new THREE.Mesh(topGeo, new THREE.MeshStandardMaterial({
-    map: roadTexture, roughness: 0.92, metalness: 0.02, side: THREE.DoubleSide,
+    map: roadTexture, roughness: 0.92 - wet * 0.55, metalness: 0.02 + wet * 0.35, side: THREE.DoubleSide,
   })));
   const wallMat = new THREE.MeshStandardMaterial({ color: 0x1b1e26, roughness: 0.95 });
   scene.add(new THREE.Mesh(leftWallGeo, wallMat));
   scene.add(new THREE.Mesh(rightWallGeo, wallMat));
+
+  // A soft, low-opacity mirrored copy of the road surface beneath the floor
+  // plane — reflecting a mesh about a horizontal plane y=FLOOR_Y is just
+  // `position.y = 2*FLOOR_Y, scale.y = -1` (see mount3D comment above).
+  const reflMesh = new THREE.Mesh(topGeo.clone(), new THREE.MeshBasicMaterial({
+    map: roadTexture, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide,
+  }));
+  reflMesh.position.y = FLOOR_Y * 2;
+  reflMesh.scale.y = -1;
+  scene.add(reflMesh);
 
   // "Already run" reveal — a brighter overlay whose draw range grows with
   // progress, so the travelled portion visibly lights up while playing.
@@ -483,6 +592,44 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   );
   runner.add(new THREE.PointLight(0xF5C24A, 1.1, TARGET_SIZE * 0.4));
   scene.add(runner);
+
+  // ── Rain, only when the real forecast for race day calls for it ──
+  const rain = weatherFilter.rain ? buildRain(THREE, 700, TARGET_SIZE * 2.6, TARGET_SIZE * 0.55) : null;
+  if (rain) scene.add(rain.points);
+
+  // ── Atmosphere: blends the day-cycle keyframes (mapped from the plan's
+  // real start time through its real estimated finish time) with the real
+  // forecast's weather filter, and pushes the result into the sky dome, sun,
+  // hemisphere light and fog every frame — driven by the same progress
+  // fraction that moves the runner, so scrubbing previews the sky too.
+  const _tmp = new THREE.Color();
+  const _cTop = new THREE.Color(), _cHorizon = new THREE.Color(), _cSun = new THREE.Color();
+  const _cHemiSky = new THREE.Color(), _cHemiGround = new THREE.Color();
+  function lerpInto(target2, hexA, hexB, f) { target2.setHex(hexA); _tmp.setHex(hexB); return target2.lerp(_tmp, f); }
+  function applyAtmosphere(frac) {
+    const hour = startHour + Math.max(0, Math.min(1, frac)) * (finishHour - startHour);
+    const { f, a, b } = daylightAt(hour);
+    lerpInto(_cTop, a.top, b.top, f);
+    lerpInto(_cHorizon, a.horizon, b.horizon, f);
+    lerpInto(_cSun, a.sun, b.sun, f);
+    lerpInto(_cHemiSky, a.hemiSky, b.hemiSky, f);
+    lerpInto(_cHemiGround, a.hemiGround, b.hemiGround, f);
+    const sunI = a.sunI + (b.sunI - a.sunI) * f;
+    const hemiI = a.hemiI + (b.hemiI - a.hemiI) * f;
+
+    _tmp.setHex(weatherFilter.tint);
+    _cTop.lerp(_tmp, weatherFilter.tintAmount);
+    _cHorizon.lerp(_tmp, weatherFilter.tintAmount);
+
+    sky.setColors(_cTop, _cHorizon);
+    sun.color.copy(_cSun);
+    sun.intensity = sunI * weatherFilter.sunMult;
+    hemi.color.copy(_cHemiSky);
+    hemi.groundColor.copy(_cHemiGround);
+    hemi.intensity = hemiI * weatherFilter.hemiMult;
+    scene.fog.color.copy(_cHorizon);
+    scene.fog.density = BASE_FOG_DENSITY * weatherFilter.fogMult;
+  }
 
   // ── Hand-rolled orbit camera: pointer-drag to orbit, wheel/pinch to zoom ──
   let radius = TARGET_SIZE * 1.15;
@@ -576,9 +723,6 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
 
   // ── Playback: progress = fraction of totalDist travelled, driven by the
   // plan's real per-segment pace so the runner visibly speeds up/slows down.
-  const checkpoints = [{ cumTime: 0, cumDist: 0 }].concat((rows || []).map((r) => ({ cumTime: r.cumTime, cumDist: r.cumDist })));
-  const totalTime = checkpoints[checkpoints.length - 1].cumTime || 1;
-  const speedMult = totalTime / TARGET_ANIM_SEC;
   let elapsed = 0;
 
   function distFractionAtTime(sec) {
@@ -598,6 +742,7 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
     const pos = curve.getPointAt(Math.max(0, Math.min(1, frac)));
     runner.position.set(pos.x, pos.y + SURFACE_Y, pos.z);
     revealGeo.setDrawRange(0, Math.round(revealIndexCount * frac));
+    applyAtmosphere(frac);
     if (onProgress) onProgress(frac);
   }
 
@@ -624,6 +769,14 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
     applyCamera();
     runner.rotation.y += dt * 3;
 
+    if (rain) {
+      for (let i = 0; i < rain.count; i++) {
+        rain.positions[i * 3 + 1] -= dt * 45;
+        if (rain.positions[i * 3 + 1] < FLOOR_Y) rain.positions[i * 3 + 1] = rain.height;
+      }
+      rain.points.geometry.attributes.position.needsUpdate = true;
+    }
+
     renderer.render(scene, camera);
     raf = requestAnimationFrame(tick);
   }
@@ -646,7 +799,7 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   };
 }
 
-function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, onClose }) {
+function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, weather, raceTime, onClose }) {
   const mountRef = React.useRef(null);
   const scrubRef = React.useRef(null);
   const distRef = React.useRef(null);
@@ -661,7 +814,7 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, on
     ensureThree().then((THREE) => {
       if (cancelled || !mountRef.current) return;
       try {
-        cleanupFn = mount3D(THREE, mountRef.current, { track, profile, rows, totalDist }, (frac) => {
+        cleanupFn = mount3D(THREE, mountRef.current, { track, profile, rows, totalDist, weather, raceTime }, (frac) => {
           if (scrubRef.current) scrubRef.current.value = String(Math.round(frac * 1000));
           if (distRef.current) distRef.current.textContent = U ? U.fmtDist(frac * totalDist) : (frac * totalDist).toFixed(1);
           if (elevChartRef.current) elevChartRef.current.setProgress(frac * totalDist);
