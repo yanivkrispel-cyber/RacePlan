@@ -1488,7 +1488,11 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
         }
         @container (max-width: 640px) {
           .rp-planner-wrap { padding: 12px 10px 20px !important; }
-          /* segment/total padding for phones is set in core.jsx (compact row) */
+          /* Segment row padding for phones: tighter than the desktop rule
+             above (padding: 6px 12px) so more splits fit on screen at once —
+             this rule must come after that one in the same <style> tag to
+             win the cascade on equal specificity. */
+          .rpt-seg { padding: 4px 12px; }
           /* sticky (not fixed): container-type on .rp-cq would re-anchor a
              fixed child to the container, defeating the pin */
           .rp-toolbar { position: sticky; bottom: 8px; z-index: 40;

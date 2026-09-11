@@ -1111,10 +1111,20 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
         .rp-view3d-body { flex: 1; display: flex; min-height: 0; }
         .rp-view3d-elev { width: 260px; flex: 0 0 auto; border-inline-start: 1px solid rgba(255,255,255,.08);
           padding: 10px 12px; display: flex; flex-direction: column; }
+        .rp-view3d-camrow { display: flex; align-items: center; gap: 14px; padding: 8px 16px;
+          border-top: 1px solid rgba(255,255,255,.08); overflow-x: auto; }
+        .rp-view3d-camgroup { display: flex; gap: 4px; flex: 0 0 auto; }
+        .rp-view3d-sep { width: 1px; align-self: stretch; background: rgba(255,255,255,.12); flex: 0 0 auto; }
         @media (max-width: 640px) {
           .rp-view3d-body { flex-direction: column; }
           .rp-view3d-elev { width: 100%; height: 190px; border-inline-start: none;
             border-top: 1px solid rgba(255,255,255,.08); }
+        }
+        @media (max-width: 480px) {
+          /* Each pill group fits its own line on a phone width — wrap onto two
+             rows instead of forcing horizontal scroll to reach the speed pills. */
+          .rp-view3d-camrow { flex-wrap: wrap; overflow-x: visible; row-gap: 6px; justify-content: center; }
+          .rp-view3d-sep { display: none; }
         }
       `}</style>
       <div className="rp-view3d-body">
@@ -1144,9 +1154,8 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
       </div>
 
       {status === 'ready' && (
-        <div style={{ padding: '8px 16px', borderTop: '1px solid rgba(255,255,255,.08)',
-          display: 'flex', alignItems: 'center', gap: 14, overflowX: 'auto' }}>
-          <div style={{ display: 'flex', gap: 4, flex: '0 0 auto' }}>
+        <div className="rp-view3d-camrow">
+          <div className="rp-view3d-camgroup">
             {CAMERA_MODE_OPTIONS.map((mode) => (
               <button key={mode} onClick={() => setCameraMode(mode)} style={{
                 padding: '5px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
@@ -1156,8 +1165,8 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
               }}>{t(CAMERA_MODE_LABEL_KEY[mode])}</button>
             ))}
           </div>
-          <div style={{ width: 1, alignSelf: 'stretch', background: 'rgba(255,255,255,.12)', flex: '0 0 auto' }} />
-          <div style={{ display: 'flex', gap: 4, flex: '0 0 auto' }}>
+          <div className="rp-view3d-sep" />
+          <div className="rp-view3d-camgroup">
             {SPEED_OPTIONS.map((s) => (
               <button key={s} onClick={() => setSpeed(s)} style={{
                 padding: '5px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',

@@ -87,7 +87,7 @@ if (!document.getElementById('rp-core-styles')) {
      totals row); segment elevation only shows when a GPX profile is loaded. */
   @container (max-width:600px){
     .rpt-head{display:none}
-    .rpt-rows{gap:6px}
+    .rpt-rows{gap:3px}
     .rpt-seg{display:grid;
       /* FIXED widths for the time + status columns so the dist/pace steppers
          line up across every row even once the cumulative time hits 1:xx:xx */
@@ -97,7 +97,7 @@ if (!document.getElementById('rp-core-styles')) {
         "idx sp   elev segt stat"
         "idx dist pace cumt stat";
       align-items:center;column-gap:5px;row-gap:0;
-      padding:6px 8px;border-radius:var(--rp-r-12);
+      padding:4px 8px;border-radius:var(--rp-r-12);
       background:var(--rp-surface);border:1px solid var(--rp-line)}
     .rpt-seg:hover{background:var(--rp-surface)}
     .rpt-cell{flex-direction:row;align-items:center;justify-content:center;gap:3px;min-width:0}
