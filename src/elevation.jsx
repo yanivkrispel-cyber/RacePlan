@@ -4,24 +4,69 @@ const { useMeasure } = window;
 const t = (window.I18N && window.I18N.t) || ((k) => k);
 const U = window.UNITS;
 
-function ElevationChart({ profile, colors, height = 230, gain, loss }) {
+function _elevAt(data, dKm) {
+  if (dKm <= data[0].d) return data[0].ele;
+  if (dKm >= data[data.length - 1].d) return data[data.length - 1].ele;
+  let lo = 0, hi = data.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (data[mid].d <= dKm) lo = mid; else hi = mid;
+  }
+  const a = data[lo], b = data[hi];
+  const f = b.d > a.d ? (dKm - a.d) / (b.d - a.d) : 0;
+  return a.ele + f * (b.ele - a.ele);
+}
+
+// forwardRef exposes `setProgress(distKm | null)` so a caller driving a
+// high-frequency animation (the 3D flyover's runner) can move the position
+// marker every frame via direct SVG attribute writes, without going through
+// React state/re-render — the same imperative-ref approach route3d.jsx uses
+// for its own scrub bar, for the same reason (avoiding 60×/sec re-renders).
+const ElevationChart = React.forwardRef(function ElevationChart({ profile, colors, height = 230, gain, loss }, outerRef) {
   const [ref, W] = useMeasure();
+  const markerRef = React.useRef(null);
+  const guideRef = React.useRef(null);
   const H = height;
   const data = (profile || []).filter((p) => isFinite(p.ele) && isFinite(p.d));
-  if (data.length < 2) return <div ref={ref} style={{ width: '100%', height: H }} />;
+  const hasData = data.length >= 2;
 
   const padL = 46, padR = 14, padT = 16, padB = 26;
   const plotW = Math.max(10, W - padL - padR);
   const plotH = Math.max(10, H - padT - padB);
 
-  const xMax = data[data.length - 1].d || 1;
-  const eles = data.map((p) => p.ele);
-  let lo = Math.min(...eles), hi = Math.max(...eles);
-  const range = hi - lo || 10;
-  lo -= range * 0.15; hi += range * 0.15;
+  const xMax = hasData ? (data[data.length - 1].d || 1) : 1;
+  let lo = 0, hi = 10;
+  if (hasData) {
+    const eles = data.map((p) => p.ele);
+    lo = Math.min(...eles); hi = Math.max(...eles);
+    const range = hi - lo || 10;
+    lo -= range * 0.15; hi += range * 0.15;
+  }
 
   const x = (d) => padL + (d / xMax) * plotW;
   const y = (e) => padT + ((hi - e) / (hi - lo)) * plotH; // higher elevation = higher
+
+  React.useImperativeHandle(outerRef, () => ({
+    setProgress(distKm) {
+      if (!hasData || distKm == null || !isFinite(distKm)) {
+        if (markerRef.current) markerRef.current.setAttribute('display', 'none');
+        if (guideRef.current) guideRef.current.setAttribute('display', 'none');
+        return;
+      }
+      const cx = x(Math.max(0, Math.min(xMax, distKm))), cy = y(_elevAt(data, distKm));
+      if (markerRef.current) {
+        markerRef.current.setAttribute('cx', cx); markerRef.current.setAttribute('cy', cy);
+        markerRef.current.setAttribute('display', '');
+      }
+      if (guideRef.current) {
+        guideRef.current.setAttribute('x1', cx); guideRef.current.setAttribute('x2', cx);
+        guideRef.current.setAttribute('display', '');
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [data, xMax, lo, hi, plotW, plotH, padL, padT]);
+
+  if (!hasData) return <div ref={ref} style={{ width: '100%', height: H }} />;
 
   const line = data.map((p, i) => `${i ? 'L' : 'M'}${x(p.d).toFixed(1)},${y(p.ele).toFixed(1)}`).join(' ');
   const area = `${line} L${x(xMax).toFixed(1)},${(padT + plotH).toFixed(1)} L${padL.toFixed(1)},${(padT + plotH).toFixed(1)} Z`;
@@ -55,9 +100,11 @@ function ElevationChart({ profile, colors, height = 230, gain, loss }) {
         <text x={W - padR} y={padT + 2} textAnchor="end" fontSize="11.5" fill={colors.textDim}>
           ↑ {U ? U.fmtElev(gain) : gain} · ↓ {U ? U.fmtElev(loss) : loss}
         </text>
+        <line ref={guideRef} y1={padT} y2={padT + plotH} stroke={colors.line} strokeWidth="1" strokeDasharray="3,3" opacity="0.55" display="none" />
+        <circle ref={markerRef} r="5.5" fill={colors.line} stroke="#fff" strokeWidth="1.6" display="none" />
       </svg>
     </div>
   );
-}
+});
 
 window.ElevationChart = ElevationChart;

@@ -593,6 +593,7 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, on
   const mountRef = React.useRef(null);
   const scrubRef = React.useRef(null);
   const distRef = React.useRef(null);
+  const elevChartRef = React.useRef(null);
   const stateRef = React.useRef(null);
   const [status, setStatus] = React.useState('loading'); // loading | ready | error
   const [playing, setPlaying] = React.useState(true);
@@ -606,6 +607,7 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, on
         cleanupFn = mount3D(THREE, mountRef.current, { track, profile, rows, totalDist }, (frac) => {
           if (scrubRef.current) scrubRef.current.value = String(Math.round(frac * 1000));
           if (distRef.current) distRef.current.textContent = U ? U.fmtDist(frac * totalDist) : (frac * totalDist).toFixed(1);
+          if (elevChartRef.current) elevChartRef.current.setProgress(frac * totalDist);
         }, stateRef);
         if (!cancelled) setStatus('ready'); else if (cleanupFn) cleanupFn();
       } catch (e) {
@@ -626,6 +628,7 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, on
     const frac = Number(e.target.value) / 1000;
     if (stateRef.current) stateRef.current.seek(frac);
     if (distRef.current) distRef.current.textContent = U ? U.fmtDist(frac * totalDist) : (frac * totalDist).toFixed(1);
+    if (elevChartRef.current) elevChartRef.current.setProgress(frac * totalDist);
   };
 
   return ReactDOM.createPortal((
@@ -675,7 +678,7 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, on
               {t('chart.elevChartTitle')}
             </div>
             <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center' }}>
-              <ElevationChart profile={profile} colors={ELEV_COLORS} height={200} gain={gain} loss={loss} />
+              <ElevationChart ref={elevChartRef} profile={profile} colors={ELEV_COLORS} height={200} gain={gain} loss={loss} />
             </div>
           </div>
         )}
