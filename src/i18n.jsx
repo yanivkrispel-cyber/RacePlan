@@ -399,6 +399,10 @@ const DICTS = {
     'view3d.close': 'סגירה',
     'view3d.startGate': 'זינוק',
     'view3d.finishGate': 'סיום',
+    'view3d.camFree': 'חופשי',
+    'view3d.camChase': 'מרדף',
+    'view3d.camPov': 'גוף ראשון',
+    'view3d.camBroadcast': 'שידור',
   },
 
   en: {
@@ -777,6 +781,10 @@ const DICTS = {
     'view3d.close': 'Close',
     'view3d.startGate': 'START',
     'view3d.finishGate': 'FINISH',
+    'view3d.camFree': 'Free',
+    'view3d.camChase': 'Chase',
+    'view3d.camPov': 'POV',
+    'view3d.camBroadcast': 'Broadcast',
   },
 
   fr: {
@@ -1155,6 +1163,10 @@ const DICTS = {
     'view3d.close': 'Fermer',
     'view3d.startGate': 'DÉPART',
     'view3d.finishGate': 'ARRIVÉE',
+    'view3d.camFree': 'Libre',
+    'view3d.camChase': 'Poursuite',
+    'view3d.camPov': 'Vue subjective',
+    'view3d.camBroadcast': 'Diffusion',
   },
 
   es: {
@@ -1533,6 +1545,10 @@ const DICTS = {
     'view3d.close': 'Cerrar',
     'view3d.startGate': 'SALIDA',
     'view3d.finishGate': 'META',
+    'view3d.camFree': 'Libre',
+    'view3d.camChase': 'Persecución',
+    'view3d.camPov': 'Vista subjetiva',
+    'view3d.camBroadcast': 'Transmisión',
   },
 };
 

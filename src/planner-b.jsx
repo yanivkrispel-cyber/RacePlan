@@ -5,7 +5,7 @@ const { useRacePlan, formatPace, formatClock, parseClock, formatKm, PaceChart,
         parseGpx, ElevationChart, RouteMap, Route3DView, round2, clearSavedPlan,
         AthleteDB, AthletePanel, MyPlansDB, MyPlansPanel, RouteLibrary, RaceAdminPanel,
         PrintableSummary, ActionSheet, RP_EXPORT, ValueEditor, RP_HEAT,
-        computeSegmentElevations, buildPlanSegments } = window;
+        computeSegmentElevations, buildPlanSegments, SevenSeg, ClockDot, ClockDisplay } = window;
 const I18N = window.I18N;
 const t = (I18N && I18N.t) || ((k) => k);
 const U = window.UNITS;
@@ -305,36 +305,8 @@ function HoldButton({ delta, onStep, children, style, ariaLabel }) {
 }
 
 // ── race finish-line clock (CSS seven-segment) ─────────────────────────
-const SEG_ON = { 0: 'abcdef', 1: 'bc', 2: 'abdeg', 3: 'abcdg', 4: 'bcfg',
-  5: 'acdfg', 6: 'acdefg', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg' };
-const SEG_PTS = {
-  a: '3,4 5,2 19,2 21,4 19,6 5,6',
-  g: '3,22 5,20 19,20 21,22 19,24 5,24',
-  d: '3,40 5,38 19,38 21,40 19,42 5,42',
-  f: '3,5 5,7 5,19 3,21 1,19 1,7',
-  b: '21,5 23,7 23,19 21,21 19,19 19,7',
-  e: '3,23 5,25 5,37 3,39 1,37 1,25',
-  c: '21,23 23,25 23,37 21,39 19,37 19,25',
-};
-function SevenSeg({ value, h = 44 }) {
-  const on = SEG_ON[value] || '';
-  return (
-    <svg viewBox="0 0 24 44" height={h} width={h * (24 / 44)} style={{ display: 'block' }}>
-      {Object.keys(SEG_PTS).map((k) => {
-        const lit = on.indexOf(k) !== -1;
-        return (
-          <polygon key={k} points={SEG_PTS[k]}
-            fill={lit ? 'var(--rc-on)' : 'var(--rc-off)'}
-            style={lit ? { filter: 'drop-shadow(0 0 2.5px var(--rc-glow))' } : undefined} />
-        );
-      })}
-    </svg>
-  );
-}
-function ClockDot() {
-  return <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--rc-on)',
-    filter: 'drop-shadow(0 0 3px var(--rc-glow))', display: 'block' }} />;
-}
+// SevenSeg/ClockDot/ClockDisplay live in shared.jsx (window.*) — route3d.jsx
+// reuses the same read-only ClockDisplay for its in-run clock.
 function ClockGroup({ value, digits, max, onChange, label, digitH }) {
   // wrap-around spinner (no carry between units)
   const bump = (d) => onChange((v) => ((v + d) % (max + 1) + (max + 1)) % (max + 1));
@@ -386,49 +358,6 @@ function RaceClock({ h, m, s, onH, onM, onS, subtitle, digitH = 50 }) {
       )}
     </div>
   );
-}
-
-// Read-only seven-segment display of a total time (H:MM·SS), for the race
-// card hero. Same housing/glow as RaceClock, no ▲▼ steppers.
-function ClockDisplay({ totalSec, digitH = 38, onClick, caption }) {
-  const t = Math.max(0, Math.round(totalSec || 0));
-  const h = Math.floor(t / 3600);
-  const m = Math.floor((t % 3600) / 60);
-  const s = t % 60;
-  const seg = (v, k) => <SevenSeg key={k} value={v} h={digitH} />;
-  const well = (
-    <div style={{ background: '#04050a', borderRadius: 12, padding: '9px 10px 7px',
-      display: 'flex', direction: 'ltr', alignItems: 'center', justifyContent: 'center', gap: 4,
-      boxShadow: 'inset 0 0 22px rgba(0,0,0,.75)' }}>
-      {String(h).split('').map((c, i) => seg(+c, 'h' + i))}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '0 3px' }}>
-        <ClockDot /><ClockDot />
-      </div>
-      {seg(Math.floor(m / 10), 'm0')}{seg(m % 10, 'm1')}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, padding: '0 3px' }}>
-        <ClockDot /><ClockDot />
-      </div>
-      {seg(Math.floor(s / 10), 's0')}{seg(s % 10, 's1')}
-    </div>
-  );
-  const root = {
-    '--rc-on': '#F5C24A', '--rc-off': 'rgba(245,194,74,.11)', '--rc-glow': 'rgba(245,194,74,.7)',
-    background: '#12141d', border: '1px solid var(--rp-line)', borderRadius: 16,
-    padding: '10px 12px 9px', boxShadow: 'inset 0 2px 12px rgba(0,0,0,.45)',
-    width: '100%', display: 'block', fontFamily: 'inherit',
-  };
-  const body = (
-    <>
-      {well}
-      {caption && (
-        <div style={{ textAlign: 'center', fontSize: 9.5, fontWeight: 700, letterSpacing: '.14em',
-          color: 'var(--rp-text-dim)', textTransform: 'uppercase', marginTop: 8 }}>{caption}</div>
-      )}
-    </>
-  );
-  return onClick
-    ? <button type="button" onClick={onClick} style={{ ...root, cursor: 'pointer' }}>{body}</button>
-    : <div style={root}>{body}</div>;
 }
 
 // Proportionally rescale every segment's pace so Σ(pace·dist) hits goalSec —

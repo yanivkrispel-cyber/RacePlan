@@ -14,6 +14,7 @@ const t = (window.I18N && window.I18N.t) || ((k) => k);
 const I18N = window.I18N;
 const U = window.UNITS;
 const ElevationChart = window.ElevationChart;
+const ClockDisplay = window.ClockDisplay;
 // Local dark-chrome palette for the side elevation chart — kept local
 // (no cross-module dependency, see map.jsx for the same habit) rather than
 // pulling in planner-b.jsx's themeB.
@@ -133,7 +134,9 @@ function frameAtU(THREE, curve, u) {
 // A start/finish arch: two posts planted either side of the road plus a
 // banner spanning between them near the top, textured with the given label.
 // `checkered` swaps the banner background for a finish-flag check pattern.
-function makeBannerTexture(THREE, label, checkered) {
+// `subLabel` (the race name, on the finish arch) renders as a second, smaller
+// line under the main label, shrunk to fit the banner width if needed.
+function makeBannerTexture(THREE, label, checkered, subLabel) {
   const w = 512, h = 160;
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h;
@@ -147,7 +150,7 @@ function makeBannerTexture(THREE, label, checkered) {
       }
     }
     ctx.fillStyle = 'rgba(10,12,18,.74)';
-    ctx.fillRect(0, h * 0.3, w, h * 0.4);
+    ctx.fillRect(0, subLabel ? h * 0.16 : h * 0.3, w, subLabel ? h * 0.74 : h * 0.4);
   } else {
     ctx.fillStyle = '#1E6FEB';
     ctx.fillRect(0, 0, w, h);
@@ -156,16 +159,30 @@ function makeBannerTexture(THREE, label, checkered) {
   }
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = '700 74px Heebo, system-ui, sans-serif';
-  ctx.fillText(label, w / 2, h / 2 + 4);
+  if (subLabel) {
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = '800 60px Heebo, system-ui, sans-serif';
+    ctx.fillText(label, w / 2, h * 0.58);
+    let subSize = 30;
+    ctx.font = `600 ${subSize}px Heebo, system-ui, sans-serif`;
+    while (subSize > 14 && ctx.measureText(subLabel).width > w * 0.88) {
+      subSize -= 2;
+      ctx.font = `600 ${subSize}px Heebo, system-ui, sans-serif`;
+    }
+    ctx.fillStyle = 'rgba(255,255,255,.92)';
+    ctx.fillText(subLabel, w / 2, h * 0.85);
+  } else {
+    ctx.textBaseline = 'middle';
+    ctx.font = '700 74px Heebo, system-ui, sans-serif';
+    ctx.fillText(label, w / 2, h / 2 + 4);
+  }
   const tex = new THREE.CanvasTexture(canvas);
   tex.anisotropy = 8;
   tex.encoding = THREE.sRGBEncoding;
   return tex;
 }
 
-function buildGate(THREE, curve, u, roadWidth, roadThickness, label, checkered, postColor) {
+function buildGate(THREE, curve, u, roadWidth, roadThickness, label, checkered, postColor, subLabel) {
   const { tangent, side, up, point: base } = frameAtU(THREE, curve, u);
   const postHeight = roadWidth * 3.2;
   const postRadius = roadWidth * 0.05;
@@ -185,9 +202,15 @@ function buildGate(THREE, curve, u, roadWidth, roadThickness, label, checkered, 
   const bannerHeight = postHeight * 0.3;
   const banner = new THREE.Mesh(
     new THREE.PlaneGeometry(bannerWidth, bannerHeight),
-    new THREE.MeshStandardMaterial({ map: makeBannerTexture(THREE, label, checkered), side: THREE.DoubleSide, roughness: 0.85 }),
+    new THREE.MeshStandardMaterial({ map: makeBannerTexture(THREE, label, checkered, subLabel), side: THREE.DoubleSide, roughness: 0.85 }),
   );
-  banner.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(side, up, tangent));
+  // Negating both `side` and `tangent` (keeping `up`) is a 180° turn around
+  // the vertical axis: the banner's correctly-oriented (non-mirrored) face
+  // ends up pointing toward -tangent — i.e. toward the runner approaching
+  // from behind — instead of away from them, without flipping the text
+  // upside down. A single-axis flip would look "fixed" but is actually a
+  // mirror reflection, not a rotation, and warps the plane's geometry.
+  banner.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(side.clone().negate(), up, tangent.clone().negate()));
   banner.position.copy(base).addScaledVector(up, postHeight * 0.88 + roadThickness / 2);
   group.add(banner);
   return group;
@@ -334,6 +357,60 @@ function buildRain(THREE, count, areaSize, height) {
   return { points: new THREE.Points(geo, mat), positions, count, height };
 }
 
+// A celebratory confetti burst, fired from the finish gate the moment the
+// runner crosses it. All particles share one static Points buffer (park
+// spent ones far below the floor rather than resizing arrays) — `burst(origin)`
+// respawns the whole batch there with outward+upward velocities, `update(dt)`
+// integrates gravity and reports whether any particle is still live.
+function buildConfetti(THREE, count, spread, floorY) {
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const velocities = new Float32Array(count * 3);
+  const life = new Float32Array(count); // seconds remaining; <=0 = parked/inactive
+  const PALETTE = [0xF5C24A, 0x1E6FEB, 0xC15A2E, 0xffffff];
+  for (let i = 0; i < count; i++) positions[i * 3 + 1] = floorY - 999;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.PointsMaterial({
+    size: spread * 0.14, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false,
+  });
+  const points = new THREE.Points(geo, mat);
+  const _c = new THREE.Color();
+  function burst(origin) {
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] = origin.x + (Math.random() - 0.5) * spread;
+      positions[i * 3 + 1] = origin.y + Math.random() * spread * 0.5;
+      positions[i * 3 + 2] = origin.z + (Math.random() - 0.5) * spread;
+      const ang = Math.random() * Math.PI * 2, spd = (0.5 + Math.random() * 1.3) * spread;
+      velocities[i * 3] = Math.cos(ang) * spd;
+      velocities[i * 3 + 1] = (1.8 + Math.random() * 1.8) * spread;
+      velocities[i * 3 + 2] = Math.sin(ang) * spd;
+      life[i] = 1.5 + Math.random() * 0.9;
+      _c.setHex(PALETTE[(Math.random() * PALETTE.length) | 0]);
+      colors[i * 3] = _c.r; colors[i * 3 + 1] = _c.g; colors[i * 3 + 2] = _c.b;
+    }
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+  }
+  function update(dt) {
+    let any = false;
+    for (let i = 0; i < count; i++) {
+      if (life[i] <= 0) continue;
+      any = true;
+      life[i] -= dt;
+      velocities[i * 3 + 1] -= spread * 3.5 * dt; // gravity
+      positions[i * 3] += velocities[i * 3] * dt;
+      positions[i * 3 + 1] += velocities[i * 3 + 1] * dt;
+      positions[i * 3 + 2] += velocities[i * 3 + 2] * dt;
+      if (life[i] <= 0 || positions[i * 3 + 1] < floorY) { life[i] = 0; positions[i * 3 + 1] = floorY - 999; }
+    }
+    if (any) geo.attributes.position.needsUpdate = true;
+    return any;
+  }
+  return { points, burst, update };
+}
+
 // Build a flat road ribbon following `points`, using a stable custom frame
 // (world-up × tangent) rather than the curve's own Frenet frames — Frenet
 // frames can twist/roll unpredictably along the long near-flat stretches a
@@ -418,8 +495,8 @@ function buildSamples(track, profile, steps) {
 // orbit-camera controls. Returns a cleanup function that tears everything
 // down; mutates `stateRef.current` with a `playing` flag and a `seek(frac)`
 // function the React shell can drive from its own controls.
-function mount3D(THREE, container, data, onProgress, stateRef) {
-  const { track, profile, rows, totalDist, weather, raceTime } = data;
+function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
+  const { track, profile, rows, totalDist, weather, raceTime, raceName } = data;
   if (!track || track.length < 2) throw new Error('route3d: no track');
 
   // ── Playback timing, computed early so the atmosphere pass below can map
@@ -497,7 +574,12 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   // complexity/cost here) that reads as "premium wet-look pavement" rather
   // than a CAD viewport.
   const FLOOR_Y = -0.42;
-  const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a0c14, roughness: 0.22, metalness: 0.35 });
+  // Roughness/metalness tuned to avoid a blown-out sun-glint hotspot now that
+  // the default chase-cam view sits low and close to the floor — a grazing
+  // view angle onto a near-mirror surface (the old wide overview angle's
+  // values) turns a directional light's specular lobe into a huge white
+  // blob. Still glossy enough to read as wet pavement from any angle.
+  const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a0c14, roughness: 0.5, metalness: 0.15 });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(TARGET_SIZE * 9, TARGET_SIZE * 9), floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = FLOOR_Y;
@@ -574,7 +656,7 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   scene.add(finishMesh);
 
   scene.add(buildGate(THREE, curve, 0, roadWidth, roadThickness, t('view3d.startGate'), false, 0x8091BE));
-  scene.add(buildGate(THREE, curve, 1, roadWidth, roadThickness, t('view3d.finishGate'), true, 0xC15A2E));
+  scene.add(buildGate(THREE, curve, 1, roadWidth, roadThickness, t('view3d.finishGate'), true, 0xC15A2E, raceName || ''));
 
   // ── Split signs — one per interior plan-segment boundary, showing the
   // checkpoint's cumulative distance and cumulative planned time, like a
@@ -596,6 +678,13 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   // ── Rain, only when the real forecast for race day calls for it ──
   const rain = weatherFilter.rain ? buildRain(THREE, 700, TARGET_SIZE * 2.6, TARGET_SIZE * 0.55) : null;
   if (rain) scene.add(rain.points);
+
+  // ── Finish-line confetti — bursts once per lap of the animation, the
+  // moment the runner crosses the finish (see the loop-wrap check in tick). ──
+  const confetti = buildConfetti(THREE, 220, roadWidth * 3.2, FLOOR_Y);
+  scene.add(confetti.points);
+  const finishPoint = points[points.length - 1].clone();
+  finishPoint.y += SURFACE_Y;
 
   // ── Atmosphere: blends the day-cycle keyframes (mapped from the plan's
   // real start time through its real estimated finish time) with the real
@@ -631,12 +720,33 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
     scene.fog.density = BASE_FOG_DENSITY * weatherFilter.fogMult;
   }
 
-  // ── Hand-rolled orbit camera: pointer-drag to orbit, wheel/pinch to zoom ──
-  let radius = TARGET_SIZE * 1.15;
+  // ── Camera: four switchable modes. 'free' and 'chase' share the same
+  // hand-rolled orbit rig (pointer-drag to orbit, wheel/pinch to zoom) and
+  // only differ in their default framing + idle behavior; 'pov' and
+  // 'broadcast' are rigidly attached to the runner's current point/tangent
+  // instead, like a real broadcast doesn't hand the viewer a camera crane. ──
+  const CAMERA_DEFAULTS = {
+    free: { radius: TARGET_SIZE * 1.15, polar: Math.PI * 0.32 },
+    chase: { radius: TARGET_SIZE * 0.42, polar: Math.PI * 0.24 },
+  };
+  let cameraMode = 'free';
+  let radius = CAMERA_DEFAULTS.free.radius;
   let azimuth = Math.PI * 0.22;
-  let polar = Math.PI * 0.32;
+  let polar = CAMERA_DEFAULTS.free.polar;
+  let povYaw = 0; // POV look-around offset, drag-controlled, decays back to 0 when idle
+  let curFrac = 0; // kept in sync by updateRunner, read by the pov/broadcast rigs
   const target = new THREE.Vector3(0, TARGET_SIZE * 0.06, 0);
   let lastInteraction = 0;
+
+  // Shortest signed angular distance from `a` to `b`, so the chase camera
+  // always sweeps the short way round the runner's turn instead of
+  // occasionally spinning the long way through a ±π wraparound.
+  function shortestAngleDelta(a, b) {
+    let d = (b - a) % (Math.PI * 2);
+    if (d > Math.PI) d -= Math.PI * 2;
+    if (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
 
   // Ground floor for the camera itself: never let orbiting bring the eye
   // below world y=0 — the route's own lowest point (everything is built on
@@ -645,7 +755,8 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   // zoom). GROUND_MARGIN keeps the camera a hair above the ground plane
   // rather than exactly grazing it.
   const GROUND_MARGIN = 0.6;
-  function applyCamera() {
+  const _up = new THREE.Vector3(0, 1, 0);
+  function applyCameraOrbit() {
     const maxPolar = Math.acos(Math.max(-1, Math.min(1, (GROUND_MARGIN - target.y) / radius)));
     polar = Math.max(0.12, Math.min(maxPolar, polar));
     camera.position.set(
@@ -654,6 +765,45 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
       target.z + radius * Math.sin(polar) * Math.cos(azimuth),
     );
     camera.lookAt(target);
+  }
+  // Runner's-eye view: parked at head height on the runner's own point,
+  // looking down the road along the current tangent (plus a drag-controlled
+  // yaw offset so the runner can "look around" mid-stride).
+  function applyCameraPov() {
+    const point = curve.getPointAt(curFrac);
+    const tangent = curve.getTangentAt(curFrac).normalize();
+    const eyePos = point.clone().addScaledVector(_up, SURFACE_Y + roadWidth * 1.6);
+    camera.position.copy(eyePos);
+    const yawed = tangent.applyAxisAngle(_up, povYaw);
+    camera.lookAt(eyePos.clone().addScaledVector(yawed, TARGET_SIZE * 0.15));
+  }
+  // Trackside broadcast camera: low, off to one side of the road, panning
+  // alongside the runner like a real race's motorcycle/TV camera rather than
+  // riding behind — emphasizes elevation change as the terrain "passes" by.
+  function applyCameraBroadcast() {
+    const point = curve.getPointAt(curFrac);
+    const tangent = curve.getTangentAt(curFrac).normalize();
+    const side = new THREE.Vector3().crossVectors(_up, tangent).normalize();
+    camera.position.copy(point).addScaledVector(side, roadWidth * 9).addScaledVector(_up, SURFACE_Y + roadWidth * 2.2);
+    camera.lookAt(point.clone().addScaledVector(_up, SURFACE_Y + roadWidth * 1.2));
+  }
+  function applyCamera() {
+    if (cameraMode === 'pov') applyCameraPov();
+    else if (cameraMode === 'broadcast') applyCameraBroadcast();
+    else applyCameraOrbit();
+  }
+  // Switches the active camera rig. 'chase' snaps its azimuth in behind
+  // wherever the runner is currently facing so the cut never opens on the
+  // wrong side of the road.
+  function switchCameraMode(mode) {
+    if (!CAMERA_DEFAULTS[mode] && mode !== 'pov' && mode !== 'broadcast') return;
+    cameraMode = mode;
+    if (mode === 'chase') {
+      const tangent = curve.getTangentAt(curFrac);
+      azimuth = Math.atan2(-tangent.x, -tangent.z);
+    }
+    if (CAMERA_DEFAULTS[mode]) { radius = CAMERA_DEFAULTS[mode].radius; polar = CAMERA_DEFAULTS[mode].polar; }
+    applyCamera();
   }
   applyCamera();
 
@@ -677,19 +827,27 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     lastInteraction = performance.now();
+    const orbitMode = cameraMode === 'free' || cameraMode === 'chase';
     if (pointers.size === 2 && pinchStartDist) {
-      const pts = [...pointers.values()];
-      const dist = Math.max(1, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
-      radius = Math.max(TARGET_SIZE * 0.35, Math.min(TARGET_SIZE * 3.5, pinchStartRadius * (pinchStartDist / dist)));
-      applyCamera();
+      if (orbitMode) {
+        const pts = [...pointers.values()];
+        const dist = Math.max(1, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
+        radius = Math.max(TARGET_SIZE * 0.35, Math.min(TARGET_SIZE * 3.5, pinchStartRadius * (pinchStartDist / dist)));
+        applyCamera();
+      }
       return;
     }
     if (dragLast && pointers.size === 1) {
       const dx = e.clientX - dragLast.x, dy = e.clientY - dragLast.y;
       dragLast = { x: e.clientX, y: e.clientY };
-      azimuth -= dx * 0.006;
-      polar -= dy * 0.006;
-      applyCamera();
+      if (orbitMode) {
+        azimuth -= dx * 0.006;
+        polar -= dy * 0.006;
+        applyCamera();
+      } else if (cameraMode === 'pov') {
+        povYaw -= dx * 0.006;
+        applyCamera();
+      }
     }
   }
   function onPointerUp(e) {
@@ -700,8 +858,10 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   function onWheel(e) {
     e.preventDefault();
     lastInteraction = performance.now();
-    radius = Math.max(TARGET_SIZE * 0.35, Math.min(TARGET_SIZE * 3.5, radius * (1 + e.deltaY * 0.0012)));
-    applyCamera();
+    if (cameraMode === 'free' || cameraMode === 'chase') {
+      radius = Math.max(TARGET_SIZE * 0.35, Math.min(TARGET_SIZE * 3.5, radius * (1 + e.deltaY * 0.0012)));
+      applyCamera();
+    }
   }
   container.addEventListener('pointerdown', onPointerDown);
   container.addEventListener('pointermove', onPointerMove);
@@ -739,16 +899,27 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   }
 
   function updateRunner(frac) {
-    const pos = curve.getPointAt(Math.max(0, Math.min(1, frac)));
+    curFrac = Math.max(0, Math.min(1, frac));
+    const pos = curve.getPointAt(curFrac);
     runner.position.set(pos.x, pos.y + SURFACE_Y, pos.z);
     revealGeo.setDrawRange(0, Math.round(revealIndexCount * frac));
     applyAtmosphere(frac);
     if (onProgress) onProgress(frac);
   }
 
+  // `finished` holds the animation at the finish line (elapsed pinned at
+  // totalTime) once a lap completes, instead of looping straight back to the
+  // start — so there's actually a moment to see the confetti before anything
+  // else happens. Playback only resets to the start once the user explicitly
+  // presses play again (see the `finished` check at the top of the playing
+  // block below); scrubbing away from the finish also clears it via seek().
+  let finished = false;
+
   stateRef.current = {
     playing: true,
-    seek(frac) { elapsed = frac * totalTime; updateRunner(frac); },
+    rate: 1, // playback-speed multiplier, driven by the speed selector
+    seek(frac) { finished = false; elapsed = frac * totalTime; updateRunner(frac); applyCamera(); },
+    setCameraMode: switchCameraMode,
   };
   updateRunner(0);
 
@@ -759,13 +930,37 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
     lastT = now;
 
     if (stateRef.current.playing) {
-      elapsed += dt * speedMult;
-      if (elapsed >= totalTime) elapsed = 0;
+      if (finished) { elapsed = 0; finished = false; }
+      elapsed += dt * speedMult * (stateRef.current.rate || 1);
+      if (elapsed >= totalTime) {
+        elapsed = totalTime;
+        finished = true;
+        stateRef.current.playing = false;
+        confetti.burst(finishPoint);
+        if (onFinish) onFinish();
+      }
       const frac = distFractionAtTime(elapsed);
       updateRunner(frac);
-      target.lerp(curve.getPointAt(frac), 0.04); // gentle camera follow
+      if (cameraMode === 'free' || cameraMode === 'chase') {
+        target.lerp(curve.getPointAt(frac), 0.04); // gentle camera follow
+      }
+      // Chase-cam heading: swing the idle camera in behind wherever the
+      // runner is now facing, so it reads as tucked-in-behind on curves
+      // instead of orbiting a fixed world angle. Only while the user isn't
+      // actively dragging, and eased in gently after they let go so a
+      // manual look-around doesn't snap back instantly.
+      if (cameraMode === 'chase' && now - lastInteraction > 900 && pointers.size === 0) {
+        const tangent = curve.getTangentAt(frac);
+        const desiredAzimuth = Math.atan2(-tangent.x, -tangent.z);
+        azimuth += shortestAngleDelta(azimuth, desiredAzimuth) * Math.min(1, dt * 2.2);
+      }
     }
-    if (now - lastInteraction > 2600 && pointers.size === 0) azimuth += dt * 0.06; // idle auto-orbit
+    if (cameraMode === 'free' && now - lastInteraction > 2600 && pointers.size === 0) {
+      azimuth += dt * 0.06; // idle auto-orbit, same gentle drift as the original static overview
+    }
+    if (cameraMode === 'pov' && now - lastInteraction > 600 && pointers.size === 0) {
+      povYaw *= Math.max(0, 1 - dt * 2.5); // ease the look-around back to dead-ahead
+    }
     applyCamera();
     runner.rotation.y += dt * 3;
 
@@ -776,6 +971,7 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
       }
       rain.points.geometry.attributes.position.needsUpdate = true;
     }
+    confetti.update(dt);
 
     renderer.render(scene, camera);
     raf = requestAnimationFrame(tick);
@@ -799,14 +995,51 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   };
 }
 
+const CAMERA_MODE_OPTIONS = ['free', 'chase', 'pov', 'broadcast'];
+const CAMERA_MODE_LABEL_KEY = { free: 'view3d.camFree', chase: 'view3d.camChase', pov: 'view3d.camPov', broadcast: 'view3d.camBroadcast' };
+const SPEED_OPTIONS = [0.5, 1, 2, 4];
+
+// The same premium seven-segment board as the planner's goal-time hero
+// (ClockDisplay), holding its own state behind a `setSeconds` ref so the
+// 60×/sec progress updates only re-render this small board — not the whole
+// modal — matching ElevationChart's setProgress imperative-ref pattern above.
+const RunClock = React.forwardRef(function RunClock({ digitH }, outerRef) {
+  const [sec, setSec] = React.useState(0);
+  React.useImperativeHandle(outerRef, () => ({ setSeconds: setSec }), []);
+  return ClockDisplay ? <ClockDisplay totalSec={sec} digitH={digitH} /> : null;
+});
+
 function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, weather, raceTime, onClose }) {
   const mountRef = React.useRef(null);
   const scrubRef = React.useRef(null);
   const distRef = React.useRef(null);
+  const clockRef = React.useRef(null);
   const elevChartRef = React.useRef(null);
   const stateRef = React.useRef(null);
   const [status, setStatus] = React.useState('loading'); // loading | ready | error
   const [playing, setPlaying] = React.useState(true);
+  const [cameraMode, setCameraMode] = React.useState('free');
+  const [speed, setSpeed] = React.useState(0.5);
+
+  // Cumulative plan time (seconds) at a given fraction of the total distance
+  // — the inverse of mount3D's own distFractionAtTime — so the on-screen
+  // clock reads the plan's real pacing, not the animation's own wall-clock.
+  const checkpoints = React.useMemo(() => [{ cumTime: 0, cumDist: 0 }]
+    .concat((rows || []).map((r) => ({ cumTime: r.cumTime, cumDist: r.cumDist }))), [rows]);
+  const timeAtFrac = (frac) => {
+    const dist = frac * (totalDist || 0);
+    const last = checkpoints[checkpoints.length - 1];
+    if (dist <= 0) return 0;
+    if (dist >= last.cumDist) return last.cumTime;
+    let lo = 0, hi = checkpoints.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (checkpoints[mid].cumDist <= dist) lo = mid; else hi = mid;
+    }
+    const a = checkpoints[lo], b = checkpoints[hi];
+    const f = b.cumDist > a.cumDist ? (dist - a.cumDist) / (b.cumDist - a.cumDist) : 0;
+    return a.cumTime + f * (b.cumTime - a.cumTime);
+  };
 
   React.useEffect(() => {
     let cancelled = false;
@@ -814,11 +1047,12 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
     ensureThree().then((THREE) => {
       if (cancelled || !mountRef.current) return;
       try {
-        cleanupFn = mount3D(THREE, mountRef.current, { track, profile, rows, totalDist, weather, raceTime }, (frac) => {
+        cleanupFn = mount3D(THREE, mountRef.current, { track, profile, rows, totalDist, weather, raceTime, raceName }, (frac) => {
           if (scrubRef.current) scrubRef.current.value = String(Math.round(frac * 1000));
           if (distRef.current) distRef.current.textContent = U ? U.fmtDist(frac * totalDist) : (frac * totalDist).toFixed(1);
+          if (clockRef.current) clockRef.current.setSeconds(timeAtFrac(frac));
           if (elevChartRef.current) elevChartRef.current.setProgress(frac * totalDist);
-        }, stateRef);
+        }, stateRef, () => { if (!cancelled) setPlaying(false); });
         if (!cancelled) setStatus('ready'); else if (cleanupFn) cleanupFn();
       } catch (e) {
         try { console.warn('[Route3DView] init failed', e); } catch (e2) {}
@@ -830,14 +1064,28 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // These three also re-run once `status` flips to 'ready' — mount3D builds
+  // stateRef.current asynchronously, so the very first pass (while still
+  // 'loading') finds it null and has to be replayed once it actually exists,
+  // otherwise the UI's own initial selections (0.5× speed, 'free' camera)
+  // would silently lose to mount3D's internal hardcoded defaults.
   React.useEffect(() => {
     if (stateRef.current) stateRef.current.playing = playing;
-  }, [playing]);
+  }, [playing, status]);
+
+  React.useEffect(() => {
+    if (stateRef.current) stateRef.current.rate = speed;
+  }, [speed, status]);
+
+  React.useEffect(() => {
+    if (stateRef.current) stateRef.current.setCameraMode(cameraMode);
+  }, [cameraMode, status]);
 
   const onScrub = (e) => {
     const frac = Number(e.target.value) / 1000;
     if (stateRef.current) stateRef.current.seek(frac);
     if (distRef.current) distRef.current.textContent = U ? U.fmtDist(frac * totalDist) : (frac * totalDist).toFixed(1);
+    if (clockRef.current) clockRef.current.setSeconds(timeAtFrac(frac));
     if (elevChartRef.current) elevChartRef.current.setProgress(frac * totalDist);
   };
 
@@ -865,7 +1113,7 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
           padding: 10px 12px; display: flex; flex-direction: column; }
         @media (max-width: 640px) {
           .rp-view3d-body { flex-direction: column; }
-          .rp-view3d-elev { width: 100%; height: 130px; border-inline-start: none;
+          .rp-view3d-elev { width: 100%; height: 190px; border-inline-start: none;
             border-top: 1px solid rgba(255,255,255,.08); }
         }
       `}</style>
@@ -884,7 +1132,8 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
         </div>
         {status === 'ready' && ElevationChart && (
           <div className="rp-view3d-elev">
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'rgba(255,255,255,.55)', marginBottom: 4 }}>
+            <RunClock ref={clockRef} digitH={22} />
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'rgba(255,255,255,.55)', margin: '10px 0 4px' }}>
               {t('chart.elevChartTitle')}
             </div>
             <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center' }}>
@@ -893,6 +1142,33 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
           </div>
         )}
       </div>
+
+      {status === 'ready' && (
+        <div style={{ padding: '8px 16px', borderTop: '1px solid rgba(255,255,255,.08)',
+          display: 'flex', alignItems: 'center', gap: 14, overflowX: 'auto' }}>
+          <div style={{ display: 'flex', gap: 4, flex: '0 0 auto' }}>
+            {CAMERA_MODE_OPTIONS.map((mode) => (
+              <button key={mode} onClick={() => setCameraMode(mode)} style={{
+                padding: '5px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
+                border: '1px solid ' + (cameraMode === mode ? 'var(--rp-gold)' : 'rgba(255,255,255,.18)'),
+                background: cameraMode === mode ? 'var(--rp-gold)' : 'rgba(255,255,255,.06)',
+                color: cameraMode === mode ? '#161200' : 'rgba(255,255,255,.75)', cursor: 'pointer',
+              }}>{t(CAMERA_MODE_LABEL_KEY[mode])}</button>
+            ))}
+          </div>
+          <div style={{ width: 1, alignSelf: 'stretch', background: 'rgba(255,255,255,.12)', flex: '0 0 auto' }} />
+          <div style={{ display: 'flex', gap: 4, flex: '0 0 auto' }}>
+            {SPEED_OPTIONS.map((s) => (
+              <button key={s} onClick={() => setSpeed(s)} style={{
+                padding: '5px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
+                border: '1px solid ' + (speed === s ? 'var(--rp-gold)' : 'rgba(255,255,255,.18)'),
+                background: speed === s ? 'var(--rp-gold)' : 'rgba(255,255,255,.06)',
+                color: speed === s ? '#161200' : 'rgba(255,255,255,.75)', cursor: 'pointer',
+              }}>{s}×</button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {status === 'ready' && (
         <div style={{ padding: '10px 16px 16px', borderTop: '1px solid rgba(255,255,255,.08)',
