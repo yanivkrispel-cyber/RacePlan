@@ -58,31 +58,51 @@ function _interpEle(profile, dKm) {
   return a.ele + f * (b.ele - a.ele);
 }
 
-// A small procedural canvas texture: dark asphalt with the "blue line" world
+// A procedural canvas texture: dark asphalt with the "blue line" world
 // marathons paint down the tangent (shortest-route) line, for that unmistakable
 // broadcast-course look. Tiled along the road's length via UVs baked directly
-// into the strip geometry below (so the line itself always reads as one
-// continuous stripe — only the asphalt speckle repeats).
+// into the strip geometry below. The speckle grain is drawn seamlessly (any
+// dot near the left/right edge is mirrored across the opposite edge) so the
+// repeat never shows a visible tiling seam — only the endlessly-repeating
+// grain, never a hard line.
 function makeRoadTexture(THREE) {
-  const w = 128, h = 64;
+  const w = 512, h = 128;
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#3c3f45';
   ctx.fillRect(0, 0, w, h);
-  for (let i = 0; i < 900; i++) {
-    ctx.fillStyle = `rgba(${Math.random() < 0.5 ? '0,0,0' : '255,255,255'},${(Math.random() * 0.12).toFixed(2)})`;
-    ctx.fillRect(Math.random() * w, Math.random() * h, 1.4, 1.4);
+
+  const speck = (x, y, r, alpha, dark) => {
+    ctx.fillStyle = `rgba(${dark ? '0,0,0' : '255,255,255'},${alpha.toFixed(2)})`;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  };
+  for (let i = 0; i < 3200; i++) {
+    const x = Math.random() * w, y = Math.random() * h;
+    const r = 0.5 + Math.random() * 1.2;
+    const alpha = Math.random() * 0.11;
+    const dark = Math.random() < 0.55;
+    speck(x, y, r, alpha, dark);
+    if (x < r * 2.5) speck(x + w, y, r, alpha, dark);
+    if (x > w - r * 2.5) speck(x - w, y, r, alpha, dark);
   }
-  const lineH = h * 0.16;
+
+  const lineH = h * 0.15;
   ctx.fillStyle = '#1E6FEB';
   ctx.fillRect(0, h / 2 - lineH / 2, w, lineH);
-  ctx.fillStyle = 'rgba(255,255,255,.2)';
-  ctx.fillRect(0, h / 2 - lineH / 2, w, lineH * 0.28);
+  ctx.fillStyle = 'rgba(255,255,255,.22)';
+  ctx.fillRect(0, h / 2 - lineH / 2, w, lineH * 0.26);
+
+  // subtle white shoulder lines near each edge, like real road markings
+  ctx.fillStyle = 'rgba(255,255,255,.42)';
+  ctx.fillRect(0, h * 0.1, w, h * 0.016);
+  ctx.fillRect(0, h * 0.884, w, h * 0.016);
+
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.anisotropy = 4;
+  tex.anisotropy = 8;
+  tex.encoding = THREE.sRGBEncoding;
   return tex;
 }
 
@@ -93,19 +113,21 @@ function _fmtClock(totalSec) {
   return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
 }
 
-// The stable (side, up) frame at sample index i — world-up × tangent, same
-// construction buildRoadStrips uses below, reused here to plant gates and
-// split signs flush with the road's own orientation at that point.
-function frameAt(THREE, points, i) {
-  const n = points.length;
+// The stable (side, up) frame at fraction u along the smooth curve — world-up
+// × tangent, sampled directly off the curve (not off the coarser polyline of
+// resampled points) so gates and split signs sit flush with the same silky
+// surface the road itself is now built from.
+function frameAtU(THREE, curve, u) {
+  const eps = 0.0025;
+  const u0 = Math.max(0, u - eps), u1 = Math.min(1, u + eps);
+  const p0 = curve.getPointAt(u0), p1 = curve.getPointAt(u1);
   const up = new THREE.Vector3(0, 1, 0);
-  const prev = points[Math.max(0, i - 1)], next = points[Math.min(n - 1, i + 1)];
-  const tangent = new THREE.Vector3().subVectors(next, prev);
-  if (tangent.lengthSq() < 1e-8) tangent.set(1, 0, 0); else tangent.normalize();
+  const tangent = new THREE.Vector3().subVectors(p1, p0);
+  if (tangent.lengthSq() < 1e-10) tangent.set(1, 0, 0); else tangent.normalize();
   const side = new THREE.Vector3().crossVectors(up, tangent);
-  if (side.lengthSq() < 1e-8) side.set(1, 0, 0); else side.normalize();
+  if (side.lengthSq() < 1e-10) side.set(1, 0, 0); else side.normalize();
   const localUp = new THREE.Vector3().crossVectors(tangent, side).normalize();
-  return { tangent, side, up: localUp };
+  return { tangent, side, up: localUp, point: curve.getPointAt(u) };
 }
 
 // A start/finish arch: two posts planted either side of the road plus a
@@ -138,13 +160,13 @@ function makeBannerTexture(THREE, label, checkered) {
   ctx.font = '700 74px Heebo, system-ui, sans-serif';
   ctx.fillText(label, w / 2, h / 2 + 4);
   const tex = new THREE.CanvasTexture(canvas);
-  tex.anisotropy = 4;
+  tex.anisotropy = 8;
+  tex.encoding = THREE.sRGBEncoding;
   return tex;
 }
 
-function buildGate(THREE, points, index, roadWidth, roadThickness, label, checkered, postColor) {
-  const { tangent, side, up } = frameAt(THREE, points, index);
-  const base = points[index];
+function buildGate(THREE, curve, u, roadWidth, roadThickness, label, checkered, postColor) {
+  const { tangent, side, up, point: base } = frameAtU(THREE, curve, u);
   const postHeight = roadWidth * 3.2;
   const postRadius = roadWidth * 0.05;
   const halfSpan = roadWidth / 2 + roadWidth * 0.18;
@@ -194,13 +216,13 @@ function makeSignTexture(THREE, line1, line2) {
   ctx.font = '600 34px Heebo, system-ui, sans-serif';
   ctx.fillText(line2, w / 2, h * 0.74);
   const tex = new THREE.CanvasTexture(canvas);
-  tex.anisotropy = 4;
+  tex.anisotropy = 8;
+  tex.encoding = THREE.sRGBEncoding;
   return tex;
 }
 
-function buildSplitSign(THREE, points, index, roadWidth, roadThickness, distText, timeText) {
-  const { side, up } = frameAt(THREE, points, index);
-  const base = points[index];
+function buildSplitSign(THREE, curve, u, roadWidth, roadThickness, distText, timeText) {
+  const { side, up, point: base } = frameAtU(THREE, curve, u);
   const postHeight = roadWidth * 2.1;
 
   const group = new THREE.Group();
@@ -220,6 +242,29 @@ function buildSplitSign(THREE, points, index, roadWidth, roadThickness, distText
   sprite.position.copy(basePos).addScaledVector(up, postHeight + roadThickness / 2 + signH * 0.45);
   group.add(sprite);
   return group;
+}
+
+// A soft dusk-toned sky dome — a huge inward-facing hemisphere with a
+// vertex-colored gradient (dark zenith fading to a warm horizon) — instead of
+// a flat void behind the scene. Kept out of the fog calculation (it sits at
+// an "infinite" distance where the fog formula would otherwise just paint it
+// a flat fog color, erasing the gradient) so foreground objects still fade
+// naturally while the sky itself stays a real backdrop that turns with the
+// camera as you orbit.
+function makeSkyDome(THREE, radius, topColor, horizonColor) {
+  const geo = new THREE.SphereGeometry(radius, 64, 40, 0, Math.PI * 2, 0, Math.PI / 2 + 0.2);
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const top = new THREE.Color(topColor), bottom = new THREE.Color(horizonColor);
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const yNorm = Math.max(0, Math.min(1, pos.getY(i) / radius));
+    c.copy(bottom).lerp(top, Math.pow(yNorm, 1.6));
+    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false });
+  return new THREE.Mesh(geo, mat);
 }
 
 // Build a flat road ribbon following `points`, using a stable custom frame
@@ -335,20 +380,33 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   ));
   const curve = new THREE.CatmullRomCurve3(points);
 
+  // The visible road is built from a DENSE resampling of this smooth curve —
+  // not the coarser polyline of `points` — so it reads as one continuous
+  // ribbon with no faceting at the original GPX vertices, and stays exactly
+  // flush with the runner (which also travels via curve.getPointAt).
+  const ROAD_STEPS = Math.max(300, Math.min(900, Math.round(totalKm * 60)));
+  const roadPoints = [];
+  for (let i = 0; i <= ROAD_STEPS; i++) roadPoints.push(curve.getPointAt(i / ROAD_STEPS));
+
   // ── Scene ──
+  const HORIZON_COLOR = 0x2e2438;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x05070d);
-  scene.fog = new THREE.FogExp2(0x05070d, 0.0022);
+  scene.fog = new THREE.FogExp2(HORIZON_COLOR, 0.0022);
+  scene.add(makeSkyDome(THREE, 3000, 0x05060f, HORIZON_COLOR));
 
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
   renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;';
   container.appendChild(renderer.domElement);
 
-  scene.add(new THREE.AmbientLight(0x8899bb, 0.65));
-  const sun = new THREE.DirectionalLight(0xfff2d6, 0.9);
-  sun.position.set(60, 90, 40);
+  scene.add(new THREE.HemisphereLight(0x565f92, 0x241c17, 0.85));
+  const sun = new THREE.DirectionalLight(0xffe3b0, 1.0);
+  sun.position.set(80, 65, -35);
   scene.add(sun);
 
   const grid = new THREE.GridHelper(TARGET_SIZE * 2.2, 22, 0x2a3346, 0x1a2030);
@@ -360,11 +418,10 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   const roadWidth = Math.max(1.4, TARGET_SIZE * 0.024);
   const roadThickness = roadWidth * 0.22;
   const tubeRadius = roadWidth * 0.32; // scale reference for markers/shadow below
-  const tubularSegments = Math.max(150, STEPS * 2);
   const roadWorldLength = totalKm * 1000 * scale;
   const repeatX = Math.max(4, Math.round(roadWorldLength / 6));
   const roadTexture = makeRoadTexture(THREE);
-  const { topGeo, leftWallGeo, rightWallGeo } = buildRoadStrips(THREE, points, roadWidth, roadThickness, repeatX);
+  const { topGeo, leftWallGeo, rightWallGeo } = buildRoadStrips(THREE, roadPoints, roadWidth, roadThickness, repeatX);
 
   scene.add(new THREE.Mesh(topGeo, new THREE.MeshStandardMaterial({
     map: roadTexture, roughness: 0.92, metalness: 0.02, side: THREE.DoubleSide,
@@ -385,15 +442,15 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   const SURFACE_Y = roadThickness / 2 + 0.05; // lift markers/runner onto the road surface, not its centerline
 
   // ── Ground "shadow" ribbon + drop-lines, purely for depth cues ──
-  const groundCurve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(p.x, -0.35, p.z)));
-  const groundGeo = new THREE.TubeGeometry(groundCurve, tubularSegments, tubeRadius * 0.8, 6, false);
-  scene.add(new THREE.Mesh(groundGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 })));
+  const groundCurve = new THREE.CatmullRomCurve3(roadPoints.map((p) => new THREE.Vector3(p.x, -0.35, p.z)));
+  const groundGeo = new THREE.TubeGeometry(groundCurve, ROAD_STEPS, tubeRadius * 1.6, 6, false);
+  scene.add(new THREE.Mesh(groundGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26 })));
 
   const dropMat = new THREE.LineBasicMaterial({ color: 0x3a4258, transparent: true, opacity: 0.5 });
   const DROP_COUNT = 14;
   for (let i = 1; i < DROP_COUNT; i++) {
-    const idx = Math.round((i / DROP_COUNT) * (points.length - 1));
-    const top = points[idx];
+    const idx = Math.round((i / DROP_COUNT) * (roadPoints.length - 1));
+    const top = roadPoints[idx];
     const geo = new THREE.BufferGeometry().setFromPoints([top, new THREE.Vector3(top.x, -0.35, top.z)]);
     scene.add(new THREE.Line(geo, dropMat));
   }
@@ -407,16 +464,16 @@ function mount3D(THREE, container, data, onProgress, stateRef) {
   finishMesh.position.copy(points[points.length - 1]); finishMesh.position.y += SURFACE_Y;
   scene.add(finishMesh);
 
-  scene.add(buildGate(THREE, points, 0, roadWidth, roadThickness, t('view3d.startGate'), false, 0x8091BE));
-  scene.add(buildGate(THREE, points, points.length - 1, roadWidth, roadThickness, t('view3d.finishGate'), true, 0xC15A2E));
+  scene.add(buildGate(THREE, curve, 0, roadWidth, roadThickness, t('view3d.startGate'), false, 0x8091BE));
+  scene.add(buildGate(THREE, curve, 1, roadWidth, roadThickness, t('view3d.finishGate'), true, 0xC15A2E));
 
   // ── Split signs — one per interior plan-segment boundary, showing the
   // checkpoint's cumulative distance and cumulative planned time, like a
   // real course's pacing/km-marker signage ──
   (rows || []).slice(0, -1).forEach((r) => {
-    const idx = Math.max(0, Math.min(points.length - 1, Math.round((r.cumDist / (totalDist || 1)) * (points.length - 1))));
+    const u = Math.max(0, Math.min(1, r.cumDist / (totalDist || 1)));
     const distText = U ? U.fmtDist(r.cumDist) : `${r.cumDist.toFixed(1)} km`;
-    scene.add(buildSplitSign(THREE, points, idx, roadWidth, roadThickness, distText, _fmtClock(r.cumTime)));
+    scene.add(buildSplitSign(THREE, curve, u, roadWidth, roadThickness, distText, _fmtClock(r.cumTime)));
   });
 
   // ── The runner ──
