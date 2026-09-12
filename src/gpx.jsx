@@ -14,6 +14,23 @@ function _haversine(a, b) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(x))); // meters
 }
 
+// Gentle moving-average over raw elevation samples before summing gain/loss —
+// GPS/barometer jitter otherwise counts as up-and-down on every little wobble,
+// wildly inflating the total ascent/descent of an essentially flat course.
+function _smoothEle(pts) {
+  const n = pts.length;
+  const r = Math.min(4, Math.max(1, Math.round(n / 100)));
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let sum = 0, cnt = 0;
+    for (let j = Math.max(0, i - r); j <= Math.min(n - 1, i + r); j++) {
+      if (isFinite(pts[j].ele)) { sum += pts[j].ele; cnt++; }
+    }
+    out[i] = cnt ? sum / cnt : NaN;
+  }
+  return out;
+}
+
 function parseGpx(text) {
   const doc = new DOMParser().parseFromString(text, 'application/xml');
   if (doc.querySelector('parsererror')) throw new Error(t('gpx.badXml'));
@@ -35,8 +52,11 @@ function parseGpx(text) {
   for (let i = 1; i < pts.length; i++) {
     cum += _haversine(pts[i - 1], pts[i]);
     pts[i].cum = cum;
-    if (isFinite(pts[i].ele) && isFinite(pts[i - 1].ele)) {
-      const d = pts[i].ele - pts[i - 1].ele;
+  }
+  const smoothed = _smoothEle(pts);
+  for (let i = 1; i < pts.length; i++) {
+    if (isFinite(smoothed[i]) && isFinite(smoothed[i - 1])) {
+      const d = smoothed[i] - smoothed[i - 1];
       if (d > 0) gain += d; else loss -= d;
     }
   }
