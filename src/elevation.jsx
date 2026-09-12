@@ -27,8 +27,9 @@ const ElevationChart = React.forwardRef(function ElevationChart({ profile, color
   const markerRef = React.useRef(null);
   const guideRef = React.useRef(null);
   const H = height;
-  const data = (profile || []).filter((p) => isFinite(p.ele) && isFinite(p.d));
-  const hasData = data.length >= 2;
+  const rawData = (profile || []).filter((p) => isFinite(p.ele) && isFinite(p.d));
+  const hasData = rawData.length >= 2;
+  const data = hasData ? window.smoothElevProfile(rawData) : rawData;
 
   const padL = 46, padR = 14, padT = 16, padB = 26;
   const plotW = Math.max(10, W - padL - padR);
@@ -39,8 +40,15 @@ const ElevationChart = React.forwardRef(function ElevationChart({ profile, color
   if (hasData) {
     const eles = data.map((p) => p.ele);
     lo = Math.min(...eles); hi = Math.max(...eles);
-    const range = hi - lo || 10;
-    lo -= range * 0.15; hi += range * 0.15;
+    // Always show at least this many meters of vertical span, so a flat
+    // course doesn't get stretched to fill the chart and read as a climb.
+    const MIN_RANGE = 60;
+    if (hi - lo < MIN_RANGE) {
+      const mid = (hi + lo) / 2;
+      lo = mid - MIN_RANGE / 2; hi = mid + MIN_RANGE / 2;
+    }
+    const pad = (hi - lo) * 0.15;
+    lo -= pad; hi += pad;
   }
 
   const x = (d) => padL + (d / xMax) * plotW;

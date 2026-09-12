@@ -28,6 +28,23 @@ const EL_AXIS  = 'rgba(124,136,176,0.75)';
 
 const SNAP_PX = 12;
 
+// Gentle moving-average over elevation only (distance untouched) — knocks the
+// GPS/barometer jitter off the line without flattening real hills, since the
+// window stays a small fraction of the point count.
+function smoothElevProfile(data) {
+  const n = data.length;
+  if (n < 5) return data;
+  const r = Math.min(4, Math.max(1, Math.round(n / 100)));
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let sum = 0, cnt = 0;
+    for (let j = Math.max(0, i - r); j <= Math.min(n - 1, i + r); j++) { sum += data[j].ele; cnt++; }
+    out[i] = { d: data[i].d, ele: sum / cnt };
+  }
+  return out;
+}
+window.smoothElevProfile = smoothElevProfile;
+
 function PaceChart({
   rows, avgPace, totalDist,
   variant = 'step', colors, height = 230, compact = false,
@@ -57,10 +74,11 @@ function PaceChart({
   if (!rows.length) return <div ref={ref} style={{ width: '100%', height: H }} />;
 
   // Elevation data: filter valid points
-  const elData = (showElevation && elevationProfile)
+  const elDataRaw = (showElevation && elevationProfile)
     ? elevationProfile.filter((p) => isFinite(p.ele) && isFinite(p.d))
     : [];
-  const hasEl = elData.length >= 2;
+  const hasEl = elDataRaw.length >= 2;
+  const elData = hasEl ? smoothElevProfile(elDataRaw) : elDataRaw;
 
   const padL = compact ? 40 : 48;
   const padR = hasEl ? 46 : 14;   // extra room for right-axis labels
@@ -100,9 +118,15 @@ function PaceChart({
     const eles = elData.map((p) => p.ele);
     elLo = Math.min(...eles);
     elHi = Math.max(...eles);
-    const elRange = elHi - elLo || 10;
-    elLo -= elRange * 0.12;
-    elHi += elRange * 0.12;
+    // Always show at least this many meters of vertical span, so a flat
+    // course doesn't get stretched to fill the chart and read as a climb.
+    const MIN_EL_RANGE = 60;
+    if (elHi - elLo < MIN_EL_RANGE) {
+      const mid = (elHi + elLo) / 2;
+      elLo = mid - MIN_EL_RANGE / 2; elHi = mid + MIN_EL_RANGE / 2;
+    }
+    const elPad = (elHi - elLo) * 0.12;
+    elLo -= elPad; elHi += elPad;
     ye = (e) => padT + ((elHi - e) / (elHi - elLo)) * plotH; // higher = up
 
     // Right-axis ticks (3 levels)
