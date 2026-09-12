@@ -63,15 +63,17 @@ function _loadPlan() {
         paceSec: clamp(Math.round(+p || 300), 120, 900),
       })),
       preset: data.p ?? null,
+      course: data.c ?? null,
     };
   } catch { return null; }
 }
 
-function _savePlan(segments, activePreset) {
+function _savePlan(segments, activePreset, course) {
   try {
     localStorage.setItem(LS_PLAN, JSON.stringify({
       s: segments.map(s => [round2(s.distance), s.paceSec]),
       p: activePreset,
+      c: course || null,
     }));
   } catch {}
 }
@@ -157,20 +159,20 @@ const ZONES = {
 // ── the hook ───────────────────────────────────────────────────────────
 function useRacePlan(initial, initialPreset) {
   // Load saved plan once — both state initializers read from same snapshot
-  const [[initSegs, initPreset]] = React.useState(() => {
-    if (initial) return [initial, initialPreset ?? 10];
+  const [[initSegs, initPreset, initCourse]] = React.useState(() => {
+    if (initial) return [initial, initialPreset ?? 10, null];
     const saved = _loadPlan();
-    return saved ? [saved.segments, saved.preset ?? 10] : [defaultSegments(), 10];
+    return saved ? [saved.segments, saved.preset ?? 10, saved.course] : [defaultSegments(), 10, null];
   });
 
   const [segments, setSegments] = React.useState(initSegs);
   const [activePreset, setActivePreset] = React.useState(initPreset);
-  const [course, setCourse] = React.useState(null);
+  const [course, setCourse] = React.useState(initCourse);
 
   const plan = React.useMemo(() => computePlan(segments), [segments]);
 
-  // Persist whenever plan changes
-  React.useEffect(() => { _savePlan(segments, activePreset); }, [segments, activePreset]);
+  // Persist whenever plan (or its loaded route) changes
+  React.useEffect(() => { _savePlan(segments, activePreset, course); }, [segments, activePreset, course]);
 
   const api = React.useMemo(() => ({
     setSegmentDistance: (id, km) => setSegments((ss) =>

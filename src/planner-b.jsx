@@ -90,6 +90,10 @@ const themeB = {
 
 const LS_RACE_DATE = 'rp-race-date';
 const LS_RACE_TIME = 'rp-race-time';
+// Paused: the generated clip's quality isn't good enough yet — flip back on
+// once the 3D-flyover video capture is revisited. The rest of the feature
+// (src/videoshare.jsx, route3d.jsx's renderNow/mount3D exports) stays intact.
+const SHARE_VIDEO_ENABLED = false;
 
 function _windDirLabel(deg) {
   const keys = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
@@ -1392,7 +1396,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   };
 
   const doShareVideo = async () => {
-    if (!window.RP_VIDEO_SHARE || !p.course?.track || p.course.track.length < 2) { setShareOpen(false); return; }
+    if (!SHARE_VIDEO_ENABLED || !window.RP_VIDEO_SHARE || !p.course?.track || p.course.track.length < 2) { setShareOpen(false); return; }
     setShareOpen(false);
     videoCancelRef.current = false;
     setVideoBusy(true); setVideoProgress(0);
@@ -1929,7 +1933,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
                 </svg>
               ),
             },
-            {
+            SHARE_VIDEO_ENABLED && {
               label: videoBusy ? t('planner.generatingVideo') : t('planner.shareVideo'),
               disabled: videoBusy || !p.course?.track || p.course.track.length < 2,
               onClick: doShareVideo,
@@ -1939,11 +1943,11 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
                 </svg>
               ),
             },
-          ]}
+          ].filter(Boolean)}
         />
       )}
 
-      {videoBusy && window.ShareVideoProgress && (
+      {SHARE_VIDEO_ENABLED && videoBusy && window.ShareVideoProgress && (
         <window.ShareVideoProgress progress={videoProgress} onCancel={() => { videoCancelRef.current = true; }} />
       )}
 
