@@ -1158,6 +1158,9 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   React.useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const [shareOpen, setShareOpen] = React.useState(false);
   const [pdfBusy, setPdfBusy] = React.useState(false);
+  const [videoBusy, setVideoBusy] = React.useState(false);
+  const [videoProgress, setVideoProgress] = React.useState(0);
+  const videoCancelRef = React.useRef(false);
   const printRef = React.useRef(null);
   const [showElevation, setShowElevation] = React.useState(true);
   const [showMyPlans, setShowMyPlans] = React.useState(false);
@@ -1385,6 +1388,28 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
     } finally {
       setPdfBusy(false);
       setShareOpen(false);
+    }
+  };
+
+  const doShareVideo = async () => {
+    if (!window.RP_VIDEO_SHARE || !p.course?.track || p.course.track.length < 2) { setShareOpen(false); return; }
+    setShareOpen(false);
+    videoCancelRef.current = false;
+    setVideoBusy(true); setVideoProgress(0);
+    try {
+      const r = await window.RP_VIDEO_SHARE.shareRouteClip(
+        { track: p.course.track, profile: p.course.profile, rows: plan.rows, totalDist: plan.totalDist,
+          weather, raceTime, raceName },
+        pdfFilename().replace(/\.pdf$/, ''),
+        raceName || t('pdf.defaultTitle'),
+        { onProgress: (f) => setVideoProgress(f), isCancelled: () => videoCancelRef.current },
+      );
+      if (r === 'downloaded') showToast(t('planner.videoDownloaded'));
+    } catch (e) {
+      console.error('shareRouteClip failed:', e);
+      showToast(t('planner.videoFailed'));
+    } finally {
+      setVideoBusy(false);
     }
   };
 
@@ -1904,8 +1929,22 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
                 </svg>
               ),
             },
+            {
+              label: videoBusy ? t('planner.generatingVideo') : t('planner.shareVideo'),
+              disabled: videoBusy || !p.course?.track || p.course.track.length < 2,
+              onClick: doShareVideo,
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="5" width="14" height="14" rx="2" /><path d="m16 10 6-4v12l-6-4" />
+                </svg>
+              ),
+            },
           ]}
         />
+      )}
+
+      {videoBusy && window.ShareVideoProgress && (
+        <window.ShareVideoProgress progress={videoProgress} onCancel={() => { videoCancelRef.current = true; }} />
       )}
 
       {goalOpen && (

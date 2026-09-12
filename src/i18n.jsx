@@ -268,6 +268,10 @@ const DICTS = {
     'planner.preparingPdf': 'מכין PDF…',
     'planner.sendPdf': 'שלח PDF',
     'planner.print': 'הדפסה',
+    'planner.shareVideo': 'שתף סרטון מסלול',
+    'planner.generatingVideo': 'יוצר סרטון…',
+    'planner.videoDownloaded': 'הסרטון הורד',
+    'planner.videoFailed': 'יצירת הסרטון נכשלה',
     'planner.pacesUpdated': 'הקצבים עודכנו · יעד {goal}',
     'planner.segmentN': 'קטע {n}',
 
@@ -650,6 +654,10 @@ const DICTS = {
     'planner.preparingPdf': 'Preparing PDF…',
     'planner.sendPdf': 'Send PDF',
     'planner.print': 'Print',
+    'planner.shareVideo': 'Share route video',
+    'planner.generatingVideo': 'Creating video…',
+    'planner.videoDownloaded': 'Video downloaded',
+    'planner.videoFailed': 'Creating the video failed',
     'planner.pacesUpdated': 'Paces updated · goal {goal}',
     'planner.segmentN': 'segment {n}',
 
@@ -1032,6 +1040,10 @@ const DICTS = {
     'planner.preparingPdf': 'Préparation du PDF…',
     'planner.sendPdf': 'Envoyer le PDF',
     'planner.print': 'Imprimer',
+    'planner.shareVideo': 'Partager la vidéo du parcours',
+    'planner.generatingVideo': 'Création de la vidéo…',
+    'planner.videoDownloaded': 'Vidéo téléchargée',
+    'planner.videoFailed': 'Échec de la création de la vidéo',
     'planner.pacesUpdated': 'Allures mises à jour · objectif {goal}',
     'planner.segmentN': 'segment {n}',
 
@@ -1414,6 +1426,10 @@ const DICTS = {
     'planner.preparingPdf': 'Preparando PDF…',
     'planner.sendPdf': 'Enviar PDF',
     'planner.print': 'Imprimir',
+    'planner.shareVideo': 'Compartir vídeo del recorrido',
+    'planner.generatingVideo': 'Creando vídeo…',
+    'planner.videoDownloaded': 'Vídeo descargado',
+    'planner.videoFailed': 'Error al crear el vídeo',
     'planner.pacesUpdated': 'Ritmos actualizados · objetivo {goal}',
     'planner.segmentN': 'tramo {n}',
 

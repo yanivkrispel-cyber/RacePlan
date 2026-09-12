@@ -920,6 +920,11 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     rate: 1, // playback-speed multiplier, driven by the speed selector
     seek(frac) { finished = false; elapsed = frac * totalTime; updateRunner(frac); applyCamera(); },
     setCameraMode: switchCameraMode,
+    // Forces an immediate synchronous paint, bypassing the internal rAF-driven
+    // tick() loop below — used by scripted/offscreen capture (videoshare.jsx)
+    // so a frame is guaranteed on-canvas right after seek(), regardless of
+    // whether requestAnimationFrame is currently being throttled.
+    renderNow() { renderer.render(scene, camera); },
   };
   updateRunner(0);
 
@@ -1199,4 +1204,6 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
   ), document.body);
 }
 
+window.ensureThree = ensureThree;
+window.mount3D = mount3D;
 window.Route3DView = Route3DView;
