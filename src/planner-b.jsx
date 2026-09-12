@@ -1461,6 +1461,19 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
     showToast(t('planner.savedToAthlete', { name }));
   };
 
+  // Runner: one-click save of the current plan into "my plans" — no naming
+  // sheet, mirroring the owner's one-click "Save to athlete" button. Uses
+  // MyPlansDB.save's own auto-naming (race name + timestamp) when no name is
+  // given; the fuller sheet (rename/manage/reload) stays available separately.
+  const saveMyPlan = () => {
+    if (!MyPlansDB) return;
+    MyPlansDB.save({
+      raceName, raceDate, raceTime, trainer,
+      segments: p.segments, preset: p.activePreset, course: p.course,
+    });
+    showToast(t('planner.planSaved'));
+  };
+
   // Load one of the user's own saved plans ("my plans")
   const handleLoadMyPlan = (plan) => {
     setRaceName(plan.raceName || '');
@@ -1687,6 +1700,15 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
               {t('hub.myPlans')}
+            </button>
+          )}
+
+          {MyPlansDB && RP_FB && !isOwner && (
+            <button className="rp-btn rp-btn-iconify" aria-label={t('planner.savePlan')} onClick={saveMyPlan}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
+              <span className="rp-btn-label">{t('planner.savePlan')}</span>
             </button>
           )}
 
