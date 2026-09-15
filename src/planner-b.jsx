@@ -1258,7 +1258,13 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
       });
     };
 
-    const load = daysOut <= 15 ? loadForecast : loadHistoricalAverage;
+    // Open-Meteo's live forecast only covers a window around today (roughly
+    // the last ~90 days through the next ~15) — a race date that's already
+    // passed (very common when resuming an older plan) falls outside it just
+    // like one too far in the future, and the API 400s. Route both cases to
+    // the historical-average fallback instead of silently ending up with no
+    // weather at all.
+    const load = (daysOut >= 0 && daysOut <= 15) ? loadForecast : loadHistoricalAverage;
     load()
       .then((w) => {
         if (cancelled) return;
