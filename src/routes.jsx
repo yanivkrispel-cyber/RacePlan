@@ -789,10 +789,22 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
   const [nr, setNr] = React.useState({ name: '', nameHe: '', city: '', cc: '', dist: 'marathon' });
   const setNrField = (k) => (e) => setNr((s) => ({ ...s, [k]: e.target.value }));
 
+  // ── community submissions inbox (routeSubmissions, status=pending) ──────
+  const [panelTab, setPanelTab] = React.useState('races');
+  const [subs, setSubs] = React.useState(null);       // null = not loaded
+  const [subBusy, setSubBusy] = React.useState('');   // id being approved/rejected
+  const [expanded, setExpanded] = React.useState('');
+
   const load = React.useCallback((force) => {
     if (!RP_FB_R) { setRaces([]); return Promise.resolve(); }
     return RP_FB_R.racesList(force).then((list) => setRaces((list || []).slice()));
   }, []);
+
+  const loadSubs = React.useCallback(() => {
+    if (!RP_FB_R || !RP_FB_R.submissionsList) return Promise.resolve();
+    return RP_FB_R.submissionsList('pending').then((list) => setSubs(list || []));
+  }, []);
+  React.useEffect(() => { loadSubs(); }, [loadSubs]);
 
   React.useEffect(() => {
     let alive = true;
@@ -977,6 +989,52 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
     } finally { setBusy(''); }
   };
 
+  // ── community submissions: approve merges the GPX into the race, reject
+  // just closes the request out ─────────────────────────────────────────
+  const approveSub = async (s) => {
+    if (!RP_FB_R) return;
+    setSubBusy(s.id); setErr('');
+    try {
+      const next = {
+        routeStatus: 'available',
+        distanceKm: round3(s.distanceKm || 0),
+        gain: s.gain || 0, loss: s.loss || 0,
+        startLat: s.startLat != null ? round5(s.startLat) : null,
+        startLon: s.startLon != null ? round5(s.startLon) : null,
+        profileFlat: s.profileFlat || null,
+        trackFlat: s.trackFlat || [],
+        gpxPath: s.gpxPath || null,
+        sourceUrl: s.sourceUrl || null,
+        contributor: s.submitterEmail || null,
+        routeFrom: 'community',
+      };
+      const saveRes = await RP_FB_R.raceSave(s.raceId, next);
+      if (saveRes !== 'ok') throw new Error(t('routes.raceSaveRejected'));
+      await RP_FB_R.submissionReview(s.id, 'approved');
+      patch(s.raceId, next);
+      setSubs((list) => (list || []).filter((x) => x.id !== s.id));
+      setNote(t('routes.routeMergedInto', { name: s.raceName || s.raceId }));
+    } catch (e) {
+      setErr(t('routes.approveFailed', { msg: (e && e.message ? e.message : e) }));
+    } finally {
+      setSubBusy('');
+    }
+  };
+
+  const rejectSub = async (s) => {
+    if (!RP_FB_R) return;
+    setSubBusy(s.id); setErr('');
+    try {
+      await RP_FB_R.submissionReview(s.id, 'rejected');
+      setSubs((list) => (list || []).filter((x) => x.id !== s.id));
+      setNote(t('routes.submissionRejected'));
+    } catch (e) {
+      setErr(t('routes.rejectFailed', { msg: (e && e.message ? e.message : e) }));
+    } finally {
+      setSubBusy('');
+    }
+  };
+
   // ── bulk actions ───────────────────────────────────────────────────────
   const bulk = async (kind) => {
     if (!RP_FB_R || !sel.size) return;
@@ -1080,14 +1138,14 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
         @media (max-width: 640px){
           .rp-sheet-wrap{ align-items: flex-end !important; padding: 0 !important; }
           .ra-sheet{ max-width: none !important; width: 100% !important;
-            max-height: 92vh !important; border-radius: 20px 20px 0 0 !important; }
+            height: 92vh !important; border-radius: 20px 20px 0 0 !important; }
           .ra-sheet input, .ra-sheet select, .ra-sheet button{ font-size: 15px; }
         }
       `}</style>
 
       <div className="ra-sheet" style={{
         background: 'var(--rp-surface)', border: `1px solid ${BD}`,
-        borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 680, maxHeight: '88vh',
+        borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 680, height: '88vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         boxShadow: 'var(--rp-shadow-modal)', direction: I18N.dir,
       }}>
@@ -1111,10 +1169,25 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
             color: DIM, fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
         </div>
 
+        {/* tabs */}
+        <div style={{ display: 'flex', borderBottom: `1px solid ${BD}` }}>
+          {[['races', t('routes.tabRaces')],
+            ['inbox', t('routes.tabInbox') + (subs && subs.length ? ` (${subs.length})` : '')],
+          ].map(([v, l]) => (
+            <button key={v} onClick={() => setPanelTab(v)} style={{
+              flex: 1, padding: '11px 8px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              background: 'none', border: 'none', borderBottom: `2px solid ${panelTab === v ? 'var(--rp-gold)' : 'transparent'}`,
+              color: panelTab === v ? TEXT : DIM, fontFamily: 'inherit',
+            }}>{l}</button>
+          ))}
+        </div>
+
+        {panelTab === 'races' && (<>
         {/* filters */}
         <div style={{ padding: '12px 16px 8px', borderBottom: `1px solid ${BD}` }}>
           <input
-            value={q} onChange={(e) => setQ(e.target.value)} autoFocus
+            value={q} onChange={(e) => setQ(e.target.value)}
+            autoFocus={!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 640px)').matches)}
             placeholder={t('routes.searchPlaceholder')}
             style={{ width: '100%', background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
               borderRadius: 10, padding: '9px 12px', fontSize: 14, color: TEXT,
@@ -1397,6 +1470,66 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
               lineHeight: 1.6 }}>{err}</div>
           )}
         </div>
+        </>)}
+
+        {panelTab === 'inbox' && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', minHeight: 0 }}>
+            {subs === null && (
+              <div style={{ padding: 24, textAlign: 'center', color: DIM, fontSize: 13 }}>{t('common.loading')}</div>
+            )}
+            {subs && subs.length === 0 && (
+              <div style={{ padding: '16px 8px', textAlign: 'center', color: DIM, fontSize: 13 }}>
+                {t('routes.inboxEmpty')}
+              </div>
+            )}
+            {subs && subs.map((s) => {
+              const open = expanded === s.id;
+              const trk = decodeFlatCourse(s).track || [];
+              return (
+                <div key={s.id} style={{ border: `1px solid ${BD}`, borderRadius: 10,
+                  marginBottom: 10, overflow: 'hidden', background: 'var(--rp-surface-2)' }}>
+                  <div onClick={() => setExpanded(open ? '' : s.id)}
+                    style={{ cursor: 'pointer', padding: '10px 12px' }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700 }}>{s.raceName || s.raceId}</div>
+                    <div style={{ fontSize: 11.5, color: DIM, marginTop: 2 }}>
+                      {s.submitterEmail || t('routes.user')} · {U ? U.fmtDist(s.distanceKm || 0, 1) : round1(s.distanceKm || 0)} ·
+                      {' '}↑{U ? U.elevInt(s.gain || 0) : Math.round(s.gain || 0)} ↓{U ? U.elevInt(s.loss || 0) : Math.round(s.loss || 0)} · {fmtSubDate(s.createdAt)}
+                    </div>
+                    {(s.courseName || s.source) && (
+                      <div style={{ fontSize: 11, color: DIM, marginTop: 2 }}>
+                        {[s.courseName, s.source ? sourceLabel(s.source) : ''].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
+                  </div>
+                  {open && (
+                    <div style={{ padding: '0 12px 12px' }}>
+                      {RouteMap && trk.length > 1 && <RouteMap track={trk} height={160} />}
+                      <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                        <button className="rp-btn rp-btn-primary" disabled={subBusy === s.id}
+                          onClick={() => approveSub(s)}>
+                          {subBusy === s.id ? t('routes.approving') : t('routes.approveAndAttach')}
+                        </button>
+                        <button className="rp-btn" disabled={subBusy === s.id}
+                          onClick={() => rejectSub(s)}>{t('routes.reject')}</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {note && (
+              <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--rp-gold)',
+                background: 'var(--rp-gold-wash)', border: '1px solid var(--rp-gold-line)',
+                borderRadius: 8, padding: '8px 10px' }}>{note}</div>
+            )}
+            {err && (
+              <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--rp-danger, #d9736a)',
+                border: '1px solid var(--rp-danger, #d9736a)', borderRadius: 8, padding: '8px 10px',
+                lineHeight: 1.6 }}>{err}</div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   ), document.body);
