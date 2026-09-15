@@ -334,7 +334,7 @@ function AthletePanel({
           </div>
 
           {/* Right column: the selected athlete */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
             <div style={{ padding: '10px 18px 8px', fontSize: 11, fontWeight: 700,
               color: DIMMER, letterSpacing: '.07em', textTransform: 'uppercase',
               borderBottom: `1px solid ${COL_BORDER}` }}>
