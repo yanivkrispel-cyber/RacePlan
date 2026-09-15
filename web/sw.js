@@ -31,6 +31,10 @@ self.addEventListener('fetch', (e) => {
   if (fresh) {
     e.respondWith(
       fetch(e.request).then((res) => {
+        // A non-2xx (e.g. a transient 503 from the origin) must NOT be
+        // cached or handed to the page as if it were the real app — that
+        // poisons the cache with an error body and breaks the mount.
+        if (!res.ok) throw new Error('bad status ' + res.status);
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
         return res;
@@ -42,8 +46,10 @@ self.addEventListener('fetch', (e) => {
   // Icons / manifest / css: cache-first.
   e.respondWith(
     caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+      if (res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+      }
       return res;
     }))
   );
