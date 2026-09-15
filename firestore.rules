@@ -39,12 +39,17 @@ service cloud.firestore {
     // Community route submissions. Any verified user may propose a GPX route
     // for a race; only the coach reads the queue and approves / rejects.
     // Approval itself writes the course onto races/{id} (owner-only above).
+    // raceId is either an existing race's id, or null when the submitter's
+    // race isn't in the catalog yet — then raceName is the free-text name the
+    // coach turns into a real race doc on approval.
     match /routeSubmissions/{id} {
       allow create: if verified()
         && request.auth.uid == request.resource.data.submitterUid
         && request.resource.data.status == 'pending'
-        && request.resource.data.raceId is string
-        && request.resource.data.raceId.size() > 0
+        && ((request.resource.data.raceId is string && request.resource.data.raceId.size() > 0)
+            || (request.resource.data.raceId == null
+                && request.resource.data.raceName is string
+                && request.resource.data.raceName.size() > 0))
         && request.resource.data.createdAt == request.time
         && request.resource.data.trackFlat is list
         && request.resource.data.trackFlat.size() < 1200

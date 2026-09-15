@@ -97,13 +97,15 @@ function courseFromSubmission(sub) {
   });
 }
 
-// pending payload (from courseFromGpx) + chosen race + submitter
+// pending payload (from courseFromGpx) + chosen race (or a free-text name for
+// a race that isn't in the catalog yet, race.id == null) + submitter
 //   → the routeSubmissions/{id} document body (server fills status/submitter/dates).
 function buildSubmissionRecord(pending, race, user) {
   const c = (pending && pending.course) || {};
   return {
-    raceId: race.id,
+    raceId: race.id || null,
     raceName: race.nameHe || race.name || '',
+    isNewRace: !race.id,
     courseName: c.name || '',
     status: 'pending',
     submitterUid: (user && user.uid) || '',
@@ -155,6 +157,22 @@ function makeRaceId(name, city, distance, taken) {
   return id;
 }
 
+// approving a submission whose raceId is null (the submitter typed a free-text
+// name for a race the catalog didn't have) first creates that race — listed
+// immediately, no route yet — then the caller attaches the route as usual.
+async function ensureRaceFromSubmission(s, taken) {
+  const id = makeRaceId(s.raceName, '', null, taken);
+  const rec = {
+    name: s.raceName || '', nameHe: s.raceName || null,
+    city: '', countryCode: '', tier: 3, seed: false,
+    listed: true, routeStatus: 'none',
+    search: String(s.raceName || '').toLowerCase(),
+  };
+  const res = await RP_FB_R.raceSave(id, rec);
+  if (res !== 'ok') throw new Error(t('routes.raceSaveRejected'));
+  return id;
+}
+
 function StatusBadge({ status }) {
   const map = {
     available: [t('routes.statusAvailable'), 'var(--rp-gold)', 'var(--rp-gold-wash)', 'var(--rp-gold-line)'],
@@ -184,6 +202,8 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
   );
   const [pending, setPending] = React.useState(initialPending || null); // { course, gpxText, profileFlat, trackFlat, sourceUrl }
   const [selId, setSelId] = React.useState('');
+  const [newRaceMode, setNewRaceMode] = React.useState(false); // community: "my race isn't listed"
+  const [newRaceName, setNewRaceName] = React.useState('');
   const [seeding, setSeeding] = React.useState(false);
   const [submitted, setSubmitted] = React.useState(false); // community submission sent
   const fileRef = React.useRef(null);
@@ -298,10 +318,13 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
   };
 
   // ── community: a signed-in (non-owner) user proposes the pending route ──
+  // for a race picked from the catalog, or — when it's not there — a
+  // free-text name that the admin turns into a real race on approval.
   const submitPending = async () => {
     if (!pending || !RP_FB_R || !RP_FB_R.submitRoute) return;
-    if (!selId) { setErr(t('routes.pickRace')); return; }
-    const race = (races || []).find((r) => r.id === selId);
+    const typedName = newRaceMode ? newRaceName.trim() : '';
+    if (!selId && !typedName) { setErr(t('routes.pickRace')); return; }
+    const race = selId ? (races || []).find((r) => r.id === selId) : { id: null, name: typedName };
     if (!race) { setErr(t('routes.raceNotFound')); return; }
     setBusy(true); setErr('');
     try {
@@ -326,7 +349,12 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
     if (!isOwner || !RP_FB_R) return;
     setSubBusy(s.id); setErr('');
     try {
-      const saveRes = await RP_FB_R.raceSave(s.raceId, {
+      let raceId = s.raceId;
+      if (!raceId) {
+        const taken = new Set((races || []).map((r) => r.id));
+        raceId = await ensureRaceFromSubmission(s, taken);
+      }
+      const saveRes = await RP_FB_R.raceSave(raceId, {
         routeStatus: 'available',
         distanceKm: round3(s.distanceKm || 0),
         gain: s.gain || 0, loss: s.loss || 0,
@@ -343,7 +371,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
       await RP_FB_R.submissionReview(s.id, 'approved');
       setSubs((list) => (list || []).filter((x) => x.id !== s.id));
       await refresh(true);
-      setNote(t('routes.routeMergedInto', { name: s.raceName || s.raceId }));
+      setNote(t('routes.routeMergedInto', { name: s.raceName || raceId }));
     } catch (e) {
       setErr(t('routes.approveFailed', { msg: (e && e.message ? e.message : e) }));
     } finally {
@@ -657,28 +685,44 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                 <div style={{ marginTop: 14, padding: 12, borderRadius: 10,
                   border: `1px solid ${BD}`, background: 'var(--rp-surface-2)' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
-                    {t('routes.proposePick')}
+                    {newRaceMode ? t('routes.newRaceNamePrompt') : t('routes.proposePick')}
                   </div>
-                  <select value={selId} onChange={(e) => setSelId(e.target.value)}
-                    disabled={submitted}
-                    style={{ width: '100%', background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
-                      borderRadius: 8, padding: '8px 10px', fontSize: 13, color: TEXT,
-                      fontFamily: 'inherit', outline: 'none' }}>
-                    <option value="">{t('routes.pickRaceOption')}</option>
-                    {(races || []).slice()
-                      .sort((a, b) => String(a.name).localeCompare(b.name))
-                      .map((rc) => (
-                        <option key={rc.id} value={rc.id}>
-                          {(rc.nameHe || rc.name) + (rc.routeStatus === 'available' ? ' ✓' : '')}
-                        </option>
-                      ))}
-                  </select>
-                  <button onClick={submitPending} disabled={busy || !selId || submitted}
+                  {!newRaceMode ? (
+                    <select value={selId} onChange={(e) => setSelId(e.target.value)}
+                      disabled={submitted}
+                      style={{ width: '100%', background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
+                        borderRadius: 8, padding: '8px 10px', fontSize: 13, color: TEXT,
+                        fontFamily: 'inherit', outline: 'none' }}>
+                      <option value="">{t('routes.pickRaceOption')}</option>
+                      {(races || []).slice()
+                        .sort((a, b) => String(a.name).localeCompare(b.name))
+                        .map((rc) => (
+                          <option key={rc.id} value={rc.id}>
+                            {(rc.nameHe || rc.name) + (rc.routeStatus === 'available' ? ' ✓' : '')}
+                          </option>
+                        ))}
+                    </select>
+                  ) : (
+                    <input value={newRaceName} onChange={(e) => setNewRaceName(e.target.value)}
+                      disabled={submitted} placeholder={t('routes.newRaceNamePlaceholder')}
+                      style={fieldStyle} />
+                  )}
+                  {!submitted && (
+                    <button
+                      onClick={() => { setNewRaceMode((v) => !v); setSelId(''); setNewRaceName(''); setErr(''); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                        marginTop: 8, fontSize: 11.5, color: 'var(--rp-gold)', fontFamily: 'inherit',
+                        textDecoration: 'underline' }}>
+                      {newRaceMode ? t('routes.newRaceModeOff') : t('routes.newRaceModeOn')}
+                    </button>
+                  )}
+                  <button onClick={submitPending}
+                    disabled={busy || submitted || (newRaceMode ? !newRaceName.trim() : !selId)}
                     className="rp-btn rp-btn-primary" style={{ marginTop: 10 }}>
                     {submitted ? t('routes.submitSent') : busy ? t('routes.submitting') : t('routes.submitToAdmin')}
                   </button>
                   <div style={{ fontSize: 11, color: DIM, marginTop: 6, lineHeight: 1.5 }}>
-                    {t('routes.submitExplain')}
+                    {newRaceMode ? t('routes.newRaceSubmitExplain') : t('routes.submitExplain')}
                   </div>
                 </div>
               )}
@@ -703,7 +747,15 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                     marginBottom: 10, overflow: 'hidden', background: 'var(--rp-surface-2)' }}>
                     <div onClick={() => setExpanded(open ? '' : s.id)}
                       style={{ cursor: 'pointer', padding: '10px 12px' }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 700 }}>{s.raceName || s.raceId}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {s.raceName || s.raceId}
+                        {s.isNewRace && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#C9A24B',
+                            border: '1px solid var(--rp-line)', borderRadius: 999, padding: '1px 6px' }}>
+                            {t('routes.newRaceBadge')}
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize: 11.5, color: DIM, marginTop: 2 }}>
                         {s.submitterEmail || t('routes.user')} · {U ? U.fmtDist(s.distanceKm || 0, 1) : round1(s.distanceKm || 0)} ·
                         {' '}↑{U ? U.elevInt(s.gain || 0) : Math.round(s.gain || 0)} ↓{U ? U.elevInt(s.loss || 0) : Math.round(s.loss || 0)} · {fmtSubDate(s.createdAt)}
@@ -995,6 +1047,12 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
     if (!RP_FB_R) return;
     setSubBusy(s.id); setErr('');
     try {
+      let raceId = s.raceId;
+      const isNew = !raceId;
+      if (isNew) {
+        const taken = new Set((races || []).map((r) => r.id));
+        raceId = await ensureRaceFromSubmission(s, taken);
+      }
       const next = {
         routeStatus: 'available',
         distanceKm: round3(s.distanceKm || 0),
@@ -1008,12 +1066,12 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
         contributor: s.submitterEmail || null,
         routeFrom: 'community',
       };
-      const saveRes = await RP_FB_R.raceSave(s.raceId, next);
+      const saveRes = await RP_FB_R.raceSave(raceId, next);
       if (saveRes !== 'ok') throw new Error(t('routes.raceSaveRejected'));
       await RP_FB_R.submissionReview(s.id, 'approved');
-      patch(s.raceId, next);
+      if (isNew) await load(true); else patch(raceId, next);
       setSubs((list) => (list || []).filter((x) => x.id !== s.id));
-      setNote(t('routes.routeMergedInto', { name: s.raceName || s.raceId }));
+      setNote(t('routes.routeMergedInto', { name: s.raceName || raceId }));
     } catch (e) {
       setErr(t('routes.approveFailed', { msg: (e && e.message ? e.message : e) }));
     } finally {
