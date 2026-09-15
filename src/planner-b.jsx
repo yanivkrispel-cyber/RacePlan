@@ -1195,8 +1195,13 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   React.useEffect(() => { localStorage.setItem(LS_RACE_TIME, raceTime); }, [raceTime]);
 
   React.useEffect(() => {
-    const lat = p.course?.lat;
-    const lon = p.course?.lon;
+    // Older saved plans can carry a course with a full GPS track (so the map
+    // still renders) but no lat/lon fields of their own, from before those
+    // were reliably stored — fall back to the track's first point rather
+    // than silently showing no weather at all.
+    const trackStart = p.course?.track?.[0];
+    const lat = p.course?.lat ?? (trackStart ? trackStart[0] : null);
+    const lon = p.course?.lon ?? (trackStart ? trackStart[1] : null);
     if (!lat || !lon || !raceDate) {
       setWeather(null);
       setWeatherStatus('idle');
@@ -1274,7 +1279,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
       })
       .catch(() => { if (!cancelled) setWeatherStatus('idle'); });
     return () => { cancelled = true; };
-  }, [p.course?.lat, p.course?.lon, raceDate, raceTime]);
+  }, [p.course?.lat, p.course?.lon, p.course?.track, raceDate, raceTime]);
 
   // The heat model's "effort mode" expects an ideal-conditions pace as input.
   // Freeze that baseline in state the moment a fresh weather reading arrives
