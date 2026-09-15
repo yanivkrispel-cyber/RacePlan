@@ -527,6 +527,10 @@ function GpxPlanDialog({ course, defaultGoalSec, onCancel, onBuild }) {
 // straight from the Hub (no GPX import required first).
 function RaceSetupSheet({ onClose, onBuild, defaultName }) {
   const [course, setCourse] = React.useState(null); // {name,dist,profile?,track?,...}
+  // raw GPX payload (gpxText/profileFlat/trackFlat) behind the current course,
+  // when it came from "my route" — carried through to the planner so its
+  // GpxBanner can offer "save/propose to library" same as a toolbar import.
+  const [routeMeta, setRouteMeta] = React.useState(null);
   const [customKm, setCustomKm] = React.useState('');
   const [routeOpen, setRouteOpen] = React.useState(false);
   const [entryMode, setEntryMode] = React.useState(null); // null | 'route' | 'distance'
@@ -545,6 +549,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
   // when a course is chosen, seed a sensible goal (~5:30/km) unless already set
   const applyCourse = (c) => {
     setCourse(c);
+    setRouteMeta(null); // a fresh pick invalidates any previous GPX payload
     setErr('');
     const g = Math.round((c.dist || 10) * 330);
     setGh(Math.min(11, Math.floor(g / 3600)));
@@ -574,6 +579,12 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
         name: parsed.name || file.name, dist: parsed.totalDist,
         gain: parsed.elevGain, loss: parsed.elevLoss, profile: null,
       });
+      if (built) {
+        setRouteMeta({
+          gpxText: built.gpxText, profileFlat: built.profileFlat,
+          trackFlat: built.trackFlat, sourceUrl: null,
+        });
+      }
     } catch (er) {
       setErr(t('setup.cannotReadGpx'));
     }
@@ -602,17 +613,22 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
   // a plain distance pick is just a number.
   const realCourse = (c) => (c && (c.profile || c.track) ? c : null);
 
+  // the raw GPX payload only makes sense alongside the course it came from
+  const lastRouteFor = (rc) => (rc && routeMeta ? { ...routeMeta, course: rc } : null);
+
   const build = () => {
     if (!course || !goalOk) return;
     const segs = buildPlanSegments(course.profile || null, course.dist, opts);
     if (!segs.length) { setErr(t('setup.cannotBuild')); return; }
-    onBuild({ segments: segs, course: realCourse(course), raceName: course.name || defaultName, goalSec });
+    const rc = realCourse(course);
+    onBuild({ segments: segs, course: rc, raceName: course.name || defaultName, goalSec, lastRoute: lastRouteFor(rc) });
   };
   const startEmpty = () => {
     const km = course ? course.dist : 10;
+    const rc = realCourse(course);
     onBuild({
-      segments: generatePlan(km), course: realCourse(course),
-      raceName: course ? course.name : null,
+      segments: generatePlan(km), course: rc,
+      raceName: course ? course.name : null, lastRoute: lastRouteFor(rc),
     });
   };
 
@@ -707,7 +723,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
             <span style={{ flex: 1, minWidth: 0 }}>
               {course.name} · {U ? U.fmtDist(course.dist) : formatKm(course.dist)}{course.profile ? ' · ' + t('setup.hasProfile') : ''}
             </span>
-            <button onClick={() => { setCourse(null); setEntryMode(null); }}
+            <button onClick={() => { setCourse(null); setRouteMeta(null); setEntryMode(null); }}
               style={{ flex: '0 0 auto', background: 'none', border: 'none', cursor: 'pointer',
                 color: 'var(--rp-gold)', fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
                 textDecoration: 'underline', padding: 0 }}>{t('setup.change')}</button>
@@ -1173,7 +1189,11 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   const [showNewPlanConfirm, setShowNewPlanConfirm] = React.useState(false);
   const [showRouteLib, setShowRouteLib] = React.useState(false);
   const [routeLibInit, setRouteLibInit] = React.useState(null);
-  const [lastRoute, setLastRoute] = React.useState(null);
+  // A Hub handoff whose course came from setup's "my route" GPX upload
+  // carries the same { course, gpxText, profileFlat, trackFlat, sourceUrl }
+  // shape as a toolbar GPX import, so GpxBanner's save/propose-to-library
+  // button appears here too instead of only after a same-session re-import.
+  const [lastRoute, setLastRoute] = React.useState(() => (seed && seed.lastRoute) || null);
   const [pendingSubs, setPendingSubs] = React.useState(0); // owner: community routes awaiting review
 
   const refreshPendingSubs = React.useCallback(() => {
