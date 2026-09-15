@@ -462,6 +462,13 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
     borderRadius: 8, padding: '8px 10px', fontSize: 13, color: TEXT,
     fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
   };
+  const segPillStyle = (active) => ({
+    flex: 1, padding: '7px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+    borderRadius: 999, fontFamily: 'inherit',
+    background: active ? 'var(--rp-gold-wash)' : 'transparent',
+    color: active ? 'var(--rp-gold)' : DIM,
+    border: `1px solid ${active ? 'var(--rp-gold-line)' : BD}`,
+  });
   const tabBtn = (id, label) => (
     <button onClick={() => { setTab(id); setErr(''); }} style={{
       flex: 1, padding: '9px 10px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
@@ -685,7 +692,17 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                 <div style={{ marginTop: 14, padding: 12, borderRadius: 10,
                   border: `1px solid ${BD}`, background: 'var(--rp-surface-2)' }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
-                    {newRaceMode ? t('routes.newRaceNamePrompt') : t('routes.proposePick')}
+                    {t('routes.proposePick')}
+                  </div>
+                  {/* segmented — both options always rendered, so switching never
+                      resizes this row or shifts the submit button below it */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                    <button type="button" disabled={submitted}
+                      onClick={() => { setNewRaceMode(false); setNewRaceName(''); setErr(''); }}
+                      style={segPillStyle(!newRaceMode)}>{t('routes.segFromList')}</button>
+                    <button type="button" disabled={submitted}
+                      onClick={() => { setNewRaceMode(true); setSelId(''); setErr(''); }}
+                      style={segPillStyle(newRaceMode)}>{t('routes.segNewRace')}</button>
                   </div>
                   {!newRaceMode ? (
                     <select value={selId} onChange={(e) => setSelId(e.target.value)}
@@ -707,22 +724,13 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                       disabled={submitted} placeholder={t('routes.newRaceNamePlaceholder')}
                       style={fieldStyle} />
                   )}
-                  {!submitted && (
-                    <button
-                      onClick={() => { setNewRaceMode((v) => !v); setSelId(''); setNewRaceName(''); setErr(''); }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                        marginTop: 8, fontSize: 11.5, color: 'var(--rp-gold)', fontFamily: 'inherit',
-                        textDecoration: 'underline' }}>
-                      {newRaceMode ? t('routes.newRaceModeOff') : t('routes.newRaceModeOn')}
-                    </button>
-                  )}
                   <button onClick={submitPending}
                     disabled={busy || submitted || (newRaceMode ? !newRaceName.trim() : !selId)}
                     className="rp-btn rp-btn-primary" style={{ marginTop: 10 }}>
                     {submitted ? t('routes.submitSent') : busy ? t('routes.submitting') : t('routes.submitToAdmin')}
                   </button>
                   <div style={{ fontSize: 11, color: DIM, marginTop: 6, lineHeight: 1.5 }}>
-                    {newRaceMode ? t('routes.newRaceSubmitExplain') : t('routes.submitExplain')}
+                    {t('routes.submitExplain')}
                   </div>
                 </div>
               )}
