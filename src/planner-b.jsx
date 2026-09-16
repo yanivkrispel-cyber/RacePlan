@@ -805,7 +805,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
       {RouteLibrary && routeOpen && (
         <RouteLibrary
           zIndex={1200}
-          onClose={() => setRouteOpen(false)}
+          onClose={(afterSubmit) => { setRouteOpen(false); if (afterSubmit) build(); }}
           onLoadCourse={applyCourse}
           raceName={defaultName}
           isOwner={false}

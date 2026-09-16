@@ -482,7 +482,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
   return ReactDOM.createPortal((
     <div
       className="rp-sheet-wrap rp-cq-scope"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(submitted); }}
       style={{
         position: 'fixed', inset: 0, zIndex,
         background: 'rgba(9,11,22,.78)', backdropFilter: 'blur(6px)',
@@ -517,7 +517,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
             </svg>
             <span style={{ fontSize: 17, fontWeight: 800 }}>{t('routes.libraryTitle')}</span>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
+          <button onClick={() => onClose(submitted)} style={{ background: 'none', border: 'none', cursor: 'pointer',
             color: DIM, fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
         </div>
 
