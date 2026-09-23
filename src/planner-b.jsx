@@ -286,7 +286,7 @@ function CopyToast({ show, text }) {
 
 // A button that fires once on tap and auto-repeats (accelerating) while held —
 // so h/m/s can be set entirely by tapping, no keyboard.
-function HoldButton({ delta, onStep, children, style, ariaLabel }) {
+function HoldButton({ delta, onStep, children, style, ariaLabel, tabIndex }) {
   const timer = React.useRef(null);
   const stop = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
   React.useEffect(() => stop, []);
@@ -299,6 +299,7 @@ function HoldButton({ delta, onStep, children, style, ariaLabel }) {
   };
   return (
     <button type="button" aria-label={ariaLabel || (delta < 0 ? t('common.decrease') : t('common.add'))}
+      tabIndex={tabIndex}
       onPointerDown={start} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop}
       style={{
         cursor: 'pointer', touchAction: 'manipulation', lineHeight: 1,
@@ -311,7 +312,11 @@ function HoldButton({ delta, onStep, children, style, ariaLabel }) {
 // ── race finish-line clock (CSS seven-segment) ─────────────────────────
 // SevenSeg/ClockDot/ClockDisplay live in shared.jsx (window.*) — route3d.jsx
 // reuses the same read-only ClockDisplay for its in-run clock.
-function ClockGroup({ value, digits, max, onChange, label, digitH }) {
+// One h/m/s field: ▲/▼ steppers plus tap-the-digits to type the number on a
+// numeric keypad. The digits stay seven-segment while typing — a transparent
+// input sits on top of them, so focus/keyboard behave natively (important on
+// iOS, where focus must happen inside the tap gesture).
+function ClockGroup({ value, digits, max, onChange, label, digitH, inputRef, onFilled }) {
   // wrap-around spinner (no carry between units)
   const bump = (d) => onChange((v) => ((v + d) % (max + 1) + (max + 1)) % (max + 1));
   const chevStyle = {
@@ -319,21 +324,88 @@ function ClockGroup({ value, digits, max, onChange, label, digitH }) {
     border: '1px solid rgba(245,194,74,.16)', background: 'rgba(245,194,74,.06)',
     color: 'rgba(245,194,74,.8)',
   };
-  const str = String(value).padStart(digits, '0');
+
+  // Digits typed since the field took focus; null = not editing, '' = focused
+  // but nothing typed yet (we then show the current value dimmed). They live in
+  // a ref as well as in state because blur — including the one the hop to the
+  // next field fires — runs before React re-renders, so commit would otherwise
+  // read a stale `draft` and drop the last digit typed.
+  const [draft, setDraft] = React.useState(null);
+  const draftRef = React.useRef(null);
+  const write = (v) => { draftRef.current = v; setDraft(v); };
+  const editing = draft != null;
+  const maxLen = Math.max(digits, String(max).length);
+
+  const commit = () => {
+    const d = draftRef.current;
+    if (d) {
+      const n = parseInt(d, 10);
+      if (isFinite(n)) onChange(Math.max(0, Math.min(max, n)));
+    }
+    write(null);
+  };
+  // arrows while typing move the value and keep the shown digits in step
+  const nudge = (d) => {
+    const base = draftRef.current ? parseInt(draftRef.current, 10) : value;
+    const n = ((base + d) % (max + 1) + (max + 1)) % (max + 1);
+    onChange(n);
+    write(String(n));
+  };
+
+  // right-aligned cells; null = an unfilled slot (all segments dark)
+  const str = draft || String(value).padStart(digits, '0');
+  const width = Math.max(digits, str.length);
+  const cells = [];
+  for (let i = 0; i < width; i++) {
+    const ch = str[i - (width - str.length)];
+    cells.push(ch == null ? null : +ch);
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
       minWidth: 46 }}>
-      <HoldButton delta={1} onStep={bump} style={chevStyle} ariaLabel={`${label} +`}>▲</HoldButton>
-      <div style={{ display: 'flex', gap: 3 }}>
-        {str.split('').map((ch, i) => <SevenSeg key={i} value={+ch} h={digitH} />)}
+      {/* chevrons stay out of the tab order so Tab walks h → m → s; the field
+          itself answers ArrowUp/ArrowDown, as Stepper does in shared.jsx */}
+      <HoldButton delta={1} onStep={bump} style={chevStyle} tabIndex={-1} ariaLabel={`${label} +`}>▲</HoldButton>
+      <div style={{ position: 'relative', display: 'flex', gap: 3, cursor: 'text',
+        padding: '2px 3px', margin: '-2px -3px', borderRadius: 7,
+        background: editing ? 'rgba(245,194,74,.07)' : 'transparent',
+        boxShadow: editing ? '0 0 0 1px rgba(245,194,74,.5)' : 'none',
+        opacity: draft === '' ? 0.4 : 1 }}>
+        {cells.map((v, i) => <SevenSeg key={i} value={v} h={digitH} />)}
+        <input
+          ref={inputRef} value={draft || ''} inputMode="numeric" aria-label={label}
+          onFocus={() => write('')}
+          onBlur={commit}
+          onChange={(e) => {
+            const d = e.target.value.replace(/\D/g, '').slice(-maxLen);
+            write(d);
+            // hop to the next field only once this one is full — never on a
+            // single digit, which would cut a two-digit entry short
+            if (onFilled && d.length >= maxLen) onFilled();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+            // an empty draft makes the pending commit a no-op, so Escape cancels
+            else if (e.key === 'Escape') { write(''); e.currentTarget.blur(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); nudge(1); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); nudge(-1); }
+          }}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%',
+            border: 'none', outline: 'none', background: 'transparent', padding: 0, margin: 0,
+            color: 'transparent', caretColor: 'transparent', cursor: 'text',
+            fontSize: 16 /* keeps iOS from zooming on focus */ }} />
       </div>
-      <HoldButton delta={-1} onStep={bump} style={chevStyle} ariaLabel={`${label} −`}>▼</HoldButton>
+      <HoldButton delta={-1} onStep={bump} style={chevStyle} tabIndex={-1} ariaLabel={`${label} −`}>▼</HoldButton>
       <span style={{ fontSize: 8.5, letterSpacing: '.12em', color: 'rgba(245,194,74,.45)',
         textTransform: 'uppercase' }}>{label}</span>
     </div>
   );
 }
 function RaceClock({ h, m, s, onH, onM, onS, subtitle, digitH = 50 }) {
+  const mRef = React.useRef(null);
+  const sRef = React.useRef(null);
+  const focus = (ref) => { if (ref.current) ref.current.focus(); };
   return (
     <div style={{
       '--rc-on': '#F5C24A', '--rc-off': 'rgba(245,194,74,.11)', '--rc-glow': 'rgba(245,194,74,.7)',
@@ -343,21 +415,26 @@ function RaceClock({ h, m, s, onH, onM, onS, subtitle, digitH = 50 }) {
       <div style={{ background: '#04050a', borderRadius: 12, padding: '10px 8px 7px',
         display: 'flex', direction: 'ltr', alignItems: 'flex-start', justifyContent: 'center', gap: 4,
         boxShadow: 'inset 0 0 22px rgba(0,0,0,.75)' }}>
-        <ClockGroup value={h} digits={1} max={11} onChange={onH} label={t('clock.hours')} digitH={digitH} />
+        <ClockGroup value={h} digits={1} max={11} onChange={onH} label={t('clock.hours')} digitH={digitH}
+          onFilled={() => focus(mRef)} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, alignItems: 'center',
           justifyContent: 'center', height: digitH, marginTop: 27 }}>
           <ClockDot /><ClockDot />
         </div>
-        <ClockGroup value={m} digits={2} max={59} onChange={onM} label={t('clock.minutes')} digitH={digitH} />
+        <ClockGroup value={m} digits={2} max={59} onChange={onM} label={t('clock.minutes')} digitH={digitH}
+          inputRef={mRef} onFilled={() => focus(sRef)} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, alignItems: 'center',
           justifyContent: 'center', height: digitH, marginTop: 27 }}>
           <ClockDot /><ClockDot />
         </div>
-        <ClockGroup value={s} digits={2} max={59} onChange={onS} label={t('clock.seconds')} digitH={digitH} />
+        <ClockGroup value={s} digits={2} max={59} onChange={onS} label={t('clock.seconds')} digitH={digitH}
+          inputRef={sRef} />
       </div>
+      <div style={{ textAlign: 'center', fontSize: 9.5, marginTop: 7, letterSpacing: '.03em',
+        color: 'rgba(245,194,74,.45)' }}>{t('clock.tapToType')}</div>
       {subtitle && (
         <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--rp-text-dim)',
-          marginTop: 7, letterSpacing: '.03em', overflow: 'hidden', textOverflow: 'ellipsis',
+          marginTop: 5, letterSpacing: '.03em', overflow: 'hidden', textOverflow: 'ellipsis',
           whiteSpace: 'nowrap' }}>{subtitle}</div>
       )}
     </div>

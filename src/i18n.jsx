@@ -211,6 +211,7 @@ const DICTS = {
     'clock.hours': 'שעות',
     'clock.minutes': 'דקות',
     'clock.seconds': 'שניות',
+    'clock.tapToType': 'אפשר גם ללחוץ על הספרות ולהקליד',
 
     'weather.loading': 'טוען תחזית מזג אוויר...',
     'weather.feelsLike': 'מרגיש {temp}°C',
@@ -604,6 +605,7 @@ const DICTS = {
     'clock.hours': 'hours',
     'clock.minutes': 'minutes',
     'clock.seconds': 'seconds',
+    'clock.tapToType': 'tap the digits to type a number',
 
     'weather.loading': 'Loading the weather forecast...',
     'weather.feelsLike': 'Feels like {temp}°C',
@@ -997,6 +999,7 @@ const DICTS = {
     'clock.hours': 'heures',
     'clock.minutes': 'minutes',
     'clock.seconds': 'secondes',
+    'clock.tapToType': 'touchez les chiffres pour saisir un nombre',
 
     'weather.loading': 'Chargement des prévisions météo...',
     'weather.feelsLike': 'Ressenti {temp}°C',
@@ -1390,6 +1393,7 @@ const DICTS = {
     'clock.hours': 'horas',
     'clock.minutes': 'minutos',
     'clock.seconds': 'segundos',
+    'clock.tapToType': 'toca los dígitos para escribir un número',
 
     'weather.loading': 'Cargando el pronóstico del tiempo...',
     'weather.feelsLike': 'Sensación de {temp}°C',
