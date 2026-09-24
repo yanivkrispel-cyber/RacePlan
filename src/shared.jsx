@@ -28,7 +28,7 @@ if (!document.getElementById('rp-tokens')) {
     --rp-text:#F6EFE3;
     --rp-text-soft:#D9D3C5;
     --rp-text-dim:#9BA0B7;
-    --rp-placeholder:#797E97;
+    --rp-placeholder:#8E93AB; /* ≥4.5:1 on bg/surface/surface-2 — it doubles as empty-state text */
 
     /* gold accent */
     --rp-gold:#C9A24B;
@@ -331,4 +331,38 @@ function ClockDisplay({ totalSec, digitH = 38, onClick, caption }) {
     : <div style={root}>{body}</div>;
 }
 
-Object.assign(window, { Stepper, LogoSlot, ZoneLegend, SevenSeg, ClockDot, ClockDisplay });
+// ── Escape closes the top-most open modal ────────────────────────────
+// One window listener and a stack of handlers: every sheet/dialog registers
+// while it's open, and Escape calls only the most recent one, so a confirm
+// opened over a panel closes itself and leaves the panel alone. When focus is
+// in a text field the first Escape is left to the field (cancel the edit /
+// blur) instead of throwing the whole dialog away.
+const _escStack = [];
+if (typeof window !== 'undefined' && !window.__rpEscBound) {
+  window.__rpEscBound = true;
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !_escStack.length || e.defaultPrevented) return;
+    const el = e.target;
+    if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) {
+      if (el.blur) el.blur();
+      return;
+    }
+    e.preventDefault();
+    _escStack[_escStack.length - 1]();
+  });
+}
+function useEscape(onEscape, active = true) {
+  const cb = React.useRef(onEscape);
+  cb.current = onEscape;
+  React.useEffect(() => {
+    if (!active) return undefined;
+    const entry = () => { if (cb.current) cb.current(); };
+    _escStack.push(entry);
+    return () => {
+      const i = _escStack.lastIndexOf(entry);
+      if (i >= 0) _escStack.splice(i, 1);
+    };
+  }, [active]);
+}
+
+Object.assign(window, { Stepper, LogoSlot, ZoneLegend, SevenSeg, ClockDot, ClockDisplay, useEscape });

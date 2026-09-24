@@ -2,6 +2,7 @@
 // Exposes AthleteDB (CRUD) and AthletePanel (modal UI) on window.
 const { round2 } = window;
 const I18N = window.I18N;
+const useEscape = window.useEscape || (() => {});
 const t = (I18N && I18N.t) || ((k) => k);
 const U = window.UNITS;
 
@@ -150,6 +151,8 @@ function AthletePanel({
   });
   const [newName, setNewName] = React.useState('');
   const [confirmDel, setConfirmDel] = React.useState(null);
+  useEscape(onClose);
+  useEscape(() => setConfirmDel(null), !!confirmDel); // registered later → on top
   const newNameRef = React.useRef(null);
 
   const refresh = () => setDb(AthleteDB._load());
@@ -258,7 +261,7 @@ function AthletePanel({
             </svg>
             <span style={{ fontSize: 17, fontWeight: 800, color: TEXT }}>{t('athletes.title')}</span>
           </div>
-          <button onClick={onClose} style={{
+          <button onClick={onClose} aria-label={t('common.close')} style={{
             background: 'none', border: 'none', cursor: 'pointer',
             color: DIM, fontSize: 20, lineHeight: 1, padding: '2px 6px', borderRadius: 6,
           }}>✕</button>
@@ -281,11 +284,6 @@ function AthletePanel({
 
             {/* List */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '6px 6px' }}>
-              {db.athletes.length === 0 && (
-                <div style={{ padding: '18px 12px', color: DIMMER, fontSize: 13, textAlign: 'center' }}>
-                  {t('athletes.noneYet')}
-                </div>
-              )}
               {db.athletes.map(a => (
                 <div key={a.id}
                   onClick={() => setSelId(a.id)}
@@ -324,9 +322,9 @@ function AthletePanel({
                     direction: I18N.dir,
                   }}
                 />
-                <button onClick={handleAdd} style={{
+                <button onClick={handleAdd} aria-label={t('athletes.addFirstCta')} style={{
                   background: ACCENT, border: 'none', borderRadius: 8,
-                  width: 34, cursor: 'pointer', color: 'var(--rp-on-gold)',
+                  width: 36, minHeight: 36, cursor: 'pointer', color: 'var(--rp-on-gold)',
                   fontWeight: 800, fontSize: 18, lineHeight: 1,
                 }}>+</button>
               </div>
@@ -363,7 +361,18 @@ function AthletePanel({
             <div style={{ flex: 1, overflowY: 'auto', padding: '6px 14px 10px' }}>
               {!selAthlete && (
                 <div style={{ padding: '40px 20px', color: DIMMER, fontSize: 14, textAlign: 'center' }}>
-                  {t('athletes.pickOrAdd')}
+                  {db.athletes.length === 0 ? (
+                    <>
+                      {t('athletes.addFirst')}
+                      <div style={{ marginTop: 14 }}>
+                        <button className="rp-btn rp-btn-primary"
+                          onClick={() => newNameRef.current && newNameRef.current.focus()}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                          {t('athletes.addFirstCta')}
+                        </button>
+                      </div>
+                    </>
+                  ) : t('athletes.pickToPlan')}
                 </div>
               )}
               {selAthlete && selAthlete.plans.length === 0 && (
@@ -417,7 +426,7 @@ function AthletePanel({
         </div>
 
         {/* Footer */}
-        <div className="rp-sheet-foot" style={{
+        {selAthlete && <div className="rp-sheet-foot" style={{
           padding: '12px 18px calc(12px + env(safe-area-inset-bottom))', borderTop: `1px solid ${COL_BORDER}`,
           display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
         }}>
@@ -436,12 +445,8 @@ function AthletePanel({
                   }}>{t('athletes.deleteAthlete')}</button>
               </div>
             </>
-          ) : (
-            <span style={{ fontSize: 13, color: DIMMER }}>
-              {t('athletes.pickToPlan')}
-            </span>
-          )}
-        </div>
+          ) : null /* the hint lives in the empty pane above — once is enough */}
+        </div>}
       </div>
 
       {/* Confirm-delete dialog */}

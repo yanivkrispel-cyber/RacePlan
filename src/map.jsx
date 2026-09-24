@@ -1,4 +1,4 @@
-// map.jsx — interactive route map from GPX track using Leaflet + CARTO dark
+// map.jsx — interactive route map from GPX track using Leaflet + Esri dark-gray
 // tiles (to match the dark UI). The polyline always renders even if tiles
 // are slow/unavailable, so the route shape is never lost.
 //
@@ -18,6 +18,26 @@ const U = window.UNITS;
 // file has no cross-module dependency — see valueeditor.jsx for the same
 // convention).
 const ZONE_COLOR = { fast: '#C15A2E', target: '#C9A24B', easy: '#8091BE' };
+
+// Leaflet's stock chrome (white zoom buttons, white attribution bar and popups)
+// glares on the dark map — restyle it with the app's tokens, once.
+if (typeof document !== 'undefined' && !document.getElementById('rp-map-styles')) {
+  const st = document.createElement('style');
+  st.id = 'rp-map-styles';
+  st.textContent = `
+  .leaflet-bar{border:1px solid var(--rp-line)!important;box-shadow:var(--rp-shadow)!important;border-radius:10px!important;overflow:hidden}
+  .leaflet-bar a,.leaflet-bar a:hover{background:var(--rp-surface-2);color:var(--rp-text);border-bottom-color:var(--rp-line);
+    width:32px;height:32px;line-height:32px;font-size:17px}
+  .leaflet-bar a:hover{color:var(--rp-gold)}
+  .leaflet-bar a.leaflet-disabled{background:var(--rp-surface);color:var(--rp-placeholder)}
+  .leaflet-container .leaflet-control-attribution{background:rgba(17,21,40,.72);color:var(--rp-text-dim)}
+  .leaflet-container .leaflet-control-attribution a{color:var(--rp-text-soft)}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--rp-surface-2);color:var(--rp-text);
+    box-shadow:var(--rp-shadow-modal)}
+  .leaflet-popup-content{font-family:var(--rp-font-ui);font-weight:600;font-size:12.5px}
+  `;
+  document.head.appendChild(st);
+}
 
 function _haversineKm(a, b) {
   const R = 6371, toRad = Math.PI / 180;
@@ -90,9 +110,17 @@ function RouteMap({ track, profile, splits, height = 340 }) {
       center: track[0], zoom: 13,
     });
     mapRef.current = map;
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19, subdomains: 'abcd',
-      attribution: '© OpenStreetMap · © CARTO',
+    // Esri Dark Gray Canvas (base + a separate label layer) — CARTO's dark_all
+    // started serving "API KEY REQUIRED" tiles to every referer, so the map was
+    // blank in production. Esri serves these without a key; the canvas stops
+    // at z16, beyond which Leaflet upscales the last level.
+    const esri = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/';
+    L.tileLayer(esri + 'World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19, maxNativeZoom: 16,
+      attribution: 'Tiles © Esri · © OpenStreetMap contributors',
+    }).addTo(map);
+    L.tileLayer(esri + 'World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19, maxNativeZoom: 16,
     }).addTo(map);
 
     let cancelled = false;

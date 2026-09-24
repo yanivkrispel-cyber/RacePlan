@@ -14,6 +14,7 @@
 const { parseGpx, RouteMap } = window;
 const RP_FB_R = (typeof window !== 'undefined' && window.RP_FIREBASE) || null;
 const I18N = (typeof window !== 'undefined' && window.I18N) || null;
+const useEscape = (typeof window !== 'undefined' && window.useEscape) || (() => {});
 const t = (I18N && I18N.t) || ((k) => k);
 const U = (typeof window !== 'undefined' && window.UNITS) || null;
 
@@ -189,6 +190,7 @@ function StatusBadge({ status }) {
 }
 
 function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, initialPending, zIndex = 1000 }) {
+  useEscape(onClose);
   const [races, setRaces] = React.useState(null);   // null = loading
   const [q, setQ] = React.useState('');
   const [dist, setDist] = React.useState('all');
@@ -869,6 +871,7 @@ function buildSearch(r) {
 }
 
 function RaceAdminPanel({ onClose, zIndex = 1000 }) {
+  useEscape(onClose);
   const [races, setRaces] = React.useState(null);   // null = loading
   const [q, setQ] = React.useState('');
   const [dist, setDist] = React.useState('all');
@@ -1271,7 +1274,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
               </span>
             )}
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
+          <button onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer',
             color: DIM, fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
         </div>
 

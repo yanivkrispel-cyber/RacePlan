@@ -97,13 +97,22 @@ function PaceChart({
   const range = hi - lo || 30;
   const pad = Math.max(8, range * 0.35);
   lo -= pad; hi += pad;
-  const y = (p) => padT + ((p - lo) / (hi - lo)) * plotH;
 
+  // Round ticks (5:15, 5:20 …) instead of evenly-split odd values (5:13,
+  // 5:21 …). Picked in *display* units so they stay round per mile too, and
+  // the axis snaps outward to the ticks so the top and bottom lines are labelled.
   const tickCount = compact ? 3 : 4;
+  const kP = U ? U.dispPaceSec(1) : 1;
   const yTicks = [];
-  for (let i = 0; i <= tickCount; i++) {
-    yTicks.push(lo + ((hi - lo) * i) / tickCount);
+  {
+    const dLo = lo * kP, dHi = hi * kP;
+    const step = [5, 10, 15, 20, 30, 60, 120, 300].find((st) =>
+      Math.ceil(dHi / st) - Math.floor(dLo / st) <= tickCount) || 600;
+    const a = Math.floor(dLo / step) * step, b = Math.ceil(dHi / step) * step;
+    for (let v = a; v <= b + 1e-9; v += step) yTicks.push(v / kP);
+    lo = a / kP; hi = b / kP;
   }
+  const y = (p) => padT + ((p - lo) / (hi - lo)) * plotH;
   const xStep = xMax <= 6 ? 1 : xMax <= 16 ? 2 : xMax <= 25 ? 5 : 10;
   const xTicks = [];
   for (let d = 0; d <= xMax + 0.001; d += xStep) xTicks.push(Math.min(d, xMax));
@@ -127,10 +136,18 @@ function PaceChart({
     }
     const elPad = (elHi - elLo) * 0.12;
     elLo -= elPad; elHi += elPad;
-    ye = (e) => padT + ((elHi - e) / (elHi - elLo)) * plotH; // higher = up
 
-    // Right-axis ticks (3 levels)
-    elYTicks = [elHi, (elHi + elLo) / 2, elLo];
+    // Right-axis ticks: round values in display units (m or ft), two steps
+    // apart, with the axis snapped out to them — "60 / 0 / -60", not "66 / 7 / -51".
+    const kE = U ? U.dispElev(1) : 1;
+    const eLo = elLo * kE, eHi = elHi * kE;
+    const eStep = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find((st) =>
+      Math.ceil(eHi / st) - Math.floor(eLo / st) <= 2) || 2000;
+    const ea = Math.floor(eLo / eStep) * eStep, eb = Math.ceil(eHi / eStep) * eStep;
+    elLo = ea / kE; elHi = eb / kE;
+    ye = (e) => padT + ((elHi - e) / (elHi - elLo)) * plotH; // higher = up
+    elYTicks = [];
+    for (let v = eb; v >= ea - 1e-9; v -= eStep) elYTicks.push(v / kE);
 
     // SVG paths for elevation
     const elXMax = elData[elData.length - 1].d || xMax;

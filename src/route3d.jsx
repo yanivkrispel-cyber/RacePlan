@@ -12,6 +12,7 @@
 // export libs in exporting.jsx).
 const t = (window.I18N && window.I18N.t) || ((k) => k);
 const I18N = window.I18N;
+const useEscape = window.useEscape || (() => {});
 const U = window.UNITS;
 const ElevationChart = window.ElevationChart;
 const ClockDisplay = window.ClockDisplay;
@@ -1108,6 +1109,7 @@ const RunClock = React.forwardRef(function RunClock({ digitH }, outerRef) {
 // the title and the switch back, so the header bar is dropped and the surface
 // fills its parent instead of the viewport.
 function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, weather, raceTime, onClose, embedded = false, paused = false }) {
+  useEscape(onClose, !embedded && !!onClose);
   const mountRef = React.useRef(null);
   const scrubRef = React.useRef(null);
   const distRef = React.useRef(null);

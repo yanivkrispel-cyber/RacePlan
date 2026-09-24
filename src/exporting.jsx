@@ -10,6 +10,7 @@
 
 const { formatPace, formatClock, formatKm } = window;
 const I18N = window.I18N;
+const useEscape = window.useEscape || (() => {});
 const t = (I18N && I18N.t) || ((k) => k);
 const U = window.UNITS;
 
@@ -150,6 +151,7 @@ const PrintableSummary = React.forwardRef(function PrintableSummary(
 // Bottom sheet on phones, centred card on wider screens. items:
 //   [{ label, hint?, icon?, danger?, disabled?, onClick }]
 function ActionSheet({ title, items, onClose }) {
+  useEscape(onClose);
   return ReactDOM.createPortal((
     <div
       className="rp-sheet-wrap rp-cq-scope"
@@ -169,7 +171,7 @@ function ActionSheet({ title, items, onClose }) {
           .as-sheet button{ font-size: 15px !important; min-height: 50px; }
         }
       `}</style>
-      <div className="as-sheet" style={{
+      <div className="as-sheet" role="dialog" aria-modal="true" aria-label={title || undefined} style={{
         background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 380,
         boxShadow: 'var(--rp-shadow-modal)', overflow: 'hidden',

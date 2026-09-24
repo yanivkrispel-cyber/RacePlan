@@ -36,13 +36,13 @@ const fakeReact = { useState(){return [null,()=>{}];}, useMemo(){return null;}, 
 let fakeDOMParser = { parseFromString() { return { querySelector(){return null;}, getElementsByTagName:()=>[] }; } };
 
 const fn = new Function('window','document','localStorage','React','DOMParser','fakeLS','fakeReact','fakeDOMParser',
-  `${engineBody}\n${gpxBody}\nreturn { formatPace, formatClock, parsePace, parseClock, formatKm, round2, clamp, generatePlan, computePlan, defaultSegments, _haversine, _interpolateEle, computeSegmentElevations, buildSegmentsFromGpx, buildPlanSegments, findExtrema, adjustSegmentBoundary };`);
+  `${engineBody}\n${gpxBody}\nreturn { formatPace, formatClock, parsePace, parseClock, formatKm, round2, clamp, generatePlan, computePlan, defaultSegments, _haversine, _interpolateEle, computeSegmentElevations, buildSegmentsFromGpx, buildPlanSegments, findExtrema, adjustSegmentBoundary, roundPacesToGoal };`);
 
 const {
   formatPace, formatClock, parsePace, parseClock, formatKm, round2, clamp,
   generatePlan, computePlan, defaultSegments,
   _haversine, _interpolateEle, computeSegmentElevations, buildSegmentsFromGpx, buildPlanSegments,
-  findExtrema, adjustSegmentBoundary
+  findExtrema, adjustSegmentBoundary, roundPacesToGoal
 } = fn(win, fakeDoc, fakeLS, fakeReact, {parseFromString(){}}, fakeLS, fakeReact, fakeDOMParser);
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -240,14 +240,16 @@ console.log('── buildPlanSegments ──');
   const dist = round2(even.reduce((s, x) => s + x.distance, 0));
   assert(approx(dist, 42.195, 0.02), `blocks total ${dist} ≈ 42.195`);
   const t = even.reduce((s, x) => s + x.paceSec * x.distance, 0);
-  assert(approx(t, 12600, 30), `even total time ${Math.round(t)} ≈ goal 12600`);
-  assert(even.every(s => s.paceSec === even[0].paceSec), 'even -> identical pace, flat course');
+  assert(approx(t, 12600, 2.6), `even total time ${t.toFixed(1)} lands on goal 12600 (±½ block)`);
+  // whole-second paces can't all be equal AND sum to the goal — they stay within a second
+  const ps = even.map(s => s.paceSec);
+  assert(Math.max(...ps) - Math.min(...ps) <= 1, `even -> paces within 1 s (${Math.min(...ps)}–${Math.max(...ps)})`);
 
   // negative split -> first block slower than last, total still on goal
   const neg = buildPlanSegments(flatProfile, 42.195, { goalSec: 12600, strategy: 'negative', splitPct: 4 });
   assert(neg[0].paceSec > neg[neg.length - 1].paceSec, `negative: start ${neg[0].paceSec} > finish ${neg.at(-1).paceSec}`);
   const tn = neg.reduce((s, x) => s + x.paceSec * x.distance, 0);
-  assert(approx(tn, 12600, 40), `negative total time ${Math.round(tn)} ≈ goal`);
+  assert(approx(tn, 12600, 2.6), `negative total time ${tn.toFixed(1)} lands on goal`);
 
   // positive split -> reversed
   const pos = buildPlanSegments(flatProfile, 42.195, { goalSec: 12600, strategy: 'positive', splitPct: 4 });
@@ -262,8 +264,28 @@ console.log('── buildPlanSegments ──');
   const g = buildPlanSegments(hilly, 10, { goalSec: 3000, strategy: 'even', gradeAdjust: true });
   assert(g[0].paceSec > g[1].paceSec, `uphill block ${g[0].paceSec} slower than downhill ${g[1].paceSec}`);
 
+  // regression: a 1:56:43 half on the 21.22 km test course used to build to 1:56:45
+  const course = [{ d: 0, ele: 0 }, { d: 5, ele: 25 }, { d: 10, ele: -33 }, { d: 15, ele: -24 }, { d: 20, ele: 50 }, { d: 21.22, ele: 40 }];
+  const hit = buildPlanSegments(course, 21.22, { goalSec: 7003, strategy: 'negative', splitPct: 3, gradeAdjust: true });
+  const th = hit.reduce((s, x) => s + x.paceSec * x.distance, 0);
+  assert(Math.abs(th - 7003) <= 1, `graded plan total ${th.toFixed(2)} within 1 s of goal 7003`);
+  assert(hit.every(s => Number.isInteger(s.paceSec)), 'paces stay whole seconds');
+
   eq(buildPlanSegments(null, 0, { goalSec: 3000 }).length, 0, 'no distance -> []');
   eq(buildPlanSegments(null, 10, { goalSec: 0 }).length, 0, 'no goal -> []');
+}
+
+console.log('── roundPacesToGoal ──');
+{
+  const segs = [{ distance: 5, paceSec: 330.4 }, { distance: 5, paceSec: 330.4 }, { distance: 1.2, paceSec: 330.4 }];
+  const goal = segs.reduce((a, s) => a + s.distance * s.paceSec, 0);
+  const out = roundPacesToGoal(segs, goal);
+  const tot = out.reduce((a, s) => a + s.distance * s.paceSec, 0);
+  assert(Math.abs(tot - goal) <= 0.6, `rounded total ${tot} within ½ of the smallest segment of ${goal.toFixed(2)}`);
+  assert(out.every(s => Number.isInteger(s.paceSec)), 'whole seconds');
+  assert(out.every((s, i) => Math.abs(s.paceSec - segs[i].paceSec) < 1.5), 'no pace moves more than a second past rounding');
+  eq(roundPacesToGoal([{ distance: 5, paceSec: 900.4 }], 5000, 120, 900)[0].paceSec, 900, 'clamped at hi bound');
+  eq(roundPacesToGoal(segs, 0)[0].paceSec, 330, 'no goal -> plain rounding');
 }
 
 console.log('── findExtrema ──');

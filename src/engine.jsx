@@ -180,6 +180,34 @@ function withDistance(list, id, km, target) {
   return locked ? settleRemainder(next, target) : next;
 }
 
+// ── whole-second paces that still add up to the goal ───────────────────
+// Rounding each pace on its own lets the errors pile up (a 1:56:43 goal came
+// out 1:56:45). Round everything, then walk the leftover back one second at a
+// time — first on the segments whose rounding pushed hardest the wrong way
+// (largest-remainder), and only while a step brings the total closer. No
+// segment moves more than one second, so the strategy's shape survives.
+function roundPacesToGoal(list, goalSec, lo = 120, hi = 900) {
+  const out = (list || []).map((s) => ({ ...s, paceSec: clamp(Math.round(s.paceSec), lo, hi) }));
+  if (!(goalSec > 0) || !out.length) return out;
+  let r = goalSec - out.reduce((a, s) => a + s.distance * s.paceSec, 0);
+  const dir = r > 0 ? 1 : -1;
+  const order = out.map((_, i) => i).sort((a, b) =>
+    (list[b].paceSec - out[b].paceSec) * dir - (list[a].paceSec - out[a].paceSec) * dir
+    || out[b].distance - out[a].distance);
+  // one second per segment at most, so an even plan stays within a second
+  for (const i of order) {
+    const d = out[i].distance;
+    if (!(d > 0) || Math.abs(r) <= d / 2) continue;
+    const step = r > 0 ? 1 : -1; // r can overshoot and flip sign along the way
+    const np = out[i].paceSec + step;
+    // stay on floor/ceil of the exact pace — never round the "wrong" way
+    if (np < lo || np > hi || Math.abs(np - list[i].paceSec) >= 1) continue;
+    out[i] = { ...out[i], paceSec: np };
+    r -= step * d;
+  }
+  return out;
+}
+
 // ── derive everything the UI needs from raw segments ───────────────────
 function computePlan(segments) {
   let cumDist = 0;
@@ -289,6 +317,11 @@ function useRacePlan(initial, initialPreset) {
     removeSegment: (id) => setSegments((ss) => (ss.length > 1
       ? settleRemainder(ss.filter((s) => s.id !== id), lockRef.current)
       : ss)),
+    // Put back an exact earlier segment list (undo). Taken verbatim — it was
+    // already a valid plan under the same lock when it was snapshotted.
+    restoreSegments: (list) => {
+      if (Array.isArray(list) && list.length) setSegments(list);
+    },
     reset: () => {
       clearSavedPlan();
       setSegments(defaultSegments());
@@ -345,5 +378,5 @@ function useRacePlan(initial, initialPreset) {
 Object.assign(window, {
   formatPace, formatClock, parsePace, parseClock, formatKm, round2, clamp,
   PRESETS, ZONES, defaultSegments, generatePlan, computePlan, useRacePlan,
-  clearSavedPlan, settleRemainder, withDistance, lockedSegmentMax,
+  clearSavedPlan, settleRemainder, withDistance, lockedSegmentMax, roundPacesToGoal,
 });

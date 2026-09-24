@@ -8,6 +8,7 @@
 // users/{uid}/plans/data (one JSON blob, private to the account, any tier).
 const { round2 } = window;
 const I18N = window.I18N;
+const useEscape = window.useEscape || (() => {});
 const t = (I18N && I18N.t) || ((k) => k);
 const U = window.UNITS;
 
@@ -146,6 +147,8 @@ function MyPlansPanel({
   const [db, setDb] = React.useState(() => MyPlansDB._load());
   const [nameInput, setNameInput] = React.useState(currentRaceName || '');
   const [confirmDel, setConfirmDel] = React.useState(null);
+  useEscape(onClose);
+  useEscape(() => setConfirmDel(null), !!confirmDel); // registered later → on top
   const [savedFlash, setSavedFlash] = React.useState(false);
   const [renaming, setRenaming] = React.useState('');   // plan id being renamed
   const [renameText, setRenameText] = React.useState('');
@@ -236,7 +239,7 @@ function MyPlansPanel({
             </svg>
             <span style={{ fontSize: 17, fontWeight: 800 }}>{t('myplans.title')}</span>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
+          <button onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer',
             color: DIM, fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
         </div>
 

@@ -2,7 +2,7 @@
 // Reads trackpoints, computes cumulative distance (haversine) + elevation,
 // then splits the course into ~1 km blocks whose target pace is adjusted by
 // each block's gradient (uphill slower, downhill a little faster).
-const { round2, clamp } = window;
+const { round2, clamp, roundPacesToGoal } = window;
 const t = (window.I18N && window.I18N.t) || ((k) => k);
 
 function _haversine(a, b) {
@@ -256,10 +256,8 @@ function buildPlanSegments(profile, totalDist, opts) {
   // scale so the total time lands exactly on the goal
   const sum = raw.reduce((t, r) => t + r.paceSec * r.distance, 0);
   const scale = sum > 0 ? goalSec / sum : 1;
-  return raw.map((r) => ({
-    distance: r.distance,
-    paceSec: clamp(Math.round(r.paceSec * scale), 150, 720),
-  }));
+  return roundPacesToGoal(
+    raw.map((r) => ({ distance: r.distance, paceSec: r.paceSec * scale })), goalSec, 150, 720);
 }
 
 // Net grade adjustment (sec/km) for a span [aKm, bKm] of the elevation profile —

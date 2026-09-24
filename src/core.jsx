@@ -79,7 +79,7 @@ if (!document.getElementById('rp-core-styles')) {
   .rpt-del{width:24px;height:24px;border-radius:var(--rp-r-8);border:none;background:transparent;cursor:pointer;
     color:var(--rp-text-dim);opacity:0;transition:opacity var(--rp-t-fast),color var(--rp-t-fast),background var(--rp-t-fast);
     font-size:15px;display:flex;align-items:center;justify-content:center}
-  .rpt-seg:hover .rpt-del{opacity:.7}
+  .rpt-seg:hover .rpt-del,.rpt-del:focus-visible{opacity:.7}
   .rpt-del:hover{opacity:1;color:var(--rp-danger-text);background:var(--rp-danger-wash)}
   .rpt-lbl{display:none;font-size:11px;font-weight:700;color:var(--rp-text-dim);letter-spacing:.02em}
   .rpt-status{justify-content:flex-start;gap:8px}
@@ -91,6 +91,7 @@ if (!document.getElementById('rp-core-styles')) {
   .rpt-total>div{text-align:center}
   .rpt-total .t-label{font-size:13px;font-weight:600;opacity:.9}
   .rpt-total .t-num{font-variant-numeric:tabular-nums;font-size:16px}
+  .rpt-total .t-unit{font-size:11px;font-weight:600;opacity:.75;margin-inline-start:4px}
 
   /* ── mobile: one compact row per segment ──
      [#] [dist +val-, with elevation folded in as a 2nd line] [pace +val-]
@@ -105,13 +106,18 @@ if (!document.getElementById('rp-core-styles')) {
      placement, so the remaining idx/dist/pace/cumtime/status items — in
      that same order in the markup — land in these 5 columns on their own. */
   @container (max-width:600px){
-    .rpt-head{display:none}
+    /* a slim header over the compact rows — without it "5" next to "5:42"
+       doesn't say which is distance and which is pace */
+    .rpt-head{grid-template-columns:18px 1fr 1fr 60px 34px;column-gap:5px;
+      padding:0 9px 5px;font-size:10px}
+    .rpt-head .h-cumdist,.rpt-head .h-elev,.rpt-head .h-segt{display:none}
+    .rpt-head .h-cumt{text-align:end}
     .rpt-rows{gap:4px}
     .rpt-seg{display:grid;
       /* FIXED widths for the time + status columns so the dist/pace value
          buttons line up across every row even once cumulative time hits
          1:xx:xx */
-      grid-template-columns:18px 1fr 1fr 60px 26px;
+      grid-template-columns:18px 1fr 1fr 60px 34px;
       align-items:center;column-gap:5px;
       padding:3px 8px;border-radius:var(--rp-r-12);
       background:var(--rp-surface);border:1px solid var(--rp-line)}
@@ -140,15 +146,17 @@ if (!document.getElementById('rp-core-styles')) {
     .rpt-cumtime .rpt-num{font-size:12px;font-weight:800;white-space:nowrap;line-height:1.15}
     .rpt-status{flex-direction:row;align-items:center;gap:2px;justify-content:flex-end}
     .rpt-dot{width:7px;height:7px}
-    .rpt-del{opacity:.5;width:18px;height:18px;font-size:12px}
+    /* small glyph, finger-sized target: the ::after pad takes it to ~44px */
+    .rpt-del{opacity:.55;width:24px;height:36px;font-size:13px;position:relative}
+    .rpt-del::after{content:'';position:absolute;inset:-4px -6px}
 
     /* totals: one clean line — סה"כ · <dist> ק"מ · <avg pace> · <total time> */
     .rpt-total{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;
       gap:3px 12px;padding:11px 12px}
-    .rpt-total>div:empty,.rpt-total .t-segt{display:none}
+    .rpt-total>div:empty{display:none}
     .rpt-total .t-label:first-child{order:0}
     .rpt-total .t-dist{order:1}
-    .rpt-total .t-unit{order:1;font-size:10px}
+    .rpt-total .t-unit{font-size:10px}
     .rpt-total .t-pace{order:2}
     .rpt-total .t-cumt{order:3}
     .rpt-total .t-label{font-size:11px}
@@ -223,10 +231,10 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
         <div className="h-idx">#</div>
         <div>{t('segTable.distance', { unit: U ? U.distUnit() : 'km' })}</div>
         <div>{t('segTable.targetPace')}</div>
-        <div>{t('segTable.cumulative')}</div>
-        {hasElev && <div>{t('segTable.elevation')}</div>}
-        <div>{t('segTable.segTime')}</div>
-        <div>{t('segTable.cumTime')}</div>
+        <div className="h-cumdist">{t('segTable.cumulative')}</div>
+        {hasElev && <div className="h-elev">{t('segTable.elevation')}</div>}
+        <div className="h-segt">{t('segTable.segTime')}</div>
+        <div className="h-cumt">{t('segTable.cumTime')}</div>
         <div></div>
       </div>
       <div className="rpt-rows">
@@ -299,13 +307,14 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
               <div className="rpt-cell rpt-cumtime">
                 <span className="rpt-lbl">{t('segTable.cumTime')}</span>
                 <span className="rpt-num">{formatClock(r.cumTime)}</span>
-                <span className="rpt-segtag">+{formatClock(r.segTime)}</span>
+                <span className="rpt-segtag" dir="ltr">+{formatClock(r.segTime)}</span>
               </div>
             </div>
             <div className="rpt-cell rpt-status">
               <span className="rpt-dot" title={t(window.ZONES[r.zone].labelKey)}
                 style={{ background: colors.zones[r.zone] }} />
-              <button className="rpt-del" title={t('segTable.removeSegment')} onClick={() => onRemove(r.id)}>✕</button>
+              <button className="rpt-del" title={t('segTable.removeSegment')}
+                aria-label={`${t('segTable.removeSegment')} ${r.index}`} onClick={() => onRemove(r.id)}>✕</button>
             </div>
           </div>
         ))}
@@ -313,11 +322,16 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
       {showTotals && (
         <div className="rpt-total">
           <div className="t-label">{t('segTable.total')}</div>
-          <div className="t-num t-dist">{U ? U.dispDistNum(totalDist) : formatKm(totalDist)}</div>
+          {/* the unit rides with the distance — it used to sit alone under
+              "cumulative"; and the finish time appears once, under cum. time */}
+          <div className="t-num t-dist">
+            {U ? U.dispDistNum(totalDist) : formatKm(totalDist)}
+            <span className="t-unit">{U ? U.distUnit() : 'km'}</span>
+          </div>
           <div className="t-num t-pace">{U ? U.fmtPace(avgPace) : formatPace(avgPace)}</div>
-          <div className="t-label t-unit" style={{ opacity: .75 }}>{U ? U.distUnit() : 'km'}</div>
+          <div></div>
           {hasElev && <div></div>}
-          <div className="t-num t-segt">{formatClock(totalTime)}</div>
+          <div></div>
           <div className="t-num t-cumt">{formatClock(totalTime)}</div>
           <div></div>
         </div>

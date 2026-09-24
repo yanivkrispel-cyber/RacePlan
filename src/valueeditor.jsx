@@ -4,6 +4,7 @@
 // buttons with hold-to-repeat, and tap-to-type an exact value.
 const { formatPace, formatKm, parsePace } = window;
 const I18N = window.I18N;
+const useEscape = window.useEscape || (() => {});
 const t = (I18N && I18N.t) || ((k) => k);
 const U = window.UNITS;
 
@@ -26,7 +27,7 @@ function HoldBtn({ delta, onStep, children, ariaLabel }) {
     <button type="button" aria-label={ariaLabel || (delta < 0 ? t('common.decrease') : t('common.add'))}
       onPointerDown={start} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop}
       style={{
-        minWidth: 44, minHeight: 40, borderRadius: 9, cursor: 'pointer',
+        minWidth: 40, minHeight: 40, borderRadius: 9, cursor: 'pointer',
         touchAction: 'manipulation', fontFamily: 'inherit', fontWeight: 700, fontSize: 13,
         background: 'var(--rp-surface-2)', border: '1px solid var(--rp-line)', color: 'var(--rp-text)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto',
@@ -105,6 +106,7 @@ const DIST_KM = []; for (let i = 0; i <= 90; i++) DIST_KM.push(i);
 const DIST_M = []; for (let i = 0; i < 1000; i += 10) DIST_M.push(i); // sub-unit, thousandths
 
 function ValueEditor({ type, value, title, onApply, onClose, unitMajor, unitMinor, unitPace }) {
+  useEscape(onClose);
   const isPace = type === 'pace';
   const clampV = (v) => isPace
     ? Math.max(90, Math.min(1500, Math.round(v)))
@@ -142,7 +144,7 @@ function ValueEditor({ type, value, title, onApply, onClose, unitMajor, unitMino
   };
 
   return ReactDOM.createPortal((
-    <div className="rp-sheet-wrap rp-cq-scope"
+    <div className="rp-sheet-wrap rp-cq-scope" role="dialog" aria-modal="true" aria-label={title || undefined}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(9,11,22,.78)',
         backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -163,8 +165,8 @@ function ValueEditor({ type, value, title, onApply, onClose, unitMajor, unitMino
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div style={{ fontSize: 14, fontWeight: 800 }}>{title || (isPace ? t('ve.pace') : t('ve.distance'))}</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
-            color: 'var(--rp-text-dim)', fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
+          <button onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--rp-text-dim)', fontSize: 20, lineHeight: 1, padding: '8px 10px', margin: '-8px -10px' }}>✕</button>
         </div>
 
         {/* wheels — LTR so the larger unit sits on the left */}
@@ -190,8 +192,9 @@ function ValueEditor({ type, value, title, onApply, onClose, unitMajor, unitMino
           )}
         </div>
 
-        {/* fixed jumps + tap-to-type */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 12, justifyContent: 'center' }}>
+        {/* fixed jumps + tap-to-type — a number line, so always LTR:
+            −10 −5 −1 [value] +1 +5 +10, the small steps nearest the value */}
+        <div style={{ display: 'flex', direction: 'ltr', alignItems: 'center', gap: 4, marginTop: 12, justifyContent: 'center' }}>
           {jumps.map(({ d, lbl }) => (
             <HoldBtn key={'m' + lbl} delta={-d} onStep={bump}>
               <span style={ltr}>−{lbl}</span>
@@ -199,7 +202,7 @@ function ValueEditor({ type, value, title, onApply, onClose, unitMajor, unitMino
           ))}
           {typing == null ? (
             <button onClick={() => setTyping(fmtVal)} style={{
-              minWidth: 76, minHeight: 40, borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
+              minWidth: 68, minHeight: 40, borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit',
               fontWeight: 800, fontSize: 17, fontVariantNumeric: 'tabular-nums',
               background: 'var(--rp-surface-2)', border: '1px solid var(--rp-gold-line)',
               color: 'var(--rp-gold)', flex: '0 0 auto',
@@ -209,17 +212,23 @@ function ValueEditor({ type, value, title, onApply, onClose, unitMajor, unitMino
               onChange={(e) => setTyping(e.target.value)} onBlur={commitTyping}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur();
                 if (e.key === 'Escape') { setTyping(null); e.currentTarget.blur(); } }}
-              style={{ minWidth: 76, minHeight: 40, borderRadius: 9, textAlign: 'center',
+              style={{ width: 68, minHeight: 40, borderRadius: 9, textAlign: 'center',
                 fontFamily: 'inherit', fontWeight: 800, fontSize: 17, flex: '0 0 auto',
                 background: 'var(--rp-surface-2)', border: '1px solid var(--rp-gold-line)',
                 color: 'var(--rp-text)', outline: 'none' }} />
           )}
-          {jumps.map(({ d, lbl }) => (
+          {jumps.slice().reverse().map(({ d, lbl }) => (
             <HoldBtn key={'p' + lbl} delta={d} onStep={bump}>
               <span style={ltr}>+{lbl}</span>
             </HoldBtn>
           ))}
         </div>
+
+        {isPace && (
+          <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 7 }}>
+            {t('ve.paceNudgeHint')}
+          </div>
+        )}
 
         <button className="rp-btn rp-btn-primary" onClick={() => onApply(val)}
           style={{ width: '100%', justifyContent: 'center', marginTop: 14 }}>{t('common.apply')}</button>

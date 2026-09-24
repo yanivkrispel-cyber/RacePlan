@@ -7,6 +7,7 @@ const { useRacePlan, formatPace, formatClock, parseClock, formatKm, PaceChart,
         PrintableSummary, ActionSheet, RP_EXPORT, ValueEditor, RP_HEAT,
         computeSegmentElevations, buildPlanSegments, SevenSeg, ClockDot, ClockDisplay } = window;
 const I18N = window.I18N;
+const useEscape = window.useEscape || (() => {});
 const t = (I18N && I18N.t) || ((k) => k);
 const U = window.UNITS;
 const presetName = window.presetName || ((p) => String(p.km));
@@ -63,9 +64,10 @@ function decodePlan(str) {
 }
 
 // contentEditable text that commits on blur/Enter
-function EditableText({ value, onChange, placeholder, style }) {
+function EditableText({ value, onChange, placeholder, style, editRef }) {
   return (
     <span
+      ref={editRef}
       contentEditable
       suppressContentEditableWarning
       spellCheck={false}
@@ -287,8 +289,10 @@ function RouteChip({ course, onClear, onSaveToLibrary, ownerMode }) {
         <span style={{ color: 'var(--rp-text-soft)', fontWeight: 600 }}>{course.name || t('gpxBanner.importedRoute')}</span>
         {' · '}{sourceText}
       </div>
-      <button onClick={() => setMenuOpen(true)} aria-label={t('planner.more')}
-        style={{ flex: '0 0 auto', width: 24, height: 24, display: 'flex', alignItems: 'center',
+      {/* 36×36 target; the negative margin keeps the chip itself slim */}
+      <button onClick={() => setMenuOpen(true)}
+        aria-label={`${t('planner.more')} · ${course.name || t('gpxBanner.importedRoute')}`}
+        style={{ flex: '0 0 auto', width: 36, height: 36, margin: '-6px -4px', display: 'flex', alignItems: 'center',
           justifyContent: 'center', background: 'transparent', border: 'none', borderRadius: 'var(--rp-r-8)',
           color: 'var(--rp-text-dim)', cursor: 'pointer', fontSize: 15 }}>⋯</button>
       {ActionSheet && menuOpen && (
@@ -321,7 +325,13 @@ function RouteChip({ course, onClear, onSaveToLibrary, ownerMode }) {
 
 // Toast — navy surface, cream text, bottom-center, per DESIGN_TOKENS §States.
 // Portaled to <body> so it pins to the viewport, not the CSS-container root.
-function CopyToast({ show, text }) {
+// `action` ({ label, onClick }) adds an inline button — used for "undo".
+function CopyToast({ show, text, action }) {
+  // Hold the last message/action through the fade-out — the caller clears
+  // them the moment it hides, which used to flash the default text instead.
+  const last = React.useRef({ text: '', action: null });
+  if (show) last.current = { text, action };
+  else { text = last.current.text; action = last.current.action; }
   return ReactDOM.createPortal((
     <div role="status" aria-live="polite" style={{
       position: 'fixed', bottom: 'calc(24px + env(safe-area-inset-bottom))',
@@ -333,14 +343,103 @@ function CopyToast({ show, text }) {
       transition: 'opacity var(--rp-t-panel), transform var(--rp-t-panel)',
       opacity: show ? 1 : 0,
       transform: show ? 'translateY(0)' : 'translateY(12px)',
-      pointerEvents: 'none',
+      pointerEvents: show && action ? 'auto' : 'none',
     }}>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--rp-gold)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="20 6 9 17 4 12" />
       </svg>
       {text || t('planner.linkCopied')}
+      {action && (
+        <button onClick={action.onClick} tabIndex={show ? 0 : -1} style={{
+          marginInlineStart: 8, background: 'none', border: 'none', cursor: 'pointer',
+          color: 'var(--rp-gold)', fontFamily: 'inherit', fontSize: 14, fontWeight: 800,
+          padding: '6px 4px', minHeight: 32,
+        }}>{action.label}</button>
+      )}
     </div>
   ), document.body);
+}
+
+// Date/time field for the race card's meta line. The native inputs render in
+// the *browser's* locale (an English Chrome shows "mm/dd/yyyy" in the Hebrew
+// UI) and are ~20px tall, so the visible part is a plain button with the value
+// formatted in the app's locale; the real input stays underneath only to
+// supply the native picker.
+function MetaPicker({ type, value, onChange, label }) {
+  const ref = React.useRef(null);
+  const open = () => {
+    const el = ref.current;
+    if (!el) return;
+    try { el.showPicker(); } catch (e) { el.focus(); }
+  };
+  let text = label;
+  if (value && type === 'date') {
+    const [y, m, d] = value.split('-').map(Number);
+    text = I18N && I18N.fmtDate
+      ? I18N.fmtDate(new Date(y, m - 1, d), { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : `${d}/${m}/${y}`;
+  } else if (value) {
+    text = value;
+  }
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <button type="button" onClick={open} aria-label={value ? `${label}: ${text}` : label}
+        style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+          fontSize: 12, fontWeight: 500, padding: '6px 2px', minHeight: 32,
+          color: value ? 'var(--rp-text-soft)' : 'var(--rp-placeholder)',
+          display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        {type === 'date' ? (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg>
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+        )}
+        <bdi>{text}</bdi>
+      </button>
+      <input ref={ref} type={type} value={value} onChange={(e) => onChange(e.target.value)}
+        tabIndex={-1} aria-hidden="true"
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0,
+          pointerEvents: 'none', border: 0, padding: 0, colorScheme: 'dark' }} />
+    </span>
+  );
+}
+
+// Confirmation dialog for destructive actions. `actions` is a list of
+// { label, onClick, primary?, danger? }; Escape and a backdrop click cancel.
+function ConfirmDialog({ title, body, actions, onCancel }) {
+  useEscape(onCancel);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 1001, background: 'rgba(0,0,0,.55)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', direction: I18N.dir,
+      padding: 16,
+    }} onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div role="alertdialog" aria-modal="true" aria-labelledby="rp-confirm-title" style={{
+        background: 'var(--rp-surface)', border: '1px solid var(--rp-line-input)',
+        borderRadius: 16, padding: '26px 24px 20px', width: '100%', maxWidth: 360, textAlign: 'center',
+        boxShadow: '0 16px 48px rgba(0,0,0,.7)', fontFamily: 'var(--rp-font-ui)',
+      }}>
+        <div id="rp-confirm-title" style={{ fontSize: 15, fontWeight: 700, color: 'var(--rp-text)', marginBottom: 10 }}>
+          {title}
+        </div>
+        {body && (
+          <div style={{ fontSize: 13, color: 'var(--rp-text-dim)', marginBottom: 22 }}>{body}</div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {actions.map((a, i) => (
+            <button key={i} style={{ justifyContent: 'center', minHeight: 44,
+              ...(a.danger ? { color: 'var(--rp-danger-text)', borderColor: 'currentColor' } : null) }}
+              className={'rp-btn' + (a.primary ? ' rp-btn-primary' : '')}
+              onClick={a.onClick}>{a.label}</button>
+          ))}
+          {/* focus lands on the safe choice, so a stray Enter never destroys anything */}
+          <button className="rp-btn" autoFocus style={{ justifyContent: 'center', minHeight: 44 }}
+            onClick={onCancel}>{t('common.cancel')}</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // A button that fires once on tap and auto-repeats (accelerating) while held —
@@ -506,13 +605,13 @@ function scalePlanToGoal(segments, goalSec) {
   const cur = (segments || []).reduce((a, s) => a + s.distance * s.paceSec, 0);
   if (!(cur > 0) || !(goalSec > 0)) return segments;
   const f = goalSec / cur;
-  return segments.map((s) => ({
-    ...s, paceSec: Math.max(120, Math.min(900, Math.round(s.paceSec * f))),
-  }));
+  return window.roundPacesToGoal(
+    segments.map((s) => ({ ...s, paceSec: s.paceSec * f })), goalSec, 120, 900);
 }
 
 // Tapping the race-card hero opens this: dial a goal time, apply = rescale.
 function GoalSheet({ currentSec, dist, onClose, onApply }) {
+  useEscape(onClose);
   const d0 = Math.max(0, Math.round(currentSec || 0));
   const [gh, setGh] = React.useState(Math.min(11, Math.floor(d0 / 3600)));
   const [gm, setGm] = React.useState(Math.floor((d0 % 3600) / 60));
@@ -520,7 +619,7 @@ function GoalSheet({ currentSec, dist, onClose, onApply }) {
   const goalSec = gh * 3600 + gm * 60 + gs;
   const ok = goalSec >= 600 && goalSec <= 12 * 3600;
   return ReactDOM.createPortal((
-    <div className="rp-cq-scope" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    <div className="rp-cq-scope" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(9,11,22,.80)',
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 18, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
@@ -547,6 +646,7 @@ function GoalSheet({ currentSec, dist, onClose, onApply }) {
 // Shown after a GPX loads: turn the route into a matching pace plan (5 km blocks
 // + remainder) from a goal time, a strategy and the route's gradient.
 function GpxPlanDialog({ course, defaultGoalSec, onCancel, onBuild }) {
+  useEscape(onCancel);
   const hasProfile = !!(course && course.profile && course.profile.length > 1);
   // h / m / s tap-steppers — no keyboard at all (a mobile numeric keypad has no
   // colon key, and typing seconds into a masked field is fiddly).
@@ -578,7 +678,7 @@ function GpxPlanDialog({ course, defaultGoalSec, onCancel, onBuild }) {
   ];
 
   return ReactDOM.createPortal((
-    <div className="rp-cq-scope" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    <div className="rp-cq-scope" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(9,11,22,.78)',
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 18, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
@@ -662,6 +762,7 @@ function GpxPlanDialog({ course, defaultGoalSec, onCancel, onBuild }) {
 // GpxPlanDialog's controls with a distance/route picker in front, reachable
 // straight from the Hub (no GPX import required first).
 function RaceSetupSheet({ onClose, onBuild, defaultName }) {
+  useEscape(onClose);
   const [course, setCourse] = React.useState(null); // {name,dist,profile?,track?,...}
   // raw GPX payload (gpxText/profileFlat/trackFlat) behind the current course,
   // when it came from "my route" — carried through to the planner so its
@@ -687,7 +788,8 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
     setCourse(c);
     setRouteMeta(null); // a fresh pick invalidates any previous GPX payload
     setErr('');
-    const g = Math.round((c.dist || 10) * 330);
+    // whole minutes — a seed of 1:56:03 reads like a computed leftover, not a goal
+    const g = Math.round(((c.dist || 10) * 330) / 60) * 60;
     setGh(Math.min(11, Math.floor(g / 3600)));
     setGm(Math.floor((g % 3600) / 60));
     setGs(g % 60);
@@ -768,18 +870,19 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
     });
   };
 
-  const chip = (active, label, onClick, key) => (
+  const chip = (active, label, onClick, key, sub) => (
     <button key={key} onClick={onClick} style={{
-      padding: '8px 13px', borderRadius: 999, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-      fontFamily: 'inherit',
+      padding: sub ? '6px 13px' : '8px 13px', borderRadius: 999, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+      fontFamily: 'inherit', minHeight: 40, display: 'inline-flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', lineHeight: 1.15,
       background: active ? 'var(--rp-gold-wash)' : 'var(--rp-surface-2)',
       color: active ? 'var(--rp-gold)' : 'var(--rp-text)',
       border: `1px solid ${active ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
-    }}>{label}</button>
+    }}>{label}{sub && <small style={{ fontSize: 10, fontWeight: 500, opacity: .75 }}>{sub}</small>}</button>
   );
 
   return ReactDOM.createPortal((
-    <div className="rp-cq-scope" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    <div className="rp-cq-scope" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(9,11,22,.80)',
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 16, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
@@ -789,7 +892,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontSize: 17, fontWeight: 800 }}>{t('setup.title')}</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
+          <button onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer',
             color: 'var(--rp-text-dim)', fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
         </div>
 
@@ -839,15 +942,17 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {(PRESETS || []).map((pr) => chip(
                 !!course && Math.abs((course.dist || 0) - pr.km) < 0.05 && !course.profile,
-                (window.presetLabel ? window.presetLabel(pr) : pr.km), () => pickPreset(pr.km, presetName(pr)), pr.km))}
+                (window.presetLabel ? window.presetLabel(pr) : pr.km), () => pickPreset(pr.km, presetName(pr)), pr.km,
+                pr.nameKey ? t(pr.nameKey) : null))}
             </div>
             <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
               <input value={customKm} onChange={(e) => setCustomKm(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') pickCustom(); }}
                 inputMode="decimal" placeholder={U && U.imperial ? t('setup.customMi') : t('setup.customKm')}
                 style={{ flex: 1, background: 'var(--rp-surface-2)', border: '1px solid var(--rp-line-input)',
                   borderRadius: 8, padding: '8px 10px', fontSize: 13, color: 'var(--rp-text)',
                   fontFamily: 'inherit', outline: 'none' }} />
-              <button onClick={pickCustom} className="rp-btn" style={{ flex: '0 0 auto' }}>{t('common.add')}</button>
+              <button onClick={pickCustom} className="rp-btn" style={{ flex: '0 0 auto' }}>{t('common.continue')}</button>
             </div>
           </>
         )}
@@ -904,13 +1009,17 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
               </div>
             )}
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 13,
-              cursor: hasProfile ? 'pointer' : 'not-allowed', opacity: hasProfile ? 1 : 0.5 }}>
-              <input type="checkbox" checked={gradeAdjust && hasProfile} disabled={!hasProfile}
-                onChange={(e) => setGradeAdjust(e.target.checked)} style={{ accentColor: 'var(--rp-gold)' }} />
-              {t('setup.gradeAdjust')}
-              {!hasProfile && <span style={{ fontSize: 11, color: 'var(--rp-text-dim)' }}>· {t('setup.noElevation')}</span>}
-            </label>
+            {/* a plain distance has no route to follow, so there's nothing to
+                adjust — the option only appears once a route is loaded */}
+            {(course.track || course.profile) && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 13,
+                cursor: hasProfile ? 'pointer' : 'not-allowed', opacity: hasProfile ? 1 : 0.5 }}>
+                <input type="checkbox" checked={gradeAdjust && hasProfile} disabled={!hasProfile}
+                  onChange={(e) => setGradeAdjust(e.target.checked)} style={{ accentColor: 'var(--rp-gold)' }} />
+                {t('setup.gradeAdjust')}
+                {!hasProfile && <span style={{ fontSize: 11, color: 'var(--rp-text-dim)' }}>· {t('setup.noElevation')}</span>}
+              </label>
+            )}
 
             {preview.length > 0 && (
               <div style={{ marginTop: 14, padding: '9px 11px', borderRadius: 8,
@@ -956,6 +1065,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
 // subscribes via I18N.useI18n / UNITS.useUnits) and persist to localStorage +
 // the signed-in user's profile.
 function SettingsSheet({ onClose }) {
+  useEscape(onClose);
   const [, force] = React.useState(0);
   const bump = () => force((x) => x + 1);
   const locale = I18N ? I18N.locale : 'he';
@@ -981,7 +1091,7 @@ function SettingsSheet({ onClose }) {
   );
 
   return ReactDOM.createPortal((
-    <div className="rp-cq-scope" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    <div className="rp-cq-scope" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1300, background: 'rgba(9,11,22,.80)',
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 18, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
@@ -990,7 +1100,7 @@ function SettingsSheet({ onClose }) {
         boxShadow: 'var(--rp-shadow-modal)', padding: '16px 18px 18px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <div style={{ fontSize: 16, fontWeight: 800 }}>{t('settings.title')}</div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
+          <button onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer',
             color: 'var(--rp-text-dim)', fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
         </div>
 
@@ -1013,6 +1123,16 @@ function SettingsSheet({ onClose }) {
 // ── HubScreen ────────────────────────────────────────────────────────────
 // Post-sign-in home: plan a new race, resume the current one, or open a saved
 // plan. onEnter(handoff) drops the user into the planner.
+function GearIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.22.66.22 1v.09c0 .68.38 1.29 1 1.51H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
 // Shared tappable row: icon box + title + subtitle + chevron. Used for the
 // Hub's top-level cards and reused inside RaceSetupSheet's entry fork so the
 // "how do I start" choice reads as the same kind of decision as the Hub's.
@@ -1036,7 +1156,9 @@ function HubCard({ onClick, primary, icon, title, sub }) {
         {sub && <span style={{ display: 'block', fontSize: 12, color: 'var(--rp-text-dim)', marginTop: 2,
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</span>}
       </span>
-      <span style={{ flex: '0 0 auto', color: 'var(--rp-text-dim)' }}>‹</span>
+      {/* "forward" points toward the reading end: left in Hebrew, right in English */}
+      <span aria-hidden="true" style={{ flex: '0 0 auto', color: 'var(--rp-text-dim)', fontSize: 18, lineHeight: 1 }}>
+        {I18N.dir === 'rtl' ? '‹' : '›'}</span>
     </button>
   );
 }
@@ -1047,6 +1169,7 @@ function HubScreen({ isOwner, userName, onEnter }) {
   const [savedOpen, setSavedOpen] = React.useState(false);
   const [raceAdminOpen, setRaceAdminOpen] = React.useState(false);
   const [athleteName, setAthleteName] = React.useState(null); // planning for a specific athlete
+  const [replaceConfirm, setReplaceConfirm] = React.useState(false);
 
   const resume = React.useMemo(() => {
     try {
@@ -1091,7 +1214,8 @@ function HubScreen({ isOwner, userName, onEnter }) {
       </div>
 
       <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Card primary onClick={() => setSetupOpen(true)} title={t('hub.newPlan')}
+        {/* a new plan overwrites the one in progress — say so before it happens */}
+        <Card primary onClick={() => (resume ? setReplaceConfirm(true) : setSetupOpen(true))} title={t('hub.newPlan')}
           sub={t('hub.newPlanSub')}
           icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>} />
 
@@ -1101,9 +1225,12 @@ function HubScreen({ isOwner, userName, onEnter }) {
             icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8" /><path d="M3 3v5h5" /></svg>} />
         )}
 
-        <Card onClick={() => setSavedOpen(true)} title={t('hub.myPlans')}
+        {/* the owner's card opens the athlete roster, so it's named after it */}
+        <Card onClick={() => setSavedOpen(true)} title={isOwner ? t('athletes.title') : t('hub.myPlans')}
           sub={isOwner ? t('hub.myPlansOwnerSub') : t('hub.myPlansSub')}
-          icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>} />
+          icon={isOwner
+            ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+            : <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>} />
 
         {isOwner && RaceAdminPanel && RP_FB && (
           <Card onClick={() => setRaceAdminOpen(true)} title={t('hub.raceAdmin')}
@@ -1149,13 +1276,21 @@ function HubScreen({ isOwner, userName, onEnter }) {
           width: 38, height: 38, borderRadius: 999, cursor: 'pointer',
           background: 'var(--rp-surface)', border: '1px solid var(--rp-line)', color: 'var(--rp-text-dim)',
           display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-          strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.14.31.22.66.22 1v.09c0 .68.38 1.29 1 1.51H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
+        <GearIcon />
       </button>
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+      {replaceConfirm && resume && (
+        <ConfirmDialog
+          title={t('hub.replaceConfirmTitle')}
+          body={t('hub.replaceConfirmBody', { name: resume.raceName })}
+          onCancel={() => setReplaceConfirm(false)}
+          actions={[
+            { label: t('hub.replaceConfirm'), primary: true,
+              onClick: () => { setReplaceConfirm(false); setSetupOpen(true); } },
+            { label: t('hub.resume'), onClick: () => { setReplaceConfirm(false); onEnter(null); } },
+          ]}
+        />
+      )}
     </div>
   );
 }
@@ -1333,7 +1468,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   }, []);
 
   const fileRef = React.useRef(null);
-  const raceDateRef = React.useRef(null); // focus target for the meta line's edit affordance
+  const trainerRef = React.useRef(null); // focus target for the meta line's pencil
   const [raceName, setRaceName] = React.useState(
     () => (seed && seed.raceName) || shareData?.r || localStorage.getItem('rp-race') || t('planner.defaultRaceName')
   );
@@ -1342,12 +1477,20 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
       || (!isOwner && userName) || t('planner.athleteNamePlaceholder')
   );
   const [toastMsg, setToastMsg] = React.useState('');
+  const [toastAction, setToastAction] = React.useState(null);
   const toastTimer = React.useRef(null);
-  const showToast = React.useCallback((msg) => {
-    setToastMsg(msg);
+  const hideToast = React.useCallback(() => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToastMsg(''), 2600);
+    setToastMsg(''); setToastAction(null);
   }, []);
+  // `action` ({ label, onClick }) turns the toast into an undo bar, which
+  // stays up longer so there's time to reach it.
+  const showToast = React.useCallback((msg, action) => {
+    setToastMsg(msg);
+    setToastAction(action || null);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(hideToast, action ? 6000 : 2600);
+  }, [hideToast]);
   React.useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const [shareOpen, setShareOpen] = React.useState(false);
   const [moreOpen, setMoreOpen] = React.useState(false);
@@ -1361,6 +1504,8 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   const [goalOpen, setGoalOpen] = React.useState(false);
   const [valueEditor, setValueEditor] = React.useState(null); // { id, type, value }
   const [showNewPlanConfirm, setShowNewPlanConfirm] = React.useState(false);
+  const [showResetConfirm, setShowResetConfirm] = React.useState(false);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [showRouteLib, setShowRouteLib] = React.useState(false);
   const [routeLibInit, setRouteLibInit] = React.useState(null);
   // A Hub handoff whose course came from setup's "my route" GPX upload
@@ -1648,6 +1793,23 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
 
   const doPrint = () => { setShareOpen(false); setTimeout(() => window.print(), 60); };
 
+  // Deleting a segment is one tap, so it's undoable instead of confirmed. With
+  // the course distance locked the tail absorbs the deleted kilometres at its
+  // own pace, which moves the finish time — the toast says so rather than
+  // letting the goal drift silently.
+  const removeSegmentWithUndo = (id) => {
+    const before = p.segments;
+    const idx = before.findIndex((s) => s.id === id);
+    if (idx < 0 || before.length < 2) return;
+    p.removeSegment(id);
+    const after = window.computePlan(
+      window.settleRemainder(before.filter((s) => s.id !== id), p.lockTarget));
+    showToast(t('planner.segmentDeleted', { n: idx + 1, time: formatClock(after.totalTime) }), {
+      label: t('common.undo'),
+      onClick: () => { p.restoreSegments(before); hideToast(); },
+    });
+  };
+
   const onReset = () => {
     p.reset();
     try {
@@ -1725,16 +1887,6 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
     background: 'var(--rp-bg)', color: 'var(--rp-text)', direction: I18N.dir,
     minHeight: '100vh', boxSizing: 'border-box',
   };
-
-  // race-card meta line (date / time / trainer) — plain inline controls, not
-  // individual pill chips: at a glance this reads as one caption line under
-  // the race name, while each field still opens exactly the picker/edit it
-  // always did (native date/time picker, inline text for the trainer name).
-  const metaInputS = (val) => ({
-    background: 'transparent', border: 'none', outline: 'none', cursor: 'pointer',
-    color: val ? 'var(--rp-text-soft)' : 'var(--rp-placeholder)',
-    fontSize: 12, fontFamily: 'inherit', fontWeight: 500, colorScheme: 'dark', padding: 0,
-  });
 
   // Total-distance lock, shown on the totals strip beside the distance. Locked,
   // reshaping segments moves kilometres around inside the course instead of
@@ -1947,6 +2099,27 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
         + (hasRoute && pane === 'visual' ? ' rp-pane-visual' : '')}
         style={{ maxWidth: hasRoute ? 1480 : 1180, margin: '0 auto', padding: '16px var(--rp-pad) 24px' }}>
 
+        {/* app bar — the way back to the Hub and to language/units used to be
+            buried in the ⋯ menu (Home) or missing from the planner (Settings) */}
+        <div className="rp-appbar" style={{ display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+          {onGoHome ? (
+            <button className="rp-btn" onClick={onGoHome}
+              style={{ padding: '7px 12px', fontSize: 13, minHeight: 36 }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
+              {t('planner.home')}
+            </button>
+          ) : <span />}
+          <button onClick={() => setSettingsOpen(true)} aria-label={t('settings.title')}
+            style={{ width: 36, height: 36, borderRadius: 999, cursor: 'pointer', flex: '0 0 auto',
+              background: 'var(--rp-surface)', border: '1px solid var(--rp-line)', color: 'var(--rp-text-dim)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <GearIcon />
+          </button>
+        </div>
+        {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+
         {/* Narrow widths: one control for the whole app — which of the two
             columns is on screen. Wide widths show both, so it's hidden. */}
         {hasRoute && (
@@ -1984,7 +2157,14 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           <RouteChip
             course={p.course}
             ownerMode={isOwner}
-            onClear={() => { p.clearCourse(); setLastRoute(null); }}
+            onClear={() => {
+              const prevCourse = p.course; const prevRoute = lastRoute;
+              p.clearCourse(); setLastRoute(null);
+              showToast(t('planner.routeRemoved'), {
+                label: t('common.undo'),
+                onClick: () => { p.loadCourse(prevCourse); setLastRoute(prevRoute); hideToast(); },
+              });
+            }}
             onSaveToLibrary={RP_FB && lastRoute
               ? () => { setRouteLibInit(lastRoute); setShowRouteLib(true); }
               : null}
@@ -2010,17 +2190,25 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 5px',
                 marginTop: 4, fontSize: 12, color: 'var(--rp-text-dim)' }}>
-                <input type="date" ref={raceDateRef} value={raceDate} onChange={(e) => setRaceDate(e.target.value)}
-                  aria-label={t('planner.raceDate')} style={metaInputS(raceDate)} />
+                <MetaPicker type="date" value={raceDate} onChange={setRaceDate}
+                  label={t('planner.raceDate')} />
                 <span aria-hidden="true">·</span>
-                <input type="time" value={raceTime} onChange={(e) => setRaceTime(e.target.value)}
-                  aria-label={t('planner.startTime')} style={metaInputS(raceTime)} />
+                <MetaPicker type="time" value={raceTime} onChange={setRaceTime}
+                  label={t('planner.startTime')} />
                 <span aria-hidden="true">·</span>
                 <EditableText value={trainer} onChange={handleTrainerChange} placeholder={t('planner.athleteNamePlaceholder')}
-                  style={{ color: 'var(--rp-text-soft)', fontSize: 12 }} />
-                <button type="button" onClick={() => raceDateRef.current && raceDateRef.current.focus()}
-                  aria-label={t('planner.raceDate')} style={{ flex: '0 0 auto', background: 'transparent',
-                    border: 'none', padding: '0 2px', color: 'var(--rp-text-dim)', opacity: .55, cursor: 'pointer',
+                  editRef={trainerRef} style={{ color: 'var(--rp-text-soft)', fontSize: 12 }} />
+                {/* the pencil sits after the name, so it edits the name (it used to open the date) */}
+                <button type="button" aria-label={t('planner.athleteNamePlaceholder')}
+                  onClick={() => {
+                    const el = trainerRef.current;
+                    if (!el) return;
+                    el.focus();
+                    const r = document.createRange(); r.selectNodeContents(el);
+                    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+                  }}
+                  style={{ flex: '0 0 auto', background: 'transparent', border: 'none', padding: '8px 6px',
+                    margin: '-8px -4px', color: 'var(--rp-text-dim)', opacity: .55, cursor: 'pointer',
                     display: 'flex', alignItems: 'center' }}>
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
@@ -2054,7 +2242,8 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
                   padding: '7px 8px', textAlign: 'center' }}>
                   <div style={{ fontFamily: 'var(--rp-font-display)', fontWeight: 800, fontSize: 15,
                     fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    {v}{extra}
+                    {/* ltr so a leading sign stays in front: "+141", not "141+" */}
+                    <span dir="ltr">{v}</span>{extra}
                   </div>
                   <div style={{ fontSize: 9.5, color: 'var(--rp-text-dim)', marginTop: 2 }}>{k}</div>
                 </div>
@@ -2067,7 +2256,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           <SegmentsTable plan={plan} colors={themeB} stepperKind="pill"
             paceStep={1} distStep={0.01}
             onStepDist={p.stepDistance} onSetDist={p.setSegmentDistance}
-            onStepPace={p.stepPace} onSetPace={p.setSegmentPace} onRemove={p.removeSegment}
+            onStepPace={p.stepPace} onSetPace={p.setSegmentPace} onRemove={removeSegmentWithUndo}
             onEditValue={ValueEditor ? (id, ty, v) => setValueEditor({
               id, type: ty,
               value: U ? (ty === 'pace' ? U.dispPaceSec(v) : U.dispDist(v)) : v,
@@ -2204,34 +2393,25 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
       )}
 
       {showNewPlanConfirm && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 1001, background: 'rgba(0,0,0,.55)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', direction: I18N.dir,
-        }} onClick={(e) => { if (e.target === e.currentTarget) setShowNewPlanConfirm(false); }}>
-          <div style={{
-            background: 'var(--rp-surface)', border: '1px solid var(--rp-line-input)',
-            borderRadius: 16, padding: '26px 30px', maxWidth: 360, textAlign: 'center',
-            boxShadow: '0 16px 48px rgba(0,0,0,.7)', fontFamily: 'var(--rp-font-ui)',
-          }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--rp-text)', marginBottom: 10 }}>
-              {t('planner.newPlanConfirmTitle')}
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--rp-text-dim)', marginBottom: 22 }}>
-              {t('planner.newPlanConfirmBody')}
-            </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button className="rp-btn rp-btn-primary" onClick={() => startNewPlan(true)}>
-                {t('planner.saveAndStart')}
-              </button>
-              <button className="rp-btn" onClick={() => startNewPlan(false)}>
-                {t('planner.startWithoutSaving')}
-              </button>
-              <button className="rp-btn" onClick={() => setShowNewPlanConfirm(false)}>
-                {t('common.cancel')}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={t('planner.newPlanConfirmTitle')}
+          body={t('planner.newPlanConfirmBody')}
+          onCancel={() => setShowNewPlanConfirm(false)}
+          actions={[
+            { label: t('planner.saveAndStart'), primary: true, onClick: () => startNewPlan(true) },
+            { label: t('planner.startWithoutSaving'), onClick: () => startNewPlan(false) },
+          ]}
+        />
+      )}
+
+      {showResetConfirm && (
+        <ConfirmDialog
+          title={t('planner.resetConfirmTitle')}
+          body={t('planner.resetConfirmBody')}
+          onCancel={() => setShowResetConfirm(false)}
+          actions={[{ label: t('planner.resetConfirm'), danger: true,
+            onClick: () => { setShowResetConfirm(false); onReset(); } }]}
+        />
       )}
 
       {RouteLibrary && RP_FB && showRouteLib && (
@@ -2295,17 +2475,9 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
               ),
             },
-            onGoHome && {
-              label: t('planner.home'),
-              onClick: () => { setMoreOpen(false); onGoHome(); },
-              icon: (
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
-              ),
-            },
             {
               label: t('planner.reset'), danger: true,
-              onClick: () => { setMoreOpen(false); onReset(); },
+              onClick: () => { setMoreOpen(false); setShowResetConfirm(true); },
               icon: (
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
@@ -2417,7 +2589,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
         </div>
       )}
 
-      <CopyToast show={!!toastMsg} text={toastMsg} />
+      <CopyToast show={!!toastMsg} text={toastMsg} action={toastAction} />
     </div>
   );
 }
