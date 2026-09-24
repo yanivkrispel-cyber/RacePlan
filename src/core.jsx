@@ -142,6 +142,11 @@ if (!document.getElementById('rp-core-styles')) {
     /* keep "6.22🔒" whole; only when the pair can't fit (long values on a
        narrow phone) does the elevation wrap under the number */
     .rpt-val>span{white-space:nowrap}
+    /* distance pinned to the left edge and the elevation to the right, so
+       the number sits in the same spot on every row whatever the climb's
+       width ("▲9m" vs "▲125m") — centering the pair used to shift it.
+       ltr so the number is on the left in the Hebrew UI too. */
+    .rpt.has-elev .rpt-dist .rpt-val{direction:ltr;justify-content:space-between;padding:0 8px}
     .rpt.has-elev .rpt-dist-stepper{width:100%}
     .rpt-cumtime{flex-direction:column;align-items:flex-end;justify-content:center;gap:0}
     .rpt-cumtime .rpt-num{font-size:12px;font-weight:800;white-space:nowrap;line-height:1.15}
