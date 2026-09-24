@@ -208,6 +208,10 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
   const [submitted, setSubmitted] = React.useState(false); // community submission sent
   const fileRef = React.useRef(null);
 
+  // opened via GpxBanner's "propose to library" with a route already loaded —
+  // a focused submit-only view, not the full search/upload library.
+  const isProposeFlow = !isOwner && !!initialPending;
+
   // owner review queue (routeSubmissions, status=pending)
   const [subs, setSubs] = React.useState(null);       // null = not loaded
   const [subBusy, setSubBusy] = React.useState('');   // id being approved/rejected
@@ -336,7 +340,10 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
       if (res !== 'ok') throw new Error(t('routes.submitRejected'));
       setSubmitted(true);
       setNote(t('routes.submitThanks'));
-      onLoadCourse(pending.course);
+      // isProposeFlow: the course is already the plan's active course (that's
+      // why "propose to library" was offered) — attaching it again would just
+      // re-open the "build a plan for this route" dialog for no reason.
+      if (!isProposeFlow) onLoadCourse(pending.course);
     } catch (e) {
       setErr(t('routes.submitFailed', { msg: (e && e.message ? e.message : e) }));
     } finally {
@@ -515,19 +522,23 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" />
             </svg>
-            <span style={{ fontSize: 17, fontWeight: 800 }}>{t('routes.libraryTitle')}</span>
+            <span style={{ fontSize: 17, fontWeight: 800 }}>
+              {isProposeFlow ? t('routes.proposeTitle') : t('routes.libraryTitle')}
+            </span>
           </div>
           <button onClick={() => onClose(submitted)} style={{ background: 'none', border: 'none', cursor: 'pointer',
             color: DIM, fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
         </div>
 
-        {/* tabs */}
-        <div style={{ display: 'flex', borderBottom: `1px solid ${BD}` }}>
-          {tabBtn('library', t('routes.tabSearch'))}
-          {tab === 'link' && tabBtn('link', t('routes.tabFile'))}
-          {isOwner && tabBtn('inbox',
-            t('routes.tabInbox') + (subs && subs.length ? ` (${subs.length})` : ''))}
-        </div>
+        {/* tabs — hidden in the propose flow, which has only one thing to do */}
+        {!isProposeFlow && (
+          <div style={{ display: 'flex', borderBottom: `1px solid ${BD}` }}>
+            {tabBtn('library', t('routes.tabSearch'))}
+            {tab === 'link' && tabBtn('link', t('routes.tabFile'))}
+            {isOwner && tabBtn('inbox',
+              t('routes.tabInbox') + (subs && subs.length ? ` (${subs.length})` : ''))}
+          </div>
+        )}
 
         {/* body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', minHeight: 0 }}>
@@ -645,21 +656,44 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
 
           {tab === 'link' && (
             <>
-              <div style={{ fontSize: 12.5, color: DIM, marginBottom: 10, lineHeight: 1.6 }}>
-                {t('routes.fileTabHint')}
-              </div>
-
-              <button onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}
-                className="rp-btn rp-btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-                {busy ? t('common.loading') : t('routes.uploadGpx')}
-              </button>
-              <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml,text/xml"
-                onChange={handleFile} style={{ display: 'none' }} />
-
-              {pending && (
-                <div style={{ marginTop: 10 }}>
-                  <button onClick={applyPending} className="rp-btn rp-btn-primary">{t('routes.attachToPlan')}</button>
+              {isProposeFlow && pending && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                  borderRadius: 10, border: `1px solid ${BD}`, background: 'var(--rp-surface-2)', marginBottom: 12 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--rp-gold)"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" />
+                  </svg>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap',
+                      overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {pending.course.name || t('gpxBanner.importedRoute')}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: DIM, marginTop: 2 }}>
+                      {U ? U.fmtDist(pending.course.dist) : round1(pending.course.dist || 0)}
+                    </div>
+                  </div>
                 </div>
+              )}
+
+              {!isProposeFlow && (
+                <>
+                  <div style={{ fontSize: 12.5, color: DIM, marginBottom: 10, lineHeight: 1.6 }}>
+                    {t('routes.fileTabHint')}
+                  </div>
+
+                  <button onClick={() => fileRef.current && fileRef.current.click()} disabled={busy}
+                    className="rp-btn rp-btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+                    {busy ? t('common.loading') : t('routes.uploadGpx')}
+                  </button>
+                  <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml,text/xml"
+                    onChange={handleFile} style={{ display: 'none' }} />
+
+                  {pending && (
+                    <div style={{ marginTop: 10 }}>
+                      <button onClick={applyPending} className="rp-btn rp-btn-primary">{t('routes.attachToPlan')}</button>
+                    </div>
+                  )}
+                </>
               )}
 
               {isOwner && pending && (
@@ -726,12 +760,18 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                   )}
                   <button onClick={submitPending}
                     disabled={busy || submitted || (newRaceMode ? !newRaceName.trim() : !selId)}
-                    className="rp-btn rp-btn-primary" style={{ marginTop: 10 }}>
+                    className="rp-btn rp-btn-primary" style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}>
                     {submitted ? t('routes.submitSent') : busy ? t('routes.submitting') : t('routes.submitToAdmin')}
                   </button>
                   <div style={{ fontSize: 11, color: DIM, marginTop: 6, lineHeight: 1.5 }}>
                     {t('routes.submitExplain')}
                   </div>
+                  {submitted && (
+                    <button onClick={() => onClose(true)} className="rp-btn"
+                      style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}>
+                      {t('common.done')}
+                    </button>
+                  )}
                 </div>
               )}
             </>

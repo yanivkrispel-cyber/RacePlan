@@ -2,7 +2,7 @@
 // responsive, with GPX course import. No canvas, no separate mobile frame.
 const { useRacePlan, formatPace, formatClock, parseClock, formatKm, PaceChart,
         LogoSlot, ZoneLegend, SegmentsTable, PRESETS, generatePlan,
-        parseGpx, ElevationChart, RouteMap, Route3DView, round2, clearSavedPlan,
+        parseGpx, RouteMap, Route3DView, round2, clearSavedPlan,
         AthleteDB, AthletePanel, MyPlansDB, MyPlansPanel, RouteLibrary, RaceAdminPanel,
         PrintableSummary, ActionSheet, RP_EXPORT, ValueEditor, RP_HEAT,
         computeSegmentElevations, buildPlanSegments, SevenSeg, ClockDot, ClockDisplay } = window;
@@ -110,109 +110,143 @@ function _weatherIcon(code) {
   return '⛈';
 }
 
-function WeatherCard({ weather, status }) {
+// Race-day conditions in one line: the forecast and the heat model's take on
+// it (see docs/HEAT.md) used to be two stacked cards costing ~190px of the
+// plan column, most of it read once and then ignored. The numbers that change
+// a decision — temperature, humidity, how much the heat is worth in pace, and
+// the button that applies it — stay on the row; wind, rain and the model's
+// caveats are one tap away.
+function ConditionsBar({ weather, status, advisory, onApply }) {
+  const [open, setOpen] = React.useState(false);
+
   if (status === 'loading') {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 10,
         background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
-        borderRadius: 'var(--rp-r-12)', padding: '11px 16px', marginBottom: 10,
+        borderRadius: 'var(--rp-r-12)', padding: '10px 14px', marginBottom: 10,
         fontSize: 13, color: 'var(--rp-text-dim)' }}>
-        <span style={{ fontSize: 18 }}>🌍</span> {t('weather.loading')}
+        <span style={{ fontSize: 16 }}>🌍</span> {t('weather.loading')}
       </div>
     );
   }
   if (!weather) return null;
+
   const isHistorical = weather.source === 'historical-avg';
   const wet = weather.precipProb > 50;
+  const per = U ? U.paceUnit() : t('units.perKm');
+  const deltaDisp = advisory
+    ? Math.round(U ? U.dispPaceSec(advisory.deltaSecPerKm) : advisory.deltaSecPerKm) : 0;
+  const warnKey = advisory && advisory.warnings[0]; // one is plenty; they rarely combine usefully
+
+  const sep = <span style={{ color: 'var(--rp-line-input)' }}>·</span>;
+
   return (
-    <div style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
-      borderRadius: 'var(--rp-r-12)', overflow: 'hidden', marginBottom: 10 }}>
-      <div style={{ display: 'flex', gap: 0, flexWrap: 'wrap', alignItems: 'stretch' }}>
-
-        {/* temperature + humidity */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', flex: '1 1 auto' }}>
-          <span style={{ fontSize: 26, lineHeight: 1 }}>{isHistorical ? '📊' : _weatherIcon(weather.code)}</span>
-          <div>
-            <div style={{ fontFamily: 'var(--rp-font-display)', fontSize: 21, fontWeight: 800,
-              color: 'var(--rp-text)', lineHeight: 1 }}>{weather.temp}°C</div>
-            <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>
-              {isHistorical
-                ? t('weather.humidityOnly', { pct: weather.humidityPct })
-                : t('weather.feelsLike', { temp: weather.feelsLike })}
-            </div>
-          </div>
-        </div>
-
-        {!isHistorical && <div style={{ width: 1, background: 'var(--rp-line)', alignSelf: 'stretch', margin: '8px 0' }} />}
-
-        {/* wind */}
-        {!isHistorical && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', flex: '1 1 auto' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--rp-gold)" strokeWidth="2.2"
-              strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0,
-                transform: `rotate(${weather.windDir}deg)`, transition: 'transform var(--rp-t-phase)' }}>
-              <line x1="12" y1="20" x2="12" y2="4" />
-              <polyline points="5 11 12 4 19 11" />
-            </svg>
-            <div>
-              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--rp-text)', lineHeight: 1 }}>
-                {U ? Math.round(U.dispSpeed(weather.windSpeed)) : weather.windSpeed} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--rp-text-dim)' }}>{U ? U.speedUnit() : t('units.kmh')}</span>
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>{t('weather.wind', { dir: _windDirLabel(weather.windDir) })}</div>
-            </div>
-          </div>
-        )}
-
-        {!isHistorical && <div style={{ width: 1, background: 'var(--rp-line)', alignSelf: 'stretch', margin: '8px 0' }} />}
-
-        {/* precipitation */}
-        {!isHistorical && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', flex: '1 1 auto' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24"
-              fill={wet ? 'var(--rp-gold)' : 'var(--rp-text-dim)'}
-              stroke={wet ? 'var(--rp-gold)' : 'var(--rp-text-dim)'} strokeWidth="1" style={{ flexShrink: 0 }}>
-              <path d="M12 2C6 10 4 14 4 16a8 8 0 0 0 16 0c0-2-2-6-8-14z" />
-            </svg>
-            <div>
-              <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1,
-                color: wet ? 'var(--rp-gold)' : 'var(--rp-text)' }}>
-                {weather.precipProb}%
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 3 }}>{t('weather.rainChance')}</div>
-            </div>
-          </div>
+    <div style={{
+      // An actionable advisory keeps the heat card's gold treatment — it is a
+      // suggestion waiting on an answer, not just a readout.
+      background: advisory ? 'var(--rp-gold-wash)' : 'var(--rp-surface)',
+      border: `1px solid ${advisory ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
+      borderRadius: 'var(--rp-r-12)', overflow: 'hidden', marginBottom: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '7px 12px' }}>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-label={t('weather.detailsToggle')}
+          style={{
+            appearance: 'none', background: 'transparent', border: 'none', padding: '3px 0',
+            font: 'inherit', cursor: 'pointer', color: 'var(--rp-text)', minWidth: 0,
+            display: 'flex', alignItems: 'center', gap: 7, flex: '1 1 auto', textAlign: 'start',
+          }}>
+          <span style={{ fontSize: 18, lineHeight: 1, flex: '0 0 auto' }}>
+            {isHistorical ? '📊' : _weatherIcon(weather.code)}
+          </span>
+          <span style={{ fontFamily: 'var(--rp-font-display)', fontSize: 16, fontWeight: 800,
+            fontVariantNumeric: 'tabular-nums' }}>{weather.temp}°C</span>
+          {sep}
+          <span style={{ fontSize: 12, color: 'var(--rp-text-dim)' }}>
+            {t('weather.humidityOnly', { pct: weather.humidityPct })}
+          </span>
+          {advisory && (
+            <>
+              {sep}
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-gold)', whiteSpace: 'nowrap' }}>
+                🌡️ {t('heat.chipDelta', { sec: deltaDisp, unit: per })}
+              </span>
+            </>
+          )}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+            style={{ flex: '0 0 auto', marginInlineStart: 'auto', color: 'var(--rp-text-dim)',
+              transform: open ? 'rotate(180deg)' : 'none', transition: 'transform var(--rp-t-fast)' }}>
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+        {advisory && (
+          <button className="rp-btn" style={{ flex: '0 0 auto', padding: '7px 12px', fontSize: 12.5 }}
+            onClick={onApply}>{t('heat.applyButton')}</button>
         )}
       </div>
-      {isHistorical && (
-        <div style={{ padding: '6px 18px 10px', fontSize: 10.5, color: 'var(--rp-text-dim)' }}>
-          {t('weather.historicalNote')}
+
+      {open && (
+        <div style={{ borderTop: '1px solid var(--rp-line)', padding: '10px 14px 12px',
+          display: 'flex', flexDirection: 'column', gap: 9 }}>
+          {!isHistorical && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '9px 22px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--rp-gold)" strokeWidth="2.2"
+                  strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0,
+                    transform: `rotate(${weather.windDir}deg)`, transition: 'transform var(--rp-t-phase)' }}>
+                  <line x1="12" y1="20" x2="12" y2="4" />
+                  <polyline points="5 11 12 4 19 11" />
+                </svg>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1 }}>
+                    {U ? Math.round(U.dispSpeed(weather.windSpeed)) : weather.windSpeed}{' '}
+                    <span style={{ fontSize: 10.5, fontWeight: 500, color: 'var(--rp-text-dim)' }}>
+                      {U ? U.speedUnit() : t('units.kmh')}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: 'var(--rp-text-dim)', marginTop: 2 }}>
+                    {t('weather.wind', { dir: _windDirLabel(weather.windDir) })}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24"
+                  fill={wet ? 'var(--rp-gold)' : 'var(--rp-text-dim)'}
+                  stroke={wet ? 'var(--rp-gold)' : 'var(--rp-text-dim)'} strokeWidth="1" style={{ flexShrink: 0 }}>
+                  <path d="M12 2C6 10 4 14 4 16a8 8 0 0 0 16 0c0-2-2-6-8-14z" />
+                </svg>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1,
+                    color: wet ? 'var(--rp-gold)' : 'var(--rp-text)' }}>{weather.precipProb}%</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--rp-text-dim)', marginTop: 2 }}>
+                    {t('weather.rainChance')}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', fontSize: 12, color: 'var(--rp-text-dim)' }}>
+                {t('weather.feelsLike', { temp: weather.feelsLike })}
+              </div>
+            </div>
+          )}
+
+          {isHistorical && (
+            <div style={{ fontSize: 10.5, color: 'var(--rp-text-dim)' }}>{t('weather.historicalNote')}</div>
+          )}
+
+          {advisory && (
+            <div style={{ fontSize: 11, color: 'var(--rp-text-dim)' }}>
+              {t('heat.summary', { sec: deltaDisp, unit: per })}
+              {' — '}
+              {warnKey ? t('heat.warn.' + warnKey) : t('heat.disclaimer')}
+            </div>
+          )}
         </div>
       )}
-    </div>
-  );
-}
-
-// Heat/humidity impact on the current plan's pace — a starting estimate, not
-// a hard number (see docs/HEAT.md for the model + its caveats).
-function HeatAdvisoryCard({ advisory, onApply }) {
-  if (!advisory) return null;
-  const per = U ? U.paceUnit() : t('units.perKm');
-  const deltaDisp = Math.round(U ? U.dispPaceSec(advisory.deltaSecPerKm) : advisory.deltaSecPerKm);
-  const warnKey = advisory.warnings[0]; // one is plenty; they rarely combine usefully
-  return (
-    <div style={{ background: 'var(--rp-gold-wash)', border: '1px solid var(--rp-gold-line)',
-      borderRadius: 'var(--rp-r-12)', padding: '11px 16px', marginBottom: 10,
-      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 20, flex: '0 0 auto' }}>🌡️</span>
-      <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text)' }}>
-          {t('heat.summary', { sec: deltaDisp, unit: per })}
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--rp-text-dim)', marginTop: 2 }}>
-          {warnKey ? t('heat.warn.' + warnKey) : t('heat.disclaimer')}
-        </div>
-      </div>
-      <button className="rp-btn" style={{ flex: '0 0 auto' }} onClick={onApply}>{t('heat.applyButton')}</button>
     </div>
   );
 }
@@ -230,32 +264,57 @@ function StatCardB({ label, value, sub, accent }) {
   );
 }
 
-function GpxBanner({ course, onClear, onSaveToLibrary, ownerMode }) {
+// Route identity — course name + where it came from, one slim line. Distance
+// and elevation gain used to repeat here (this component was called
+// GpxBanner) even though they're always shown again, a few pixels below, on
+// the race card's own stats — this only ever states what's unique: which
+// route is loaded and its provenance. The save/remove actions it used to
+// spend two full buttons on move into a small contextual "⋯" instead.
+function RouteChip({ course, onClear, onSaveToLibrary, ownerMode }) {
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const sourceText = course.source
+    ? (window.RP_ROUTES ? window.RP_ROUTES.sourceLabel(course.source) : course.source)
+    : t('gpxBanner.fromGpx').replace(/^·\s*/, '');
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-      background: 'var(--rp-gold-wash)', border: '1px solid var(--rp-gold-line)',
-      borderRadius: 'var(--rp-r-12)', padding: '10px 14px', marginBottom: 10 }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        width: 28, height: 28, borderRadius: 'var(--rp-r-8)', background: 'var(--rp-gold-line)', flex: '0 0 auto' }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--rp-gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" />
-        </svg>
-      </span>
-      <div style={{ flex: '1 1 auto', minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {course.name || t('gpxBanner.importedRoute')} <span style={{ fontWeight: 500, color: 'var(--rp-gold)' }}>{t('gpxBanner.fromGpx')}</span>
-        </div>
-        <div style={{ fontSize: 11.5, color: 'var(--rp-text-dim)', marginTop: 2 }}>
-          {U ? U.fmtDist(course.dist) : formatKm(course.dist)} · {t('gpxBanner.gain')} {U ? U.fmtElev(course.gain) : course.gain} · {t('gpxBanner.loss')} {U ? U.fmtElev(course.loss) : course.loss}
-          {course.source ? ` · ${window.RP_ROUTES ? window.RP_ROUTES.sourceLabel(course.source) : course.source}` : ''}
-        </div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8,
+      background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
+      borderRadius: 'var(--rp-r-8)', padding: '6px 8px 6px 6px', marginBottom: 8 }}>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--rp-gold)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: '0 0 auto' }}>
+        <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" />
+      </svg>
+      <div style={{ flex: '1 1 auto', minWidth: 0, fontSize: 11.5, color: 'var(--rp-text-dim)',
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <span style={{ color: 'var(--rp-text-soft)', fontWeight: 600 }}>{course.name || t('gpxBanner.importedRoute')}</span>
+        {' · '}{sourceText}
       </div>
-      {onSaveToLibrary && (
-        <button className="rp-btn" onClick={onSaveToLibrary} style={{ flex: '0 0 auto', padding: '7px 12px', fontSize: 13 }}>
-          {ownerMode ? t('gpxBanner.saveToLibrary') : t('gpxBanner.proposeToLibrary')}
-        </button>
+      <button onClick={() => setMenuOpen(true)} aria-label={t('planner.more')}
+        style={{ flex: '0 0 auto', width: 24, height: 24, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', background: 'transparent', border: 'none', borderRadius: 'var(--rp-r-8)',
+          color: 'var(--rp-text-dim)', cursor: 'pointer', fontSize: 15 }}>⋯</button>
+      {ActionSheet && menuOpen && (
+        <ActionSheet
+          title={course.name || t('gpxBanner.importedRoute')}
+          onClose={() => setMenuOpen(false)}
+          items={[
+            onSaveToLibrary && {
+              label: ownerMode ? t('gpxBanner.saveToLibrary') : t('gpxBanner.proposeToLibrary'),
+              onClick: () => { setMenuOpen(false); onSaveToLibrary(); },
+              icon: (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" /></svg>
+              ),
+            },
+            {
+              label: t('gpxBanner.removeRoute'), danger: true,
+              onClick: () => { setMenuOpen(false); onClear(); },
+              icon: (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6" /></svg>
+              ),
+            },
+          ].filter(Boolean)}
+        />
       )}
-      <button className="rp-btn" onClick={onClear} style={{ flex: '0 0 auto', padding: '7px 12px', fontSize: 13 }}>{t('gpxBanner.removeRoute')}</button>
     </div>
   );
 }
@@ -606,7 +665,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
   const [course, setCourse] = React.useState(null); // {name,dist,profile?,track?,...}
   // raw GPX payload (gpxText/profileFlat/trackFlat) behind the current course,
   // when it came from "my route" — carried through to the planner so its
-  // GpxBanner can offer "save/propose to library" same as a toolbar import.
+  // RouteChip can offer "save/propose to library" same as a toolbar import.
   const [routeMeta, setRouteMeta] = React.useState(null);
   const [customKm, setCustomKm] = React.useState('');
   const [routeOpen, setRouteOpen] = React.useState(false);
@@ -1236,8 +1295,45 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
     () => plan.rows.slice(0, -1).map((r) => ({ cumDist: r.cumDist, paceSec: r.paceSec, zone: r.zone })),
     [plan.rows],
   );
-  const [show3D, setShow3D] = React.useState(false);
+  // ── view layout ──────────────────────────────────────────────────────────
+  // Wide: plan on one side, a sticky visual column (map / 3D, with the pace
+  // chart pinned under it) on the other. Narrow: the same two columns, shown
+  // one at a time behind a segmented control. Both columns stay mounted
+  // either way, so switching never rebuilds the map or the 3D scene.
+  const [visualTab, setVisualTab] = React.useState('map'); // 'map' | '3d'
+  const [pane, setPane] = React.useState('plan');          // narrow only: 'plan' | 'visual'
+  // The 3D scene is expensive to build and bakes the plan's pacing in at
+  // mount, so it is kept alive between visits (suspended while off-screen)
+  // and rebuilt only when what it shows has actually gone stale. Adopting the
+  // signature on entry — rather than tracking it live — means editing ten
+  // splits from the map costs one rebuild on the way back, not ten in the
+  // background, and returning to an unchanged plan costs none at all and
+  // keeps the camera where it was left.
+  // (the signature it adopts is built further down, once the weather and
+  // start-time state it depends on exists)
+  const [threeDSig, setThreeDSig] = React.useState(null); // null = never opened
+
+  // Breakpoint off the container's own width, not the viewport's — the app
+  // also runs inside a narrow embed, and this has to agree with the
+  // @container rules in the stylesheet below.
+  const rootRef = React.useRef(null);
+  const [isWide, setIsWide] = React.useState(false);
+  // Layout effect, not a plain one: the pace chart sits in a different column
+  // on each side of the breakpoint, so measuring after paint would show it in
+  // the wrong one for a frame.
+  React.useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const apply = (w) => setIsWide(w >= 1024);
+    apply(el.clientWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => apply(entries[0].contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const fileRef = React.useRef(null);
+  const raceDateRef = React.useRef(null); // focus target for the meta line's edit affordance
   const [raceName, setRaceName] = React.useState(
     () => (seed && seed.raceName) || shareData?.r || localStorage.getItem('rp-race') || t('planner.defaultRaceName')
   );
@@ -1254,6 +1350,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   }, []);
   React.useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const [shareOpen, setShareOpen] = React.useState(false);
+  const [moreOpen, setMoreOpen] = React.useState(false);
   const [pdfBusy, setPdfBusy] = React.useState(false);
   const [videoBusy, setVideoBusy] = React.useState(false);
   const [videoProgress, setVideoProgress] = React.useState(0);
@@ -1268,7 +1365,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   const [routeLibInit, setRouteLibInit] = React.useState(null);
   // A Hub handoff whose course came from setup's "my route" GPX upload
   // carries the same { course, gpxText, profileFlat, trackFlat, sourceUrl }
-  // shape as a toolbar GPX import, so GpxBanner's save/propose-to-library
+  // shape as a toolbar GPX import, so RouteChip's save/propose-to-library
   // button appears here too instead of only after a same-session re-import.
   const [lastRoute, setLastRoute] = React.useState(() => (seed && seed.lastRoute) || null);
   const [pendingSubs, setPendingSubs] = React.useState(0); // owner: community routes awaiting review
@@ -1285,6 +1382,30 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   const [raceTime, setRaceTime] = React.useState(() => localStorage.getItem(LS_RACE_TIME) || '07:00');
   const [weather, setWeather] = React.useState(null);
   const [weatherStatus, setWeatherStatus] = React.useState('idle');
+  // Per-segment head/tail/crosswind, relative to the net direction each
+  // segment of the route actually moves — table-row companion to the 3D
+  // view's live wind badge (route3d.jsx), null below a light-breeze forecast.
+  const segWind = React.useMemo(
+    () => computeSegmentWind(p.course?.track ?? null, plan.rows, weather?.windDir, weather?.windSpeed),
+    [p.course, plan.rows, weather?.windDir, weather?.windSpeed],
+  );
+
+  // What the 3D scene bakes in at mount. It is adopted on entry to the 3D tab
+  // rather than tracked live, so editing ten splits from the map costs one
+  // rebuild on the way back instead of ten in the background, and returning to
+  // an unchanged plan costs none and keeps the camera where it was left.
+  const planSig = React.useMemo(
+    () => [
+      plan.rows.map((r) => r.cumDist.toFixed(2) + ':' + r.paceSec).join('|'),
+      p.course?.source || p.course?.name || '', raceTime, weather?.temp ?? '',
+    ].join('~'),
+    [plan.rows, p.course, raceTime, weather],
+  );
+  React.useEffect(() => {
+    if (visualTab === '3d') setThreeDSig(planSig);
+    // planSig is read on entry only — see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visualTab]);
 
   React.useEffect(() => { localStorage.setItem('rp-race', raceName); }, [raceName]);
   React.useEffect(() => { localStorage.setItem('rp-trainer', trainer); }, [trainer]);
@@ -1430,7 +1551,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
       let course;
       if (built) {
         // keep the raw GPX + flat payload around so an owner can push it to the
-        // shared library via GpxBanner's "שמור בספרייה".
+        // shared library via RouteChip's "שמור בספרייה".
         setLastRoute({ ...built, sourceUrl: null });
         course = built.course;
       } else {
@@ -1605,20 +1726,101 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
     minHeight: '100vh', boxSizing: 'border-box',
   };
 
-  // race-card meta chips (date / time / trainer)
-  const chipS = {
-    display: 'inline-flex', alignItems: 'center', gap: 5,
-    background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
-    borderRadius: 999, padding: '4px 9px', fontSize: 12, color: 'var(--rp-text-dim)',
-  };
-  const chipInputS = (val) => ({
+  // race-card meta line (date / time / trainer) — plain inline controls, not
+  // individual pill chips: at a glance this reads as one caption line under
+  // the race name, while each field still opens exactly the picker/edit it
+  // always did (native date/time picker, inline text for the trainer name).
+  const metaInputS = (val) => ({
     background: 'transparent', border: 'none', outline: 'none', cursor: 'pointer',
     color: val ? 'var(--rp-text-soft)' : 'var(--rp-placeholder)',
     fontSize: 12, fontFamily: 'inherit', fontWeight: 500, colorScheme: 'dark', padding: 0,
   });
 
+  // Total-distance lock, shown on the totals strip beside the distance. Locked,
+  // reshaping segments moves kilometres around inside the course instead of
+  // lengthening or shortening the race.
+  const distLock = p.lockable ? (
+    <button
+      onClick={() => p.setTotalLock(!p.totalLocked)}
+      title={p.totalLocked
+        ? t('planner.totalLockedHint', { dist: U ? U.fmtDist(p.lockTarget) : formatKm(p.lockTarget) })
+        : t('planner.totalUnlockedHint', { dist: U ? U.fmtDist(round2(p.course.dist)) : formatKm(p.course.dist) })}
+      aria-pressed={p.totalLocked}
+      style={{
+        appearance: 'none', background: 'transparent', border: 'none', padding: 2,
+        cursor: 'pointer', lineHeight: 1, fontSize: 13,
+        opacity: p.totalLocked ? 1 : 0.4, filter: p.totalLocked ? 'none' : 'grayscale(1)',
+      }}
+    >{p.totalLocked ? '🔒' : '🔓'}</button>
+  ) : null;
+
+  const hasRoute = !!(p.course && p.course.track && p.course.track.length > 1);
+
+  // The pace chart is the live feedback for editing splits, so it never sits
+  // behind a tab: pinned under the visual column where there's room for two,
+  // at the foot of the plan column otherwise.
+  const chartCard = (
+    <div className="rp-card rp-chart-card">
+      <div className="rp-card-head">
+        <div className="rp-card-title">
+          {t('chart.title')}
+          {canEditBoundaries && showElevation && (
+            <span style={{ fontWeight: 500, color: 'var(--rp-text-dim)', fontSize: 11.5 }}>
+              {t('chart.dragHint')}
+            </span>
+          )}
+        </div>
+        {p.course?.profile && (
+          <button
+            onClick={() => setShowElevation((v) => !v)}
+            aria-pressed={showElevation}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: showElevation ? 'var(--rp-gold-wash)' : 'transparent',
+              border: `1px solid ${showElevation ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
+              borderRadius: 'var(--rp-r-8)', padding: '5px 10px', cursor: 'pointer',
+              fontSize: 11.5, fontWeight: 600, minHeight: 32, flex: '0 0 auto',
+              color: showElevation ? 'var(--rp-gold)' : 'var(--rp-text-dim)',
+              transition: 'all var(--rp-t-fast)',
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
+            {t('chart.elevToggle')}
+          </button>
+        )}
+      </div>
+      <PaceChart rows={plan.rows} avgPace={plan.avgPace} totalDist={plan.totalDist}
+        variant="area" colors={themeB}
+        height={isWide && hasRoute ? 180 : (canEditBoundaries ? 210 : 185)}
+        elevationProfile={p.course?.profile ?? null}
+        showElevation={showElevation}
+        interactive={canEditBoundaries}
+        segments={p.segments}
+        extrema={courseExtrema}
+        onSegmentsChange={p.replaceSegments} />
+    </div>
+  );
+
+  const visualTabs = [
+    ['map', t('view.map'), (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m9 3-6 3v15l6-3 6 3 6-3V3l-6 3Z" /><path d="M9 3v15M15 6v15" />
+      </svg>
+    )],
+    ...(Route3DView ? [['3d', t('chart.view3d'), (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2l9 4.9v10.2L12 22l-9-4.9V6.9L12 2z" /><path d="M12 22V12M21 6.9L12 12 3 6.9" />
+      </svg>
+    )]] : []),
+  ];
+
   return (
-    <div className="rp-cq" style={varsB}>
+    <div className="rp-cq" ref={rootRef} style={varsB}>
       {/* Desktop density; narrow widths get comfortable sizing + a reachable
           bottom action bar. Container-queries so it also adapts inside a
           narrow embed (Apps Script iframe), not only a small viewport. */}
@@ -1627,6 +1829,75 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
         .rpt-head { padding: 0 12px 8px; }
         .rpt-total { padding: 11px 12px; margin-top: var(--rp-s-8); }
         .rp-toolbar { flex-wrap: wrap; justify-content: center; }
+
+        /* ── plan / visual layout ──
+           One column of cards by default. With a route loaded there is a
+           second, visual column (map · 3D, pace chart pinned beneath): side by
+           side when the container is wide enough for both, otherwise the same
+           two columns shown one at a time behind the segmented control. Both
+           stay mounted either way — switching must never rebuild the Leaflet
+           map or the three.js scene. */
+        .rp-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px;
+          align-items: start; }
+        .rp-plan-col, .rp-visual-col { min-width: 0; }
+        .rp-visual-col { display: flex; flex-direction: column; gap: 10px; }
+        .rp-visual-body { position: relative; flex: 1; min-height: 240px;
+          border-radius: var(--rp-r-12); overflow: hidden; }
+        .rp-visual-pane { position: absolute; inset: 0; opacity: 0; visibility: hidden;
+          transition: opacity var(--rp-t-panel); }
+        .rp-visual-pane[data-active="true"] { opacity: 1; visibility: visible; }
+        .rp-card { background: var(--rp-surface); border: 1px solid var(--rp-line);
+          border-radius: var(--rp-r-14); padding: 12px 14px 14px; }
+        .rp-card-head { display: flex; align-items: center; justify-content: space-between;
+          gap: 8px; margin-bottom: 8px; }
+        .rp-card-title { font-size: 13px; font-weight: 700; color: var(--rp-text-soft); min-width: 0; }
+        .rp-viewswitch { display: none; }
+        .rp-tabs { display: flex; gap: 4px; flex: 0 0 auto; }
+        .rp-tab { appearance: none; font: inherit; display: inline-flex; align-items: center; gap: 5px;
+          padding: 6px 11px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+          font-size: 12px; font-weight: 700; min-height: 32px;
+          border: 1px solid var(--rp-line); background: var(--rp-surface-2); color: var(--rp-text-dim);
+          transition: color var(--rp-t-fast), border-color var(--rp-t-fast), background var(--rp-t-fast); }
+        .rp-tab:hover { color: var(--rp-text); border-color: var(--rp-gold-line); }
+        .rp-tab[aria-selected="true"] { background: var(--rp-gold); border-color: var(--rp-gold);
+          color: var(--rp-on-gold); }
+
+        @container (min-width: 1024px) {
+          .rp-has-route .rp-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); }
+          /* The visual column rides the page scroll instead of running off the
+             bottom of it, so a split edited at the foot of the plan is still
+             visible on the map. */
+          .rp-has-route .rp-visual-col { position: sticky; top: 12px;
+            height: calc(100dvh - 24px); }
+        }
+        @container (max-width: 1023px) {
+          .rp-has-route .rp-viewswitch { display: flex; flex: 0 0 auto; }
+          .rp-has-route [data-pane][data-active="false"] { display: none; }
+          /* The visual pane should end exactly at the bottom of the screen.
+             Rather than subtract a guessed switcher-plus-padding figure from
+             100dvh — which is wrong at every width where the wrap's own
+             padding differs — make the wrap a full-height column and let the
+             layout row take whatever the switcher leaves.
+             Scoped to the visual pane on purpose: in the plan view this same
+             row holds the segment list and the sticky action bar, and neither
+             wants its height decided by anything but its own content. */
+          .rp-pane-visual { box-sizing: border-box; min-height: 100dvh;
+            display: flex; flex-direction: column; }
+          .rp-pane-visual .rp-layout { flex: 1 0 auto;
+            align-content: stretch; align-items: stretch; }
+          .rp-pane-visual .rp-visual-col { min-height: 0; }
+          /* the switcher above already picks map vs 3D — don't say it twice */
+          .rp-has-route .rp-visual-col .rp-tabs { display: none; }
+          .rp-has-route [data-pane][data-active="true"] { animation: rp-pane-in var(--rp-t-panel); }
+        }
+        @keyframes rp-pane-in {
+          from { opacity: 0; transform: translateY(7px); }
+          to { opacity: 1; transform: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .rp-visual-pane { transition: none; }
+          .rp-has-route [data-pane][data-active="true"] { animation: none; }
+        }
         /* Off-screen printable summary — the html2canvas target for PDF. */
         .rp-print-wrap { position: fixed; left: -10000px; top: 0; width: 720px;
           pointer-events: none; }
@@ -1652,17 +1923,10 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
             padding: 5px !important; margin: 3px 0 8px !important; gap: 4px !important;
             box-shadow: 0 8px 24px rgba(0,0,0,.45);
             flex-wrap: wrap; justify-content: center; }
-          .rp-toolbar .rp-btn { flex: 0 0 auto; padding: 6px 10px !important; font-size: 11.5px !important; }
-          /* Icon-only on phones for the self-explanatory actions (share,
-             save-to-athlete, home, reset) — keeps the sticky bar to one row
-             instead of two, which is what actually avoids it ever overlapping
-             the totals row above (see the sticky-clamp math in the commit
-             this replaces). Import GPX keeps its text: "import" alone isn't
-             obvious from an icon. Settings was dropped from this bar entirely
-             — it's reachable from the Hub screen's own gear icon instead. */
-          .rp-btn-iconify { padding: 8px !important; }
-          .rp-btn-iconify .rp-btn-label { display: none; }
-          .rp-btn-iconify svg { width: 17px !important; height: 17px !important; }
+          /* Save · share · more is two or three buttons, so the sticky bar is
+             one row at any phone width and keeps its labels — the icon-only
+             treatment this replaces existed only to squeeze nine of them in. */
+          .rp-toolbar .rp-btn { flex: 0 0 auto; padding: 7px 11px !important; font-size: 12px !important; }
           .rp-header { flex-wrap: wrap; gap: 8px 12px !important; }
           .rp-brand { display: none !important; }
           .rp-stats { display: grid !important; grid-template-columns: 1fr 1fr; }
@@ -1675,10 +1939,49 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
         }
       `}</style>
 
-      <div className="rp-planner-wrap" style={{ maxWidth: 1180, margin: '0 auto', padding: '16px var(--rp-pad) 24px' }}>
+      <div className={'rp-planner-wrap'
+        + (hasRoute ? ' rp-has-route' : '')
+        // Only meaningful narrow (the stylesheet scopes it), where it makes
+        // the wrap a full-height column so the map/3D pane ends at the
+        // bottom edge of the screen instead of at a guessed offset.
+        + (hasRoute && pane === 'visual' ? ' rp-pane-visual' : '')}
+        style={{ maxWidth: hasRoute ? 1480 : 1180, margin: '0 auto', padding: '16px var(--rp-pad) 24px' }}>
+
+        {/* Narrow widths: one control for the whole app — which of the two
+            columns is on screen. Wide widths show both, so it's hidden. */}
+        {hasRoute && (
+          <div className="rp-viewswitch" role="tablist"
+            style={{
+              position: 'sticky', top: 0, zIndex: 45, gap: 4, marginBottom: 10,
+              padding: 4, borderRadius: 999, justifyContent: 'center',
+              background: 'color-mix(in srgb, var(--rp-surface) 92%, transparent)',
+              backdropFilter: 'blur(8px)', border: '1px solid var(--rp-line)',
+            }}>
+            <button className="rp-tab" role="tab" aria-selected={pane === 'plan'}
+              style={{ flex: 1, justifyContent: 'center' }}
+              onClick={() => setPane('plan')}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 5h16M4 12h16M4 19h10" />
+              </svg>
+              {t('view.plan')}
+            </button>
+            {visualTabs.map(([id, label, icon]) => (
+              <button key={id} className="rp-tab" role="tab"
+                aria-selected={pane === 'visual' && visualTab === id}
+                style={{ flex: 1, justifyContent: 'center' }}
+                onClick={() => { setPane('visual'); setVisualTab(id); }}>
+                {icon}{label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="rp-layout">
+        <div className="rp-plan-col" data-pane="plan" data-active={pane === 'plan' ? 'true' : 'false'}>
 
         {p.course && (
-          <GpxBanner
+          <RouteChip
             course={p.course}
             ownerMode={isOwner}
             onClear={() => { p.clearCourse(); setLastRoute(null); }}
@@ -1694,66 +1997,72 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           border: '1px solid var(--rp-gold-line)', borderRadius: 18,
           padding: '16px 15px 14px', marginBottom: 12, boxShadow: 'var(--rp-shadow)',
         }}>
-          {/* identity */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          {/* identity — name, then one plain meta line (date · time · trainer)
+              instead of three separate pill chips. Each field still opens
+              exactly the picker/edit it always did; the trailing pencil is
+              purely an edit affordance now that the line has no chip
+              borders of its own to signal "tap me". */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: 'var(--rp-font-ui)', fontSize: 'clamp(19px, 4.6vw, 25px)',
                 fontWeight: 800, lineHeight: 1.15, color: 'var(--rp-text)' }}>
                 <EditableText value={raceName} onChange={setRaceName} placeholder={t('planner.raceNamePlaceholder')} />
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 9, alignItems: 'center' }}>
-                <span style={chipS}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 2v4M16 2v4" /></svg>
-                  <input type="date" value={raceDate} onChange={(e) => setRaceDate(e.target.value)}
-                    aria-label={t('planner.raceDate')} style={chipInputS(raceDate)} />
-                </span>
-                <span style={chipS}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
-                  <input type="time" value={raceTime} onChange={(e) => setRaceTime(e.target.value)}
-                    aria-label={t('planner.startTime')} style={chipInputS(raceTime)} />
-                </span>
-                <span style={{ ...chipS, color: 'var(--rp-text-soft)' }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                  <EditableText value={trainer} onChange={handleTrainerChange} placeholder={t('planner.athleteNamePlaceholder')}
-                    style={{ color: 'var(--rp-text-soft)', fontSize: 12 }} />
-                </span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 5px',
+                marginTop: 4, fontSize: 12, color: 'var(--rp-text-dim)' }}>
+                <input type="date" ref={raceDateRef} value={raceDate} onChange={(e) => setRaceDate(e.target.value)}
+                  aria-label={t('planner.raceDate')} style={metaInputS(raceDate)} />
+                <span aria-hidden="true">·</span>
+                <input type="time" value={raceTime} onChange={(e) => setRaceTime(e.target.value)}
+                  aria-label={t('planner.startTime')} style={metaInputS(raceTime)} />
+                <span aria-hidden="true">·</span>
+                <EditableText value={trainer} onChange={handleTrainerChange} placeholder={t('planner.athleteNamePlaceholder')}
+                  style={{ color: 'var(--rp-text-soft)', fontSize: 12 }} />
+                <button type="button" onClick={() => raceDateRef.current && raceDateRef.current.focus()}
+                  aria-label={t('planner.raceDate')} style={{ flex: '0 0 auto', background: 'transparent',
+                    border: 'none', padding: '0 2px', color: 'var(--rp-text-dim)', opacity: .55, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center' }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                </button>
               </div>
             </div>
-            <div style={{ flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <div style={{ width: 46, height: 46, borderRadius: 12, overflow: 'hidden' }}>
-                <img src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'LogoV2.png'}
-                  alt="RACE PLAN" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
-              </div>
-              <div style={{ fontFamily: 'var(--rp-font-accent)', fontStyle: 'italic', fontSize: 11.5,
-                color: 'var(--rp-gold)', opacity: .78, whiteSpace: 'nowrap' }}>Coach Krispel</div>
+            <div style={{ flex: '0 0 auto', width: 36, height: 36, borderRadius: 10, overflow: 'hidden' }}>
+              <img src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'LogoV2.png'}
+                alt="RACE PLAN" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
             </div>
           </div>
 
-          {/* hero: live calculated total — tap to set a goal (rescales) */}
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
-            <div style={{ width: '100%', maxWidth: 292 }}>
-              <ClockDisplay totalSec={plan.totalTime} onClick={() => setGoalOpen(true)}
+          {/* hero: the goal clock (tap to set a goal — rescales) and the core
+              stats now sit side by side instead of stacked as two separate
+              full-width blocks — same information, roughly half the height. */}
+          <div style={{ display: 'flex', alignItems: 'stretch', gap: 10, marginTop: 12 }}>
+            <div style={{ flex: '0 0 42%', minWidth: 0 }}>
+              <ClockDisplay totalSec={plan.totalTime} digitH={28} onClick={() => setGoalOpen(true)}
                 caption={t('planner.computedTapForGoal')} />
             </div>
+            <div style={{ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              {[
+                [U ? U.dispDistNum(plan.totalDist) : formatKm(plan.totalDist), U ? U.distUnit() : t('units.km'), distLock, false],
+                [U ? U.fmtPace(plan.avgPace) : formatPace(plan.avgPace), t('planner.pacePerUnit', { unit: U ? U.distUnit() : t('units.km') }), null, false],
+                ...(p.course && p.course.gain != null
+                  ? [['+' + (U ? U.elevInt(p.course.gain) : p.course.gain), U && U.imperial ? t('units.climbFt') : t('units.climb'), null, true]]
+                  : []),
+              ].map(([v, k, extra, full], i) => (
+                <div key={i} style={{ gridColumn: full ? '1 / -1' : undefined,
+                  background: 'var(--rp-surface)', border: '1px solid var(--rp-line)', borderRadius: 10,
+                  padding: '7px 8px', textAlign: 'center' }}>
+                  <div style={{ fontFamily: 'var(--rp-font-display)', fontWeight: 800, fontSize: 15,
+                    fontVariantNumeric: 'tabular-nums', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {v}{extra}
+                  </div>
+                  <div style={{ fontSize: 9.5, color: 'var(--rp-text-dim)', marginTop: 2 }}>{k}</div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* strip */}
-          <div style={{ display: 'flex', borderTop: '1px solid var(--rp-line)', marginTop: 14 }}>
-            {[
-              [U ? U.dispDistNum(plan.totalDist) : formatKm(plan.totalDist), U ? U.distUnit() : t('units.km')],
-              [U ? U.fmtPace(plan.avgPace) : formatPace(plan.avgPace), t('planner.pacePerUnit', { unit: U ? U.distUnit() : t('units.km') })],
-              ...(p.course && p.course.gain != null ? [['+' + (U ? U.elevInt(p.course.gain) : p.course.gain), U && U.imperial ? t('units.climbFt') : t('units.climb')]] : []),
-            ].map(([v, k], i) => (
-              <div key={i} style={{ flex: 1, textAlign: 'center', padding: '11px 4px 4px',
-                borderInlineStart: i ? '1px solid var(--rp-line)' : 'none' }}>
-                <div style={{ fontFamily: 'var(--rp-font-display)', fontWeight: 800, fontSize: 18,
-                  fontVariantNumeric: 'tabular-nums' }}>{v}</div>
-                <div style={{ fontSize: 10.5, color: 'var(--rp-text-dim)', marginTop: 3 }}>{k}</div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ borderTop: '1px solid var(--rp-line)', margin: '10px -15px 12px' }} />
+          <div style={{ borderTop: '1px solid var(--rp-line)', margin: '12px -15px 12px' }} />
 
           <SegmentsTable plan={plan} colors={themeB} stepperKind="pill"
             paceStep={1} distStep={0.01}
@@ -1763,7 +2072,7 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
               id, type: ty,
               value: U ? (ty === 'pace' ? U.dispPaceSec(v) : U.dispDist(v)) : v,
             }) : null}
-            elevations={segElevs} />
+            elevations={segElevs} windRel={segWind} totalLocked={p.totalLocked} />
 
           <button className="rp-btn" onClick={p.addSegment}
             style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}>
@@ -1772,194 +2081,112 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           </button>
         </div>
 
-        <WeatherCard weather={weather} status={weatherStatus} />
-        <HeatAdvisoryCard advisory={heatAdvisory} onApply={applyHeatAdjustment} />
+        <ConditionsBar weather={weather} status={weatherStatus}
+          advisory={heatAdvisory} onApply={applyHeatAdjustment} />
 
-        {/* actions — all visible, centred, wrapping (sticky bottom bar on phones) */}
+        {/* Actions. Two that carry the plan forward stay on the bar; the rest
+            — import, libraries, navigation, reset — are one tap deeper, so
+            this stops being a wall of nine buttons wedged between the splits
+            and the chart. */}
         <div className="rp-toolbar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap',
           justifyContent: 'center', marginBottom: 12 }}>
           <input ref={fileRef} type="file" accept=".gpx,application/gpx+xml,text/xml" onChange={onGpx} style={{ display: 'none' }} />
 
-          <button className="rp-btn" onClick={() => fileRef.current && fileRef.current.click()}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>
-            {t('setup.importGpx')}
-          </button>
-
-          {isOwner && RouteLibrary && RP_FB && (
-            <button className="rp-btn" style={{ position: 'relative' }}
-              onClick={() => { setRouteLibInit(null); setShowRouteLib(true); }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" /></svg>
-              {t('setup.routeLibrary')}
-              {pendingSubs > 0 && (
-                <span aria-label={t('planner.pendingSubs', { n: pendingSubs })} style={{
-                  position: 'absolute', top: -6, insetInlineStart: -6,
-                  minWidth: 16, height: 16, padding: '0 4px', borderRadius: 999,
-                  background: 'var(--rp-gold)', color: '#12172b', fontSize: 10, fontWeight: 800,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
-                }}>{pendingSubs}</span>
-              )}
-            </button>
-          )}
-
-          {MyPlansPanel && RP_FB && !isOwner && (
-            <button className="rp-btn" onClick={() => setShowMyPlans(true)}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
-              {t('hub.myPlans')}
-            </button>
-          )}
-
           {MyPlansDB && RP_FB && !isOwner && (
-            <button className="rp-btn rp-btn-iconify" aria-label={t('planner.savePlan')} onClick={saveMyPlan}>
+            <button className="rp-btn" onClick={saveMyPlan}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
                 <polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
-              <span className="rp-btn-label">{t('planner.savePlan')}</span>
-            </button>
-          )}
-
-          <button className="rp-btn rp-btn-iconify" aria-label={t('planner.share')} disabled={pdfBusy} onClick={() => setShareOpen(true)}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
-              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-            </svg>
-            <span className="rp-btn-label">{t('planner.share')}</span>
-          </button>
-
-          {MyPlansDB && RP_FB && !isOwner && (
-            <button className="rp-btn" onClick={() => setShowNewPlanConfirm(true)}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-              {t('planner.newPlan')}
+              {t('planner.savePlan')}
             </button>
           )}
 
           {isOwner && AthleteDB && (
-            <button className="rp-btn rp-btn-iconify" aria-label={t('planner.saveToAthlete')} onClick={saveToAthlete}>
+            <button className="rp-btn" onClick={saveToAthlete}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
                 <polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
-              <span className="rp-btn-label">{t('planner.saveToAthlete')}</span>
+              {t('planner.saveToAthlete')}
             </button>
           )}
 
-          {onGoHome && (
-            <button className="rp-btn rp-btn-iconify" aria-label={t('planner.home')} onClick={onGoHome}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
-              <span className="rp-btn-label">{t('planner.home')}</span>
-            </button>
-          )}
-
-          <button className="rp-btn rp-btn-iconify" aria-label={t('planner.reset')} onClick={onReset}>
+          <button className="rp-btn rp-btn-primary" disabled={pdfBusy} onClick={() => setShareOpen(true)}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
-            <span className="rp-btn-label">{t('planner.reset')}</span>
+              <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+            </svg>
+            {t('planner.share')}
+          </button>
+
+          <button className="rp-btn" aria-label={t('planner.more')} style={{ position: 'relative' }}
+            onClick={() => setMoreOpen(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" />
+            </svg>
+            {pendingSubs > 0 && (
+              <span aria-label={t('planner.pendingSubs', { n: pendingSubs })} style={{
+                position: 'absolute', top: -5, insetInlineStart: -5,
+                minWidth: 15, height: 15, padding: '0 4px', borderRadius: 999,
+                background: 'var(--rp-gold)', color: '#12172b', fontSize: 9.5, fontWeight: 800,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+              }}>{pendingSubs}</span>
+            )}
           </button>
         </div>
 
-        {/* pace chart */}
-        <div style={{ marginTop: 12, background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
-          borderRadius: 'var(--rp-r-14)', padding: '12px 14px 4px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text-soft)' }}>
-              {t('chart.title')}
-              {canEditBoundaries && showElevation && (
-                <span style={{ fontWeight: 500, color: 'var(--rp-text-dim)', fontSize: 11.5 }}>
-                  {t('chart.dragHint')}
-                </span>
-              )}
-            </div>
-            {p.course?.profile && (
-              <button
-                onClick={() => setShowElevation((v) => !v)}
-                aria-pressed={showElevation}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 5,
-                  background: showElevation ? 'var(--rp-gold-wash)' : 'transparent',
-                  border: `1px solid ${showElevation ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
-                  borderRadius: 'var(--rp-r-8)', padding: '5px 10px', cursor: 'pointer',
-                  fontSize: 11.5, fontWeight: 600, minHeight: 32,
-                  color: showElevation ? 'var(--rp-gold)' : 'var(--rp-text-dim)',
-                  transition: 'all var(--rp-t-fast)',
-                }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                </svg>
-                {t('chart.elevToggle')}
-              </button>
-            )}
-          </div>
-          <PaceChart rows={plan.rows} avgPace={plan.avgPace} totalDist={plan.totalDist}
-            variant="area" colors={themeB} height={canEditBoundaries ? 210 : 185}
-            elevationProfile={p.course?.profile ?? null}
-            showElevation={showElevation}
-            interactive={canEditBoundaries}
-            segments={p.segments}
-            extrema={courseExtrema}
-            onSegmentsChange={p.replaceSegments} />
-        </div>
+        {(!isWide || !hasRoute) && <div style={{ marginTop: 12 }}>{chartCard}</div>}
 
-        {/* Map — full width */}
-        {p.course?.track && (
-          <div style={{ marginTop: 12, background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
-            borderRadius: 'var(--rp-r-14)', padding: '12px 14px 14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rp-text-soft)' }}>{t('chart.mapTitle')}</div>
-              {Route3DView && (
-                <button onClick={() => setShow3D(true)} style={{
-                  display: 'flex', alignItems: 'center', gap: 5, background: 'transparent',
-                  border: '1px solid var(--rp-gold-line)', borderRadius: 'var(--rp-r-8)', padding: '5px 10px',
-                  cursor: 'pointer', fontSize: 11.5, fontWeight: 600, minHeight: 32, color: 'var(--rp-gold)',
-                }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2l9 4.9v10.2L12 22l-9-4.9V6.9L12 2z" />
-                    <path d="M12 22V12M21 6.9L12 12 3 6.9" />
-                  </svg>
-                  {t('chart.view3d')}
-                </button>
-              )}
-            </div>
-            <RouteMap track={p.course.track} profile={p.course.profile} splits={mapSplits} height={210} />
-            {show3D && (
-              <Route3DView track={p.course.track} profile={p.course.profile} rows={plan.rows}
-                totalDist={plan.totalDist} raceName={raceName} gain={p.course.gain} loss={p.course.loss}
-                weather={weather} raceTime={raceTime}
-                onClose={() => setShow3D(false)} />
-            )}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', marginTop: 10 }}>
+        </div>{/* ── end plan column ── */}
+
+        {hasRoute && (
+          <div className="rp-visual-col" data-pane="visual" data-active={pane === 'visual' ? 'true' : 'false'}>
+            <div className="rp-card-head" style={{ marginBottom: 0 }}>
+              <div className="rp-tabs" role="tablist" aria-label={t('chart.mapTitle')}>
+                {visualTabs.map(([id, label, icon]) => (
+                  <button key={id} className="rp-tab" role="tab" aria-selected={visualTab === id}
+                    onClick={() => setVisualTab(id)}>{icon}{label}</button>
+                ))}
+              </div>
               {p.course.profile && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--rp-text-dim)' }}>
-                  <span style={{ width: 28, height: 6, borderRadius: 3,
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11,
+                  color: 'var(--rp-text-dim)', flex: '0 0 auto' }}>
+                  <span style={{ width: 24, height: 5, borderRadius: 3,
                     background: 'linear-gradient(90deg,#7C9BD6,#9BA0B7,#C36079)' }} />
                   <span>{t('chart.mapGradeDescent')}</span>
-                  <span>·</span>
-                  <span>{t('chart.mapGradeFlat')}</span>
                   <span>·</span>
                   <span>{t('chart.mapGradeClimb')}</span>
                 </div>
               )}
-              {mapSplits.length > 0 && <ZoneLegend colors={themeB} dim="var(--rp-text-dim)" />}
             </div>
+
+            {/* Both panes stay mounted; only one is visible. The 3D scene is
+                built on first use and then suspended while off-screen, so
+                coming back to it keeps the camera and the scrub position. */}
+            <div className="rp-visual-body">
+              <div className="rp-visual-pane" data-active={visualTab === 'map' ? 'true' : 'false'}>
+                <RouteMap track={p.course.track} profile={p.course.profile}
+                  splits={mapSplits} height="100%" />
+              </div>
+              {Route3DView && threeDSig !== null && (
+                <div className="rp-visual-pane" data-active={visualTab === '3d' ? 'true' : 'false'}>
+                  <Route3DView key={threeDSig} embedded
+                    paused={visualTab !== '3d' || (!isWide && pane !== 'visual')}
+                    track={p.course.track} profile={p.course.profile} rows={plan.rows}
+                    totalDist={plan.totalDist} raceName={raceName}
+                    gain={p.course.gain} loss={p.course.loss}
+                    weather={weather} raceTime={raceTime}
+                    onClose={() => setVisualTab('map')} />
+                </div>
+              )}
+            </div>
+
+            {mapSplits.length > 0 && <ZoneLegend colors={themeB} dim="var(--rp-text-dim)" />}
+
+            {isWide && chartCard}
           </div>
         )}
 
-        {/* Elevation chart — hidden (elevation shown in pace chart overlay) */}
-        {false && p.course?.profile && (
-          <div style={{ marginTop: 16, background: '#161b22', border: '1px solid #232a34',
-            borderRadius: 16, padding: '16px 16px 6px' }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: '#aab2c0', marginBottom: 4 }}>
-              {t('chart.elevChartTitle')}
-            </div>
-            <ElevationChart profile={p.course.profile} colors={themeB} height={300}
-              gain={p.course.gain} loss={p.course.loss} />
-          </div>
-        )}
-
+        </div>{/* ── end layout grid ── */}
       </div>
 
       {MyPlansPanel && RP_FB && showMyPlans && (
@@ -2028,6 +2255,63 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
             if (segs.length) p.loadGpx(segs, gpxDialog.course);
             setGpxDialog(null);
           }}
+        />
+      )}
+
+      {ActionSheet && moreOpen && (
+        <ActionSheet
+          title={t('planner.more')}
+          onClose={() => setMoreOpen(false)}
+          items={[
+            {
+              label: t('setup.importGpx'),
+              onClick: () => { setMoreOpen(false); if (fileRef.current) fileRef.current.click(); },
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 16V4M7 9l5-5 5 5M5 20h14" /></svg>
+              ),
+            },
+            isOwner && RouteLibrary && RP_FB && {
+              label: t('setup.routeLibrary'),
+              hint: pendingSubs > 0 ? String(pendingSubs) : undefined,
+              onClick: () => { setMoreOpen(false); setRouteLibInit(null); setShowRouteLib(true); },
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" /></svg>
+              ),
+            },
+            !isOwner && MyPlansPanel && RP_FB && {
+              label: t('hub.myPlans'),
+              onClick: () => { setMoreOpen(false); setShowMyPlans(true); },
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
+              ),
+            },
+            !isOwner && MyPlansDB && RP_FB && {
+              label: t('planner.newPlan'),
+              onClick: () => { setMoreOpen(false); setShowNewPlanConfirm(true); },
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+              ),
+            },
+            onGoHome && {
+              label: t('planner.home'),
+              onClick: () => { setMoreOpen(false); onGoHome(); },
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h14V9.5" /></svg>
+              ),
+            },
+            {
+              label: t('planner.reset'), danger: true,
+              onClick: () => { setMoreOpen(false); onReset(); },
+              icon: (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></svg>
+              ),
+            },
+          ].filter(Boolean)}
         />
       )}
 
@@ -2106,7 +2390,15 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
           onApply={(v) => {
             const si = U ? (valueEditor.type === 'pace' ? U.paceFromDisplaySec(v) : U.parseDist(v)) : v;
             if (valueEditor.type === 'pace') p.setSegmentPace(valueEditor.id, si);
-            else p.setSegmentDistance(valueEditor.id, si);
+            else {
+              // Under the lock a segment can't grow past what's left for the
+              // remainder — say so rather than silently clamping.
+              const cap = window.lockedSegmentMax(p.segments, valueEditor.id, p.totalLocked ? p.lockTarget : 0);
+              p.setSegmentDistance(valueEditor.id, si);
+              if (cap > 0 && si > cap + 0.005) {
+                showToast(t('planner.distClamped', { dist: U ? U.fmtDist(cap) : formatKm(cap) }));
+              }
+            }
             setValueEditor(null);
           }}
         />

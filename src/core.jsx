@@ -42,6 +42,18 @@ if (!document.getElementById('rp-core-styles')) {
     transition:border-color .12s,background .12s}
   .rpt-val:hover,.rpt-val:active{border-color:var(--rp-accent)}
   .rpt-val .rpt-val-c{font-size:9px;color:var(--rp-text-dim)}
+  /* the remainder row under the total-distance lock — derived, not editable */
+  .rpt-val-fixed{cursor:default;background:transparent;border-style:dashed;
+    border-color:var(--rp-line);color:var(--rp-text-dim)}
+  .rpt-val-fixed:hover,.rpt-val-fixed:active{border-color:var(--rp-line)}
+  .rpt-val-fixed .rpt-val-c{font-size:10px}
+  .rpt-dist-stepper{display:inline-flex;flex-direction:column;align-items:center;gap:2px}
+  /* elevation-inside-the-distance-button and segment-time-inside-cumulative-
+     time — the mobile single-row layout's way of keeping every number the
+     2-row layout showed without a second grid row. Desktop keeps its own
+     separate elevation/segment-time columns (below), so these stay hidden
+     there — shown only inside the mobile @container block further down. */
+  .rpt-elevtag,.rpt-segtag{display:none}
   @container (max-width:600px){ .rpt-val{min-height:44px;max-width:none;font-size:15px} }
 
   /* ── segments table ── (col order: # · dist · pace · cumdist · [elev] · segT · cumT · del) */
@@ -80,43 +92,53 @@ if (!document.getElementById('rp-core-styles')) {
   .rpt-total .t-label{font-size:13px;font-weight:600;opacity:.9}
   .rpt-total .t-num{font-variant-numeric:tabular-nums;font-size:16px}
 
-  /* ── mobile: one compact 2-row grid per segment ──
-     row 1 (tiny):  [seg elevation, if GPX] [seg time]
-     row 2:         [#] [dist +val-] [pace +val-] [cum time] [• ✕]
-     # and the •✕ span both rows. Cumulative distance is dropped (it's in the
-     totals row); segment elevation only shows when a GPX profile is loaded. */
+  /* ── mobile: one compact row per segment ──
+     [#] [dist +val-, with elevation folded in as a 2nd line] [pace +val-]
+     [cum time, with segment time folded in as a small "+X" 2nd line] [• ✕]
+     Elevation and segment time used to be a second grid row of their own —
+     folded into the cells that already have room to grow (the value buttons
+     already resize to fit their content; the cum-time cell just gains a
+     small second line) rather than spending a whole extra row on them.
+     Cumulative distance is still dropped (it's in the totals row).
+     No grid-template-areas needed: cumdist/elev/segtime are display:none
+     here, and display:none grid items are skipped entirely by auto-
+     placement, so the remaining idx/dist/pace/cumtime/status items — in
+     that same order in the markup — land in these 5 columns on their own. */
   @container (max-width:600px){
     .rpt-head{display:none}
-    .rpt-rows{gap:3px}
+    .rpt-rows{gap:4px}
     .rpt-seg{display:grid;
-      /* FIXED widths for the time + status columns so the dist/pace steppers
-         line up across every row even once the cumulative time hits 1:xx:xx */
-      grid-template-columns:18px 1fr 1fr 52px 28px;
-      grid-template-rows:auto auto;
-      grid-template-areas:
-        "idx sp   elev segt stat"
-        "idx dist pace cumt stat";
-      align-items:center;column-gap:5px;row-gap:0;
-      padding:4px 8px;border-radius:var(--rp-r-12);
+      /* FIXED widths for the time + status columns so the dist/pace value
+         buttons line up across every row even once cumulative time hits
+         1:xx:xx */
+      grid-template-columns:18px 1fr 1fr 60px 26px;
+      align-items:center;column-gap:5px;
+      padding:3px 8px;border-radius:var(--rp-r-12);
       background:var(--rp-surface);border:1px solid var(--rp-line)}
     .rpt-seg:hover{background:var(--rp-surface)}
     .rpt-cell{flex-direction:row;align-items:center;justify-content:center;gap:3px;min-width:0}
     .rpt-lbl{display:none}
-    .rpt-idx{grid-area:idx;justify-content:center}
-    .rpt-idxbadge{width:22px;height:22px;font-size:11px}
-    .rpt-dist{grid-area:dist}
-    .rpt-pace{grid-area:pace}
-    /* .rpt-meta is display:contents (base rule) → its children are grid items.
-       elev is centered over the pace stepper (same column). */
+    .rpt-idx{justify-content:center}
+    .rpt-idxbadge{width:20px;height:20px;font-size:10.5px}
+    /* .rpt-meta is display:contents (base rule) → its children are grid
+       items too, in document order, alongside idx/dist/pace/status above. */
     .rpt-cumdist{display:none}
-    .rpt-elev{grid-area:elev;justify-content:center}
-    /* keep the climb/descent colour from ElevCell, just shrink it */
-    .rpt-elev .rpt-num{font-size:9.5px!important;font-weight:700!important;white-space:nowrap}
-    .rpt-segtime{grid-area:segt;justify-content:flex-end}
-    .rpt-segtime .rpt-num{font-size:9.5px;font-weight:600;color:var(--rp-text-dim);white-space:nowrap}
-    .rpt-cumtime{grid-area:cumt;justify-content:flex-end}
-    .rpt-cumtime .rpt-num{font-size:12px;font-weight:800;white-space:nowrap}
-    .rpt-status{grid-area:stat;flex-direction:row;align-items:center;gap:2px;justify-content:flex-end}
+    .rpt-elev{display:none}   /* shown instead as .rpt-elevtag, inside .rpt-dist */
+    .rpt-segtime{display:none} /* shown instead as .rpt-segtag, inside .rpt-cumtime */
+    .rpt-elevtag,.rpt-segtag{display:block}
+    .rpt-elevtag .rpt-num{font-size:8px!important;font-weight:700!important;white-space:nowrap;line-height:1}
+    .rpt-segtag{font-size:8px;font-weight:600;color:var(--rp-text-dim);white-space:nowrap;line-height:1}
+    /* Value buttons only grow to fit a second line when there's an elevation
+       profile to actually show in it — a plan with no GPX course loaded
+       keeps the plain single-line 44px button. Both dist AND pace grow
+       together (pace has nothing of its own to put on the second line, but
+       matching heights reads as one row, not two buttons of different
+       sizes) — see .rpt-dist-stepper above for the non-button fallback. */
+    .rpt.has-elev .rpt-val{min-height:50px;flex-direction:column;gap:1px}
+    .rpt.has-elev .rpt-dist-stepper{width:100%}
+    .rpt-cumtime{flex-direction:column;align-items:flex-end;justify-content:center;gap:0}
+    .rpt-cumtime .rpt-num{font-size:12px;font-weight:800;white-space:nowrap;line-height:1.15}
+    .rpt-status{flex-direction:row;align-items:center;gap:2px;justify-content:flex-end}
     .rpt-dot{width:7px;height:7px}
     .rpt-del{opacity:.5;width:18px;height:18px;font-size:12px}
 
@@ -171,9 +193,30 @@ function ElevCell({ value }) {
   );
 }
 
-function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onStepPace, onSetPace, onRemove, onEditValue, showTotals = true, paceStep, distStep, elevations }) {
+// Head/tail/crosswind badge for one segment row — a compact companion to
+// ElevCell, reusing its up/down color convention (red = works against you,
+// blue = helps) since crosswind carries no such lean. Shares its label copy
+// with the 3D view's live wind badge (route3d.jsx's WIND_REL_LABEL_KEY).
+const WIND_ICON = { head: '↓', tail: '↑', cross: '↔' };
+const WIND_LABEL_KEY = { head: 'view3d.windHead', tail: 'view3d.windTail', cross: 'view3d.windCross' };
+function WindCell({ wind }) {
+  if (!wind) return null;
+  const color = wind.kind === 'head' ? 'var(--rp-elev-up)' : wind.kind === 'tail' ? 'var(--rp-elev-down)' : 'var(--rp-text-dim)';
+  return (
+    <span className="rpt-num" title={t(WIND_LABEL_KEY[wind.kind])}
+      style={{ color, fontSize: 12.5, fontWeight: 700, marginInlineStart: 3 }}>
+      {WIND_ICON[wind.kind]}
+    </span>
+  );
+}
+
+function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onStepPace, onSetPace, onRemove, onEditValue, showTotals = true, paceStep, distStep, elevations, windRel, totalLocked = false }) {
   const { rows, totalDist, totalTime, avgPace } = plan;
   const hasElev = Array.isArray(elevations);
+  const hasWind = Array.isArray(windRel);
+  // Under the total-distance lock the last segment is the remainder: it's
+  // whatever the course has left over, so it's shown rather than edited.
+  const remainderIdx = totalLocked ? rows.length - 1 : -1;
   return (
     <div className={`rpt${hasElev ? ' has-elev' : ''}`}>
       <div className="rpt-head">
@@ -192,13 +235,38 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
             <div className="rpt-cell rpt-idx"><span className="rpt-idxbadge">{r.index}</span></div>
             <div className="rpt-cell rpt-dist">
               <span className="rpt-lbl">{t('segTable.distance', { unit: U ? U.distUnit() : 'km' })}</span>
-              {onEditValue ? (
+              {i === remainderIdx ? (
+                <span className="rpt-val rpt-val-fixed" title={t('segTable.remainderHint')}>
+                  <span>{U ? U.dispDistNum(r.distance) : formatKm(r.distance)}
+                    <span className="rpt-val-c" aria-label={t('segTable.remainder')}>🔒</span></span>
+                  {hasElev && (
+                    <span className="rpt-elevtag">
+                      <ElevCell value={elevations[i]} />
+                      {hasWind && <WindCell wind={windRel[i]} />}
+                    </span>
+                  )}
+                </span>
+              ) : onEditValue ? (
                 <button className="rpt-val" onClick={() => onEditValue(r.id, 'dist', r.distance)}>
-                  {U ? U.dispDistNum(r.distance) : formatKm(r.distance)}<span className="rpt-val-c">▾</span>
+                  <span>{U ? U.dispDistNum(r.distance) : formatKm(r.distance)}<span className="rpt-val-c">▾</span></span>
+                  {hasElev && (
+                    <span className="rpt-elevtag">
+                      <ElevCell value={elevations[i]} />
+                      {hasWind && <WindCell wind={windRel[i]} />}
+                    </span>
+                  )}
                 </button>
               ) : (
-                <Stepper value={r.distance} type="dist" kind={stepperKind} step={distStep}
-                  onStep={(d) => onStepDist(r.id, d)} onSet={(v) => onSetDist(r.id, v)} />
+                <div className="rpt-dist-stepper">
+                  <Stepper value={r.distance} type="dist" kind={stepperKind} step={distStep}
+                    onStep={(d) => onStepDist(r.id, d)} onSet={(v) => onSetDist(r.id, v)} />
+                  {hasElev && (
+                    <span className="rpt-elevtag">
+                      <ElevCell value={elevations[i]} />
+                      {hasWind && <WindCell wind={windRel[i]} />}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
             <div className="rpt-cell rpt-pace">
@@ -221,6 +289,7 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
                 <div className="rpt-cell rpt-elev">
                   <span className="rpt-lbl">{t('segTable.elevation')}</span>
                   <ElevCell value={elevations[i]} />
+                  {hasWind && <WindCell wind={windRel[i]} />}
                 </div>
               )}
               <div className="rpt-cell rpt-segtime">
@@ -230,6 +299,7 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
               <div className="rpt-cell rpt-cumtime">
                 <span className="rpt-lbl">{t('segTable.cumTime')}</span>
                 <span className="rpt-num">{formatClock(r.cumTime)}</span>
+                <span className="rpt-segtag">+{formatClock(r.segTime)}</span>
               </div>
             </div>
             <div className="rpt-cell rpt-status">

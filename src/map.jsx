@@ -64,7 +64,13 @@ function _gradeColor(gradePct) {
 function RouteMap({ track, profile, splits, height = 340 }) {
   const ref = React.useRef(null);
   const mapRef = React.useRef(null);
+  const splitLayerRef = React.useRef(null);
 
+  // The map itself + the route line depend only on the course. Split markers
+  // move on every plan edit, so they live in their own layer/effect below —
+  // rebuilding the whole map (and refetching every tile) each time a pace
+  // changed used to be invisible while the map sat below the fold, but it is
+  // always on screen in the two-pane layout.
   React.useEffect(() => {
     const L = window.L;
     if (!L || !ref.current || !track || track.length < 2) return;
@@ -76,7 +82,9 @@ function RouteMap({ track, profile, splits, height = 340 }) {
     // — if any single layer throws during that cascade, the rest silently
     // never attach (Leaflet's event dispatch has no per-listener try/catch).
     // Giving the map a view up front means each layer attaches immediately
-    // and independently instead.
+    // and independently instead. This zoom is only ever seen if bootstrap()
+    // below can't run at all (no track) — the moment it can, fitBounds()
+    // replaces it with a view that actually fits the route.
     const map = L.map(ref.current, {
       zoomControl: true, attributionControl: true, scrollWheelZoom: false,
       center: track[0], zoom: 13,
@@ -87,15 +95,12 @@ function RouteMap({ track, profile, splits, height = 340 }) {
       attribution: '© OpenStreetMap · © CARTO',
     }).addTo(map);
 
-    // Adding many small path layers (the grade-colored segments) synchronously
-    // in the same tick the container div was inserted can hit Leaflet
-    // internals before the browser has given that div a real layout size.
-    // Deferring past that tick — after invalidateSize() — avoids that race. A
-    // short timeout (rather than requestAnimationFrame, which never fires in
-    // a backgrounded/inactive tab) keeps this reliable either way.
     let cancelled = false;
-    const raf = setTimeout(() => {
-      if (cancelled) return;
+    let bootstrapped = false;
+
+    function bootstrap() {
+      if (cancelled || bootstrapped) return;
+      bootstrapped = true;
       map.invalidateSize();
 
       const dot = (latlng, fill, radius) => L.circleMarker(latlng, {
@@ -127,15 +132,6 @@ function RouteMap({ track, profile, splits, height = 340 }) {
           }
           bounds = L.latLngBounds(track);
         }
-        if (Array.isArray(splits) && splits.length) {
-          const cum = _trackCumKm(track);
-          splits.forEach((s) => {
-            const latlng = _latLngAtKm(track, cum, s.cumDist);
-            if (!isFinite(latlng[0]) || !isFinite(latlng[1])) return;
-            const label = `${U ? U.fmtDist(s.cumDist) : s.cumDist + ' km'} · ${U ? U.fmtPace(s.paceSec) + ' ' + U.paceUnit() : s.paceSec}`;
-            dot(latlng, ZONE_COLOR[s.zone] || ZONE_COLOR.target, 5).bindPopup(label);
-          });
-        }
       } catch (e) {
         try { console.warn('[RouteMap] grade/split layer failed, falling back to plain line', e); } catch (e2) {}
       }
@@ -148,12 +144,74 @@ function RouteMap({ track, profile, splits, height = 340 }) {
       dot(track[0], '#8091BE');                 // start  (navy-muted)
       dot(track[track.length - 1], '#C15A2E');  // finish (danger)
       try { map.fitBounds(bounds, { padding: [26, 26] }); } catch (e) {}
-    }, 0);
+    }
+
+    // The container can be zero-size at mount for a reason that has nothing
+    // to do with tile-loading timing: on the narrow layout the visual column
+    // starts behind `display:none` (the plan pane is the default view), so
+    // fitBounds() would be asked to fit a route into a 0×0 viewport and can
+    // only fail — Leaflet then silently keeps the hardcoded zoom 13 above,
+    // which reads as "the map opened zoomed in on nothing". A ResizeObserver
+    // catches both cases with one mechanism: it fires once right away with
+    // the size at observe() time (bootstrapping immediately when the pane is
+    // already visible, same as the old fixed setTimeout did) and again the
+    // moment a hidden pane is switched to and actually gets a layout size —
+    // that's when the deferred bootstrap (and its fitBounds) finally runs.
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (!width || !height) return;
+      if (!bootstrapped) bootstrap();
+      else map.invalidateSize({ animate: false });
+    }) : null;
+    if (ro) ro.observe(ref.current);
+    // Belt-and-suspenders for browsers with no ResizeObserver: bootstrap
+    // unconditionally next tick, same as the effect always did before. If the
+    // container is genuinely zero-size there (the mobile display:none case),
+    // this fitBounds() no-ops via its own try/catch and the map stays blank
+    // until the user's tab switch triggers a resize some other way.
+    const fallbackTimer = !ro ? setTimeout(bootstrap, 0) : null;
 
     return () => {
-      cancelled = true; clearTimeout(raf); map.remove(); mapRef.current = null;
+      cancelled = true;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (ro) ro.disconnect();
+      map.remove();
+      mapRef.current = null; splitLayerRef.current = null;
     };
-  }, [track, profile, splits]);
+  }, [track, profile]);
+
+  // Split markers — their own layer, cleared and refilled in place so a plan
+  // edit never touches the map, its tiles or the user's current pan/zoom.
+  // Declared after the effect above, so on mount it runs (and queues its
+  // timeout) after that one has queued its own.
+  React.useEffect(() => {
+    const L = window.L;
+    if (!L || !track || track.length < 2) return;
+    let cancelled = false;
+    const raf = setTimeout(() => {
+      const map = mapRef.current;
+      if (cancelled || !map) return;
+      if (!splitLayerRef.current) splitLayerRef.current = L.layerGroup().addTo(map);
+      const group = splitLayerRef.current;
+      group.clearLayers();
+      if (!Array.isArray(splits) || !splits.length) return;
+      try {
+        const cum = _trackCumKm(track);
+        splits.forEach((s) => {
+          const latlng = _latLngAtKm(track, cum, s.cumDist);
+          if (!isFinite(latlng[0]) || !isFinite(latlng[1])) return;
+          const label = `${U ? U.fmtDist(s.cumDist) : s.cumDist + ' km'} · ${U ? U.fmtPace(s.paceSec) + ' ' + U.paceUnit() : s.paceSec}`;
+          L.circleMarker(latlng, {
+            radius: 5, color: '#111528', weight: 2,
+            fillColor: ZONE_COLOR[s.zone] || ZONE_COLOR.target, fillOpacity: 1,
+          }).bindPopup(label).addTo(group);
+        });
+      } catch (e) {
+        try { console.warn('[RouteMap] split markers failed', e); } catch (e2) {}
+      }
+    }, 0);
+    return () => { cancelled = true; clearTimeout(raf); };
+  }, [track, splits]);
 
   return (
     <div ref={ref} style={{

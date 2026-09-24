@@ -36,6 +36,7 @@ function ensureThree() {
 }
 
 const TARGET_ANIM_SEC = 16; // full-course loop length, regardless of race duration
+const WIND_VIS_THRESHOLD_KMH = 18; // Beaufort ~4 "moderate breeze" — where a runner actually starts to feel it
 
 function _haversineKm(a, b) {
   const R = 6371, toRad = Math.PI / 180;
@@ -355,6 +356,56 @@ function buildRain(THREE, count, areaSize, height) {
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   const mat = new THREE.PointsMaterial({ color: 0xbcd6ff, size: 0.55, transparent: true, opacity: 0.5, depthWrite: false });
   return { points: new THREE.Points(geo, mat), positions, count, height };
+}
+
+// Wind streaks — thin, glowing streamlines that flow in the real forecast
+// wind's true compass direction (converted into this scene's local x/z axes)
+// and speed, built only when the forecast clears WIND_VIS_THRESHOLD_KMH so a
+// calm-weather race never pays for this. One static LineSegments buffer (a
+// head+tail vertex pair per streak, wrapped along the wind axis exactly like
+// buildRain wraps along y) — a whole gusty field is a single draw call, safe
+// on mobile GPUs. Additive blending + a bright-head/dark-tail vertex-color
+// gradient reads as a comet-trail without needing per-vertex alpha, which
+// LineBasicMaterial's vertex colors don't support.
+function buildWind(THREE, count, boxSize, baseY, boxHeight, dirVec) {
+  const up = new THREE.Vector3(0, 1, 0);
+  const axisU = dirVec.clone().normalize(); // the direction the air is moving
+  const axisV = new THREE.Vector3().crossVectors(up, axisU).normalize(); // lateral spread axis
+  const u = new Float32Array(count), v = new Float32Array(count), y = new Float32Array(count), len = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    u[i] = (Math.random() - 0.5) * boxSize;
+    v[i] = (Math.random() - 0.5) * boxSize;
+    y[i] = baseY + Math.random() * boxHeight;
+    len[i] = 1.4 + Math.random() * 2.6;
+  }
+  const positions = new Float32Array(count * 6);
+  const colors = new Float32Array(count * 6);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.LineBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const lines = new THREE.LineSegments(geo, mat);
+  const headC = new THREE.Color(0xbfe3ff), tailC = new THREE.Color(0x0e1826);
+  function update(dt, speed, intensity) {
+    const halfLen = boxSize / 2;
+    for (let i = 0; i < count; i++) {
+      u[i] += speed * dt;
+      if (u[i] > halfLen) u[i] -= boxSize; // recycle streaks that drift past the far edge of the field
+      const hx = axisU.x * u[i] + axisV.x * v[i], hz = axisU.z * u[i] + axisV.z * v[i];
+      const tu = u[i] - len[i];
+      const tx = axisU.x * tu + axisV.x * v[i], tz = axisU.z * tu + axisV.z * v[i];
+      const idx = i * 6;
+      positions[idx] = hx; positions[idx + 1] = y[i]; positions[idx + 2] = hz;
+      positions[idx + 3] = tx; positions[idx + 4] = y[i]; positions[idx + 5] = tz;
+      colors[idx] = headC.r * intensity; colors[idx + 1] = headC.g * intensity; colors[idx + 2] = headC.b * intensity;
+      colors[idx + 3] = tailC.r * intensity; colors[idx + 4] = tailC.g * intensity; colors[idx + 5] = tailC.b * intensity;
+    }
+    geo.attributes.position.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+  }
+  return { lines, update };
 }
 
 // A celebratory confetti burst, fired from the finish gate the moment the
@@ -686,6 +737,25 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   const finishPoint = points[points.length - 1].clone();
   finishPoint.y += SURFACE_Y;
 
+  // ── Wind streaks — only for genuinely windy forecasts. `windDirVec` is the
+  // world-space direction the air is actually moving (the forecast's
+  // `windDir` is a meteorological "from" bearing, so it's rotated 180°
+  // first), reused below both to drive the streak field and to work out
+  // whether the runner is currently facing into it. ──
+  const windSpeedKmh = (weather && isFinite(weather.windSpeed)) ? weather.windSpeed : 0;
+  const windActive = windSpeedKmh >= WIND_VIS_THRESHOLD_KMH;
+  let windDirVec = null, windVisualSpeed = 0, windIntensity = 0, windRelKind = null, wind = null;
+  if (windActive) {
+    const fromRad = ((weather.windDir || 0) * Math.PI) / 180;
+    const toRad = fromRad + Math.PI;
+    windDirVec = new THREE.Vector3(Math.sin(toRad), 0, -Math.cos(toRad));
+    const norm = Math.max(0, Math.min(1, (windSpeedKmh - WIND_VIS_THRESHOLD_KMH) / 40));
+    windIntensity = 0.45 + norm * 0.55;
+    windVisualSpeed = 22 + norm * 48;
+    wind = buildWind(THREE, Math.round(80 + norm * 100), TARGET_SIZE * 2.4, FLOOR_Y + 1.5, TARGET_SIZE * 0.22, windDirVec);
+    scene.add(wind.lines);
+  }
+
   // ── Atmosphere: blends the day-cycle keyframes (mapped from the plan's
   // real start time through its real estimated finish time) with the real
   // forecast's weather filter, and pushes the result into the sky dome, sun,
@@ -904,7 +974,14 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     runner.position.set(pos.x, pos.y + SURFACE_Y, pos.z);
     revealGeo.setDrawRange(0, Math.round(revealIndexCount * frac));
     applyAtmosphere(frac);
-    if (onProgress) onProgress(frac);
+    // Headwind/tailwind/crosswind relative to wherever the route is actually
+    // heading right here — not a single course-wide verdict, since a looping
+    // route can face the wind from every angle over its length.
+    if (windDirVec) {
+      const dot = curve.getTangentAt(curFrac).normalize().dot(windDirVec);
+      windRelKind = dot > 0.3 ? 'tail' : dot < -0.3 ? 'head' : 'cross';
+    }
+    if (onProgress) onProgress(frac, windRelKind);
   }
 
   // `finished` holds the animation at the finish line (elapsed pinned at
@@ -917,6 +994,11 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
 
   stateRef.current = {
     playing: true,
+    // Set while the view is mounted but off-screen (the planner keeps the 3D
+    // alive between tab switches so the camera and scrub position survive).
+    // The tick loop keeps spinning but skips all scene work, so a hidden 3D
+    // costs nothing instead of rendering every frame into a hidden canvas.
+    suspended: false,
     rate: 1, // playback-speed multiplier, driven by the speed selector
     seek(frac) { finished = false; elapsed = frac * totalTime; updateRunner(frac); applyCamera(); },
     setCameraMode: switchCameraMode,
@@ -931,6 +1013,11 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   let raf = null;
   let lastT = performance.now();
   function tick(now) {
+    if (stateRef.current.suspended) {
+      lastT = now; // don't bank the hidden time into the next visible frame
+      raf = requestAnimationFrame(tick);
+      return;
+    }
     const dt = Math.min(0.05, (now - lastT) / 1000);
     lastT = now;
 
@@ -977,6 +1064,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
       rain.points.geometry.attributes.position.needsUpdate = true;
     }
     confetti.update(dt);
+    if (wind) wind.update(dt, windVisualSpeed, windIntensity);
 
     renderer.render(scene, camera);
     raf = requestAnimationFrame(tick);
@@ -1003,6 +1091,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
 const CAMERA_MODE_OPTIONS = ['free', 'chase', 'pov', 'broadcast'];
 const CAMERA_MODE_LABEL_KEY = { free: 'view3d.camFree', chase: 'view3d.camChase', pov: 'view3d.camPov', broadcast: 'view3d.camBroadcast' };
 const SPEED_OPTIONS = [0.5, 1, 2, 4];
+const WIND_REL_LABEL_KEY = { head: 'view3d.windHead', tail: 'view3d.windTail', cross: 'view3d.windCross' };
 
 // The same premium seven-segment board as the planner's goal-time hero
 // (ClockDisplay), holding its own state behind a `setSeconds` ref so the
@@ -1014,12 +1103,17 @@ const RunClock = React.forwardRef(function RunClock({ digitH }, outerRef) {
   return ClockDisplay ? <ClockDisplay totalSec={sec} digitH={digitH} /> : null;
 });
 
-function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, weather, raceTime, onClose }) {
+// `embedded`: render inline inside a host panel (the planner's visual column /
+// mobile tab) rather than as a full-screen portal over the page. The host owns
+// the title and the switch back, so the header bar is dropped and the surface
+// fills its parent instead of the viewport.
+function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, weather, raceTime, onClose, embedded = false, paused = false }) {
   const mountRef = React.useRef(null);
   const scrubRef = React.useRef(null);
   const distRef = React.useRef(null);
   const clockRef = React.useRef(null);
   const elevChartRef = React.useRef(null);
+  const windRelRef = React.useRef(null);
   const stateRef = React.useRef(null);
   const [status, setStatus] = React.useState('loading'); // loading | ready | error
   const [playing, setPlaying] = React.useState(true);
@@ -1052,11 +1146,12 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
     ensureThree().then((THREE) => {
       if (cancelled || !mountRef.current) return;
       try {
-        cleanupFn = mount3D(THREE, mountRef.current, { track, profile, rows, totalDist, weather, raceTime, raceName }, (frac) => {
+        cleanupFn = mount3D(THREE, mountRef.current, { track, profile, rows, totalDist, weather, raceTime, raceName }, (frac, windRel) => {
           if (scrubRef.current) scrubRef.current.value = String(Math.round(frac * 1000));
           if (distRef.current) distRef.current.textContent = U ? U.fmtDist(frac * totalDist) : (frac * totalDist).toFixed(1);
           if (clockRef.current) clockRef.current.setSeconds(timeAtFrac(frac));
           if (elevChartRef.current) elevChartRef.current.setProgress(frac * totalDist);
+          if (windRelRef.current) windRelRef.current.textContent = windRel ? t(WIND_REL_LABEL_KEY[windRel]) : '';
         }, stateRef, () => { if (!cancelled) setPlaying(false); });
         if (!cancelled) setStatus('ready'); else if (cleanupFn) cleanupFn();
       } catch (e) {
@@ -1086,6 +1181,10 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
     if (stateRef.current) stateRef.current.setCameraMode(cameraMode);
   }, [cameraMode, status]);
 
+  React.useEffect(() => {
+    if (stateRef.current) stateRef.current.suspended = paused;
+  }, [paused, status]);
+
   const onScrub = (e) => {
     const frac = Number(e.target.value) / 1000;
     if (stateRef.current) stateRef.current.seek(frac);
@@ -1094,23 +1193,28 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
     if (elevChartRef.current) elevChartRef.current.setProgress(frac * totalDist);
   };
 
-  return ReactDOM.createPortal((
-    <div className="rp-cq-scope" style={{
-      position: 'fixed', inset: 0, zIndex: 1300, background: '#05070d',
+  const body = (
+    <div className={'rp-cq-scope' + (embedded ? ' rp-view3d--embed' : '')} style={{
+      background: '#05070d',
       display: 'flex', flexDirection: 'column', direction: I18N.dir, fontFamily: 'var(--rp-font-ui)',
+      ...(embedded
+        ? { position: 'relative', height: '100%', minHeight: 0, borderRadius: 'var(--rp-r-12)', overflow: 'hidden' }
+        : { position: 'fixed', inset: 0, zIndex: 1300 }),
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#f2f0e8' }}>{t('view3d.title')}</div>
-          <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.5)', marginTop: 2 }}>{raceName}</div>
+      {!embedded && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#f2f0e8' }}>{t('view3d.title')}</div>
+            <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.5)', marginTop: 2 }}>{raceName}</div>
+          </div>
+          <button onClick={onClose} aria-label={t('view3d.close')} style={{
+            width: 36, height: 36, borderRadius: '50%', border: '1px solid rgba(255,255,255,.18)',
+            background: 'rgba(255,255,255,.06)', color: '#f2f0e8', fontSize: 18, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>×</button>
         </div>
-        <button onClick={onClose} aria-label={t('view3d.close')} style={{
-          width: 36, height: 36, borderRadius: '50%', border: '1px solid rgba(255,255,255,.18)',
-          background: 'rgba(255,255,255,.06)', color: '#f2f0e8', fontSize: 18, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>×</button>
-      </div>
+      )}
 
       <style>{`
         .rp-view3d-body { flex: 1; display: flex; min-height: 0; }
@@ -1125,6 +1229,17 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
           .rp-view3d-elev { width: 100%; height: 190px; border-inline-start: none;
             border-top: 1px solid rgba(255,255,255,.08); }
         }
+        /* Embedded in the planner's visual column: the column is narrower than
+           a desktop viewport, so the 260px side panel would leave the canvas
+           barely wider than itself. Stack it under the canvas like the phone
+           layout does, and a little shorter — the viewport media query above
+           can't see the column's width. */
+        .rp-view3d--embed .rp-view3d-body { flex-direction: column; }
+        .rp-view3d--embed .rp-view3d-elev { width: 100%; height: 170px; flex: 0 0 auto;
+          border-inline-start: none; border-top: 1px solid rgba(255,255,255,.08); }
+        .rp-view3d--embed .rp-view3d-camrow { flex-wrap: wrap; overflow-x: visible;
+          row-gap: 6px; justify-content: center; }
+        .rp-view3d--embed .rp-view3d-sep { display: none; }
         @media (max-width: 480px) {
           /* Each pill group fits its own line on a phone width — wrap onto two
              rows instead of forcing horizontal scroll to reach the speed pills. */
@@ -1144,6 +1259,19 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
             <div style={{ position: 'absolute', top: 10, insetInlineStart: 12, fontSize: 11,
               color: 'rgba(255,255,255,.45)', pointerEvents: 'none' }}>{t('view3d.dragHint')}</div>
           )}
+          {status === 'ready' && weather && weather.windSpeed >= WIND_VIS_THRESHOLD_KMH && (
+            <div style={{ position: 'absolute', top: 10, insetInlineEnd: 12, display: 'flex', alignItems: 'center',
+              gap: 6, fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,.85)', background: 'rgba(5,7,13,.55)',
+              padding: '5px 10px', borderRadius: 999, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#bfe3ff" strokeWidth="2.4"
+                strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0,
+                  transform: `rotate(${weather.windDir}deg)` }}>
+                <line x1="12" y1="20" x2="12" y2="4" /><polyline points="5 11 12 4 19 11" />
+              </svg>
+              <span>{U ? Math.round(U.dispSpeed(weather.windSpeed)) : weather.windSpeed} {U ? U.speedUnit() : 'km/h'}</span>
+              <span ref={windRelRef} style={{ color: 'var(--rp-gold)', fontWeight: 700 }} />
+            </div>
+          )}
         </div>
         {status === 'ready' && ElevationChart && (
           <div className="rp-view3d-elev">
@@ -1152,7 +1280,8 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
               {t('chart.elevChartTitle')}
             </div>
             <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center' }}>
-              <ElevationChart ref={elevChartRef} profile={profile} colors={ELEV_COLORS} height={200} gain={gain} loss={loss} />
+              <ElevationChart ref={elevChartRef} profile={profile} colors={ELEV_COLORS}
+                height={embedded ? 100 : 200} gain={gain} loss={loss} />
             </div>
           </div>
         )}
@@ -1201,7 +1330,9 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
         </div>
       )}
     </div>
-  ), document.body);
+  );
+
+  return embedded ? body : ReactDOM.createPortal(body, document.body);
 }
 
 window.ensureThree = ensureThree;

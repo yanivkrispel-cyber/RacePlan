@@ -5,13 +5,14 @@
   "description": "RacePlan — race pace planner (React UMD, no bundler). Firebase Hosting + Auth + Firestore.",
   "type": "module",
   "scripts": {
-    "test": "node test/functions.test.mjs && node test/routes.test.mjs && node test/myplans.test.mjs && node test/i18n.test.mjs && node test/units.test.mjs && node test/heat.test.mjs",
+    "test": "node test/functions.test.mjs && node test/routes.test.mjs && node test/myplans.test.mjs && node test/i18n.test.mjs && node test/units.test.mjs && node test/heat.test.mjs && node test/engine.test.mjs && node test/gpx.test.mjs && node test/map.test.mjs && npm run build --silent && node test/render.test.mjs",
     "build": "node build/build.mjs",
     "seed:races": "node build/seed-races.mjs",
     "deploy": "npm run build && firebase deploy --only hosting,firestore:rules",
     "deploy:hosting": "npm run build && firebase deploy --only hosting",
     "deploy:rules": "firebase deploy --only firestore:rules",
     "deploy:storage": "firebase deploy --only storage",
+    "deploy:functions": "firebase deploy --only functions",
     "_legacy:push": "npm run build && clasp push --force",
     "_legacy:redeploy": "node build/redeploy.mjs"
   },

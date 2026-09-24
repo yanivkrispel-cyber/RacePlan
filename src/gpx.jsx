@@ -138,6 +138,64 @@ function computeSegmentElevations(profile, rows) {
   });
 }
 
+// Initial great-circle bearing from point a=[lat,lon] to point b=[lat,lon], degrees 0-360.
+function _bearing(a, b) {
+  const toRad = Math.PI / 180;
+  const phi1 = a[0] * toRad, phi2 = b[0] * toRad;
+  const dLambda = (b[1] - a[1]) * toRad;
+  const y = Math.sin(dLambda) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+// Interpolate a [lat, lon] point at a given cumulative-km distance along `track`,
+// given `dist`, the parallel array of each track point's cumulative km.
+function _interpolateLatLon(track, dist, cumKm) {
+  const n = track.length;
+  if (cumKm <= dist[0]) return track[0];
+  if (cumKm >= dist[n - 1]) return track[n - 1];
+  let lo = 0, hi = n - 1;
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1;
+    if (dist[mid] <= cumKm) lo = mid; else hi = mid;
+  }
+  const a = track[lo], b = track[hi];
+  const f = (dist[hi] - dist[lo]) > 0 ? (cumKm - dist[lo]) / (dist[hi] - dist[lo]) : 0;
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+}
+
+// Mirrors route3d.jsx's WIND_VIS_THRESHOLD_KMH — Beaufort ~4, where a runner
+// actually starts to feel it. Below this the forecast's wind is noise.
+const WIND_TABLE_THRESHOLD_KMH = 18;
+
+// Returns an array of { kind: 'head'|'tail'|'cross' } per segment row — the wind
+// classified against the net direction the *route* moves over that segment
+// (not its every wiggle) — or null when there's no track to bear against or
+// the forecast wind is too light to matter.
+function computeSegmentWind(track, rows, windDir, windSpeed) {
+  if (!Array.isArray(track) || track.length < 2) return null;
+  if (!isFinite(windSpeed) || windSpeed < WIND_TABLE_THRESHOLD_KMH) return null;
+  const dist = [0];
+  for (let i = 1; i < track.length; i++) {
+    dist.push(dist[i - 1] + _haversine(
+      { lat: track[i - 1][0], lon: track[i - 1][1] }, { lat: track[i][0], lon: track[i][1] },
+    ) / 1000);
+  }
+  // The forecast's `windDir` is the meteorological "from" bearing — rotate
+  // 180° to get the direction the air is actually moving toward.
+  const windToRad = (((windDir || 0) + 180) % 360) * Math.PI / 180;
+  let segStart = 0;
+  return rows.map((r) => {
+    const a = _interpolateLatLon(track, dist, segStart);
+    const b = _interpolateLatLon(track, dist, r.cumDist);
+    segStart = r.cumDist;
+    if (a[0] === b[0] && a[1] === b[1]) return null;
+    const bearingRad = _bearing(a, b) * Math.PI / 180;
+    const dot = Math.cos(bearingRad - windToRad);
+    return { kind: dot > 0.3 ? 'tail' : dot < -0.3 ? 'head' : 'cross' };
+  });
+}
+
 // Build race-plan segments from a loaded course so the plan matches the route.
 // Splits into `blockKm` blocks (+ a remainder; a tail under 1 km folds into the
 // last block), then sets each block's pace from a goal time, a pacing strategy,
@@ -277,6 +335,6 @@ function adjustSegmentBoundary(segments, profile, i, newCumKm) {
 }
 
 Object.assign(window, {
-  parseGpx, buildSegmentsFromGpx, computeSegmentElevations, buildPlanSegments,
+  parseGpx, buildSegmentsFromGpx, computeSegmentElevations, computeSegmentWind, buildPlanSegments,
   findExtrema, adjustSegmentBoundary,
 });
