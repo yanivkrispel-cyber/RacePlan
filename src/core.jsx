@@ -132,15 +132,16 @@ if (!document.getElementById('rp-core-styles')) {
     .rpt-elev{display:none}   /* shown instead as .rpt-elevtag, inside .rpt-dist */
     .rpt-segtime{display:none} /* shown instead as .rpt-segtag, inside .rpt-cumtime */
     .rpt-elevtag,.rpt-segtag{display:block}
-    .rpt-elevtag .rpt-num{font-size:8px!important;font-weight:700!important;white-space:nowrap;line-height:1}
+    .rpt-elevtag .rpt-num{font-size:11px!important;font-weight:700!important;white-space:nowrap;line-height:1}
     .rpt-segtag{font-size:8px;font-weight:600;color:var(--rp-text-dim);white-space:nowrap;line-height:1}
-    /* Value buttons only grow to fit a second line when there's an elevation
-       profile to actually show in it — a plan with no GPX course loaded
-       keeps the plain single-line 44px button. Both dist AND pace grow
-       together (pace has nothing of its own to put on the second line, but
-       matching heights reads as one row, not two buttons of different
-       sizes) — see .rpt-dist-stepper above for the non-button fallback. */
-    .rpt.has-elev .rpt-val{min-height:50px;flex-direction:column;gap:1px}
+    /* Elevation rides beside the distance on the same line — the value
+       buttons stay one line and 44px tall (they used to grow to 50px for a
+       second line of 8px elevation text, and the pace button spent that
+       line on a lone ▾ caret). The bordered box itself says "tap me". */
+    .rpt.has-elev .rpt-val{gap:0 5px;padding:0 6px;flex-wrap:wrap;align-content:center}
+    /* keep "6.22🔒" whole; only when the pair can't fit (long values on a
+       narrow phone) does the elevation wrap under the number */
+    .rpt-val>span{white-space:nowrap}
     .rpt.has-elev .rpt-dist-stepper{width:100%}
     .rpt-cumtime{flex-direction:column;align-items:flex-end;justify-content:center;gap:0}
     .rpt-cumtime .rpt-num{font-size:12px;font-weight:800;white-space:nowrap;line-height:1.15}
@@ -256,7 +257,7 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
                 </span>
               ) : onEditValue ? (
                 <button className="rpt-val" onClick={() => onEditValue(r.id, 'dist', r.distance)}>
-                  <span>{U ? U.dispDistNum(r.distance) : formatKm(r.distance)}<span className="rpt-val-c">▾</span></span>
+                  <span>{U ? U.dispDistNum(r.distance) : formatKm(r.distance)}</span>
                   {hasElev && (
                     <span className="rpt-elevtag">
                       <ElevCell value={elevations[i]} />
@@ -281,7 +282,7 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
               <span className="rpt-lbl">{t('segTable.targetPace')}</span>
               {onEditValue ? (
                 <button className="rpt-val" onClick={() => onEditValue(r.id, 'pace', r.paceSec)}>
-                  {U ? U.fmtPace(r.paceSec) : formatPace(r.paceSec)}<span className="rpt-val-c">▾</span>
+                  {U ? U.fmtPace(r.paceSec) : formatPace(r.paceSec)}
                 </button>
               ) : (
                 <Stepper value={r.paceSec} type="pace" kind={stepperKind} step={paceStep}
