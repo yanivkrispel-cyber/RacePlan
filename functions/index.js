@@ -9,7 +9,7 @@ const gmailUser = defineSecret('GMAIL_USER');
 const gmailAppPassword = defineSecret('GMAIL_APP_PASSWORD');
 
 const NOTIFY_TO = 'yaniv.krispel@gmail.com';
-const APP_URL = 'https://raceplan-17e5b.web.app';
+const APP_URL = 'https://raceplan.coachkrispel.com';
 
 exports.notifyRouteSubmission = onDocumentCreated(
   { document: 'routeSubmissions/{id}', secrets: [gmailUser, gmailAppPassword] },

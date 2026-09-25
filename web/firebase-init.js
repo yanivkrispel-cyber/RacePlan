@@ -24,7 +24,7 @@ const firebaseConfig = {
   // own origin also means iOS Safari's ITP can't break the signInWithRedirect
   // credential hand-back (no cross-site storage read). Firebase Hosting serves
   // /__/auth/* on this domain automatically.
-  authDomain: 'raceplan-17e5b.web.app',
+  authDomain: 'raceplan.coachkrispel.com',
   projectId: 'raceplan-17e5b',
   storageBucket: 'raceplan-17e5b.firebasestorage.app',
   messagingSenderId: '13899079695',
