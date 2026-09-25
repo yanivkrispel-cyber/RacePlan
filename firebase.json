@@ -11,6 +11,8 @@
       { "source": "/app.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
       { "source": "/firebase-init.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
       { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+      { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+      { "source": "**/!(*.*)","headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
       { "source": "**/*.@(png|webmanifest|css)", "headers": [{ "key": "Cache-Control", "value": "public,max-age=86400" }] }
     ]
   },
