@@ -45,6 +45,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="RacePlan" />
 
+<!-- the sign-in / hub screen's logo (LCP image) — fetch it alongside app.js, not after mount -->
+<link rel="preload" as="image" href="/logo.webp" type="image/webp" fetchpriority="high" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&family=Frank+Ruhl+Libre:wght@500;700;800&family=Cormorant+Garamond:ital,wght@1,600;1,700&display=swap" rel="stylesheet" />
@@ -64,7 +66,7 @@
 </head>
 <body>
 <div id="root"></div>
-<div id="boot"><img src="icons/icon-512.png" alt="RACE PLAN" /></div>
+<div id="boot"><img src="icons/boot-192.webp" width="96" height="96" alt="RACE PLAN" fetchpriority="high" /></div>
 
 <script defer src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
 <script defer src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
