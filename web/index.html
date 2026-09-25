@@ -76,9 +76,15 @@
 <div id="root"></div>
 <div id="boot"><img src="icons/boot-192.webp" width="96" height="96" alt="RACE PLAN" fetchpriority="high" /></div>
 
-<script defer src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin="anonymous"></script>
-<script defer src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
+<!-- React 18.3.1 UMD, self-hosted (build/fetch-vendor.mjs) — no third-party origin on the critical path -->
+<script defer src="/vendor/react-18.3.1.production.min.js"></script>
+<script defer src="/vendor/react-dom-18.3.1.production.min.js"></script>
 <!-- Leaflet (map) is loaded on demand by src/map.jsx -->
+<!-- firebase-init.js's own imports: without these hints they're only discovered
+     after it has downloaded and parsed, a whole extra round trip before auth
+     (and so the mount) can start. URLs must match its import specifiers. -->
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js" />
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js" />
 <script type="module" src="firebase-init.js"></script>
 <script defer src="app.js"></script>
 

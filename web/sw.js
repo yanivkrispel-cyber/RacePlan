@@ -1,11 +1,13 @@
 // web/sw.js — RacePlan PWA service worker.
 // The whole app is same-origin static files now, so it genuinely works offline.
-// Firebase / Google / font / CDN requests always go to the network.
-const CACHE = 'raceplan-app-v4';
+// Firebase / Google / CDN requests always go to the network (React and the
+// fonts are same-origin now, so they're cached like the rest of the shell).
+const CACHE = 'raceplan-app-v5';
 const SHELL = [
   '/', '/index.html', '/app.js', '/firebase-init.js', '/manifest.webmanifest',
   '/logo.webp', '/icons/boot-192.webp',
   '/fonts/heebo-v28-latin.woff2', '/fonts/heebo-v28-hebrew.woff2',
+  '/vendor/react-18.3.1.production.min.js', '/vendor/react-dom-18.3.1.production.min.js',
   '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png',
   '/icons/apple-touch-icon.png', '/icons/favicon-64.png',
 ];
