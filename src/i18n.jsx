@@ -412,6 +412,8 @@ const DICTS = {
     'pdf.colCumTime': 'זמן מצטבר',
     'pdf.madeWith': 'נוצר ב־RACE PLAN By Krispel',
     'share.linkPrompt': 'קישור לשיתוף:',
+    'share.loading': 'טוען את התוכנית…',
+    'share.notFound': 'הקישור לא נמצא או שפג תוקפו',
 
     'chart.snapPeak': 'הוצמד לפסגה',
     'chart.snapValley': 'הוצמד לשפל',
@@ -833,6 +835,8 @@ const DICTS = {
     'pdf.colCumTime': 'Cumulative time',
     'pdf.madeWith': 'Made with RACE PLAN By Krispel',
     'share.linkPrompt': 'Share link:',
+    'share.loading': 'Loading the plan…',
+    'share.notFound': 'This link was not found or has expired',
 
     'chart.snapPeak': 'snapped to peak',
     'chart.snapValley': 'snapped to valley',
@@ -1254,6 +1258,8 @@ const DICTS = {
     'pdf.colCumTime': 'Temps cumulé',
     'pdf.madeWith': 'Créé avec RACE PLAN By Krispel',
     'share.linkPrompt': 'Lien de partage :',
+    'share.loading': 'Chargement du plan…',
+    'share.notFound': 'Lien introuvable ou expiré',
 
     'chart.snapPeak': 'aligné sur le sommet',
     'chart.snapValley': 'aligné sur le creux',
@@ -1675,6 +1681,8 @@ const DICTS = {
     'pdf.colCumTime': 'Tiempo acumulado',
     'pdf.madeWith': 'Hecho con RACE PLAN By Krispel',
     'share.linkPrompt': 'Enlace para compartir:',
+    'share.loading': 'Cargando el plan…',
+    'share.notFound': 'Enlace no encontrado o caducado',
 
     'chart.snapPeak': 'ajustado a la cima',
     'chart.snapValley': 'ajustado al valle',

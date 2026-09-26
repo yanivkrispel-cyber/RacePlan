@@ -36,6 +36,20 @@ service cloud.firestore {
       allow create, update, delete: if isOwner();
     }
 
+    // Short share links (/p/{id}). The random id is the capability: any
+    // signed-in user holding the link can read that one doc; no listing, and a
+    // share is immutable once written.
+    match /shares/{id} {
+      allow get:    if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.json is string
+        && request.resource.data.json.size() < 60000
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasOnly(['json', 'ownerUid', 'createdAt']);
+      allow list, update, delete: if false;
+    }
+
     // Community route submissions. Any verified user may propose a GPX route
     // for a race; only the coach reads the queue and approves / rejects.
     // Approval itself writes the course onto races/{id} (owner-only above).

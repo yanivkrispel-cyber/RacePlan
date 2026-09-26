@@ -378,6 +378,44 @@ async function submissionReview(id, action, note) {
   return 'ok';
 }
 
+// ── short share links (shares/{id}) ────────────────────────────────────
+// "Share link" stores the plan payload here and sends /p/{id} instead of a
+// multi-KB #s= hash. The id is the only secret: anyone signed in who has the
+// link can get() it, but nobody can list the collection.
+function shortId(n) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'; // no 0/O, 1/l/I
+  const max = Math.floor(256 / chars.length) * chars.length;
+  let id = '';
+  while (id.length < n) {
+    const bytes = crypto.getRandomValues(new Uint8Array(n * 2));
+    for (let i = 0; i < bytes.length && id.length < n; i++) {
+      if (bytes[i] < max) id += chars.charAt(bytes[i] % chars.length);
+    }
+  }
+  return id;
+}
+
+async function shareCreate(json) {
+  if (!currentUser) return '';
+  json = String(json || '');
+  if (!json || json.length > 60000) return '';
+  const f = await fs();
+  const id = shortId(10);
+  await f.setDoc(f.doc(f.db, 'shares', id), {
+    json, ownerUid: currentUser.uid, createdAt: f.serverTimestamp(),
+  });
+  return id;
+}
+
+async function shareLoad(id) {
+  if (!currentUser || !/^[A-Za-z0-9]{6,24}$/.test(id || '')) return '';
+  try {
+    const f = await fs();
+    const snap = await f.getDoc(f.doc(f.db, 'shares', id));
+    return (snap.exists() && snap.data().json) || '';
+  } catch (e) { return ''; }
+}
+
 // One-time bulk import of the shipped catalog. Skips ids that already exist,
 // so it never clobbers a route the owner has already attached.
 async function racesSeed(records) {
@@ -429,4 +467,6 @@ window.RP_FIREBASE = {
   submitPutGpx,
   submissionsList,
   submissionReview,
+  shareCreate,
+  shareLoad,
 };

@@ -38,7 +38,77 @@ function downsample(arr, max) {
 }
 
 // ── share URL helpers ──────────────────────────────────────────────────
-function encodePlan(raceName, trainer, preset, segments) {
+// The route rides along in the link (optional `c`) so the athlete who opens it
+// sees the map and elevation profile, not just the pace table. It is thinned
+// and quantised to keep the URL a few KB: profile as delta-coded [10 m, 1 m]
+// integers, track as delta-coded 1e-4° (~11 m) lat/lon integers.
+const SHARE_PROFILE_PTS = 200;
+const SHARE_TRACK_PTS = 300;
+
+function deltaCode(values) {
+  let prev = 0;
+  return values.map((v) => { const d = v - prev; prev = v; return d; });
+}
+function deltaDecode(deltas) {
+  let acc = 0;
+  return deltas.map((d) => (acc += d));
+}
+
+function encodeCourse(course) {
+  if (!course) return null;
+  const c = {
+    n: course.name || '',
+    d: Math.round((course.dist || 0) * 1000) / 1000,
+    g: Math.round(course.gain || 0),
+    l: Math.round(course.loss || 0),
+    o: course.source || '',
+  };
+  if (Array.isArray(course.profile) && course.profile.length > 1) {
+    const prof = downsample(course.profile, SHARE_PROFILE_PTS);
+    c.pd = deltaCode(prof.map((pt) => Math.round(pt.d * 100)));
+    c.pe = deltaCode(prof.map((pt) => Math.round(pt.ele)));
+  }
+  if (Array.isArray(course.track) && course.track.length > 1) {
+    const trk = downsample(course.track, SHARE_TRACK_PTS);
+    c.ta = deltaCode(trk.map((pt) => Math.round(pt[0] * 1e4)));
+    c.to = deltaCode(trk.map((pt) => Math.round(pt[1] * 1e4)));
+  }
+  if (course.lat != null && course.lon != null) {
+    c.la = Math.round(course.lat * 1e5) / 1e5;
+    c.lo = Math.round(course.lon * 1e5) / 1e5;
+  }
+  return c;
+}
+
+function decodeCourse(c) {
+  if (!c || typeof c !== 'object') return null;
+  let profile = null;
+  if (Array.isArray(c.pd) && Array.isArray(c.pe) && c.pd.length === c.pe.length && c.pd.length > 1) {
+    const ds = deltaDecode(c.pd);
+    const es = deltaDecode(c.pe);
+    profile = ds.map((d, i) => ({ d: d / 100, ele: es[i] }));
+  }
+  let track = null;
+  if (Array.isArray(c.ta) && Array.isArray(c.to) && c.ta.length === c.to.length && c.ta.length > 1) {
+    const las = deltaDecode(c.ta);
+    const los = deltaDecode(c.to);
+    track = las.map((la, i) => [la / 1e4, los[i] / 1e4]);
+  }
+  if (!profile && !track) return null;
+  return {
+    name: c.n || '',
+    dist: +c.d || (profile ? profile[profile.length - 1].d : 0),
+    gain: +c.g || 0,
+    loss: +c.l || 0,
+    source: c.o || '',
+    profile,
+    track,
+    lat: c.la != null ? c.la : (track ? track[0][0] : null),
+    lon: c.lo != null ? c.lo : (track ? track[0][1] : null),
+  };
+}
+
+function sharePayload(raceName, trainer, preset, segments, course) {
   const payload = {
     v: 1,
     r: raceName,
@@ -46,15 +116,40 @@ function encodePlan(raceName, trainer, preset, segments) {
     p: preset,
     s: segments.map(s => [round2(s.distance), s.paceSec]),
   };
+  const c = encodeCourse(course);
+  if (c) payload.c = c;
+  return payload;
+}
+
+// A stored share (shares/{id}) holds the payload as plain JSON.
+function parseSharePayload(json) {
+  try {
+    const data = JSON.parse(json);
+    if (!data || data.v !== 1 || !Array.isArray(data.s) || !data.s.length) return null;
+    return data;
+  } catch { return null; }
+}
+
+// /p/{id} → id (the short share link), else null.
+function sharePathId(pathname) {
+  const m = /^\/p\/([A-Za-z0-9]{6,24})\/?$/.exec(pathname || '');
+  return m ? m[1] : null;
+}
+
+function encodePlan(raceName, trainer, preset, segments, course) {
+  const payload = sharePayload(raceName, trainer, preset, segments, course);
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   let binary = '';
   bytes.forEach(b => (binary += String.fromCharCode(b)));
-  return btoa(binary);
+  // base64url: '+' and '/' get mangled by some chat apps' link detection.
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function decodePlan(str) {
   try {
-    const binary = atob(str);
+    let b64 = String(str).replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const binary = atob(b64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     const data = JSON.parse(new TextDecoder().decode(bytes));
@@ -1327,8 +1422,23 @@ function SignInScreen() {
 function openStraightToPlanner() {
   try {
     if (typeof window !== 'undefined' && window.__RACEPLAN_SHARE__) return true;
-    return location.hash.startsWith('#s=');
+    return location.hash.startsWith('#s=') || !!sharePathId(location.pathname);
   } catch (e) { return false; }
+}
+
+// Shown while a /p/{id} share is fetched (or when it can't be found).
+function ShareLoadingScreen({ failed, onContinue }) {
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', gap: 18, background: 'var(--rp-bg, #111528)', color: 'var(--rp-text, #F6EFE3)' }}>
+      <img src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'LogoV2.png'}
+        width="96" height="96" alt="RACE PLAN" style={{ borderRadius: 20 }} />
+      <div style={{ fontSize: 15, opacity: 0.8 }}>{failed ? t('share.notFound') : t('share.loading')}</div>
+      {failed && (
+        <button className="rp-btn rp-btn-primary" onClick={onContinue}>{t('common.continue')}</button>
+      )}
+    </div>
+  );
 }
 
 function PlannerB() {
@@ -1344,9 +1454,40 @@ function PlannerB() {
   const [seed, setSeed] = React.useState(null);   // plan handoff from the Hub
   const [runKey, setRunKey] = React.useState(0);  // remounts PlannerBApp on a fresh entry
 
+  // Short share link (/p/{id}): fetch the stored plan once signed in, then open
+  // the planner with it. 'loading' → payload | 'failed'.
+  const [shareId] = React.useState(() => { try { return sharePathId(location.pathname); } catch (e) { return null; } });
+  const [shortShare, setShortShare] = React.useState(shareId ? 'loading' : null);
+  const signedIn = !!fbUser;
+  React.useEffect(() => {
+    if (!shareId || !signedIn || !RP_FB || !RP_FB.shareLoad) return;
+    let alive = true;
+    RP_FB.shareLoad(shareId).then((json) => {
+      if (!alive) return;
+      const data = json ? parseSharePayload(json) : null;
+      setShortShare(data || 'failed');
+      // Drop /p/{id} from the address bar so a reload doesn't clobber edits.
+      if (data) { try { history.replaceState(null, '', '/' + location.search); } catch (e) {} }
+    });
+    return () => { alive = false; };
+  }, [shareId, signedIn]);
+
   if (RP_FB && !fbUser) return <SignInScreen />;
   const isOwner = RP_FB ? (!!fbUser && fbUser.tier === 'owner') : RP_IS_OWNER;
   const userName = (fbUser && fbUser.name) || '';
+
+  if (view === 'planner' && (shortShare === 'loading' || shortShare === 'failed')) {
+    return (
+      <ShareLoadingScreen
+        failed={shortShare === 'failed'}
+        onContinue={() => {
+          try { history.replaceState(null, '', '/' + location.search); } catch (e) {}
+          setShortShare(null);
+          setView('hub');
+        }}
+      />
+    );
+  }
 
   if (view === 'hub') {
     return (
@@ -1363,17 +1504,20 @@ function PlannerB() {
       isOwner={isOwner}
       userName={userName}
       seed={seed}
+      sharedPlan={runKey === 0 && shortShare && typeof shortShare === 'object' ? shortShare : null}
       onGoHome={() => setView('hub')}
     />
   );
 }
 
-function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
+function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
   // Decode the shared plan synchronously (runs before first render, no flash).
-  // Apps Script serves the payload as window.__RACEPLAN_SHARE__ (from ?s=), since
-  // the page runs in a sandboxed iframe where location.hash isn't the real URL.
+  // A short /p/{id} link arrives already fetched as `sharedPlan`. Apps Script
+  // serves the payload as window.__RACEPLAN_SHARE__ (from ?s=), since the page
+  // runs in a sandboxed iframe where location.hash isn't the real URL.
   // Plain static hosting still uses the #s= hash.
   const [shareData] = React.useState(() => {
+    if (sharedPlan) return sharedPlan;
     const injected = typeof window !== 'undefined' && window.__RACEPLAN_SHARE__;
     if (injected) return decodePlan(injected);
     const hash = location.hash;
@@ -1406,9 +1550,14 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   const p = useRacePlan(initialSegs, seed?.preset ?? shareData?.p);
   const { plan } = p;
 
-  // A Hub handoff may also carry a course (route / GPX) and a race name.
+  // A Hub handoff may also carry a course (route / GPX) and a race name; a
+  // shared link may carry the route too.
   React.useEffect(() => {
-    if (seed && seed.course) p.loadCourse(seed.course);
+    if (seed && seed.course) { p.loadCourse(seed.course); return; }
+    if (!seed && shareData && shareData.c) {
+      const c = decodeCourse(shareData.c);
+      if (c) p.loadCourse(c);
+    }
   }, []);
 
   const segElevs = React.useMemo(
@@ -1733,19 +1882,44 @@ function PlannerBApp({ isOwner, userName, seed, onGoHome }) {
   };
 
   const buildShareUrl = () => {
-    const encoded = encodePlan(raceName, trainer, p.activePreset, p.segments);
+    const encoded = encodePlan(raceName, trainer, p.activePreset, p.segments, p.course);
     const base = (typeof window !== 'undefined' && window.__RACEPLAN_EXEC_URL__) || '';
     return base
       ? base + (base.indexOf('?') === -1 ? '?' : '&') + 's=' + encoded
       : location.href.split('#')[0] + '#s=' + encoded;
   };
 
+  // Short link: the payload is stored as shares/{id} and the link is /p/{id}.
+  // It's created as soon as the share sheet opens, so by the time "share link"
+  // is tapped the URL is usually ready (navigator.share needs the tap's user
+  // activation, which a slow await could outlive). One doc per distinct plan.
+  const shortLinks = React.useRef(new Map()); // payload JSON → Promise<url | ''>
+  const shortShareUrl = () => {
+    if (!RP_FB || !RP_FB.shareCreate || window.__RACEPLAN_EXEC_URL__) return Promise.resolve('');
+    const json = JSON.stringify(sharePayload(raceName, trainer, p.activePreset, p.segments, p.course));
+    let pr = shortLinks.current.get(json);
+    if (!pr) {
+      pr = RP_FB.shareCreate(json)
+        .then((id) => (id ? location.origin + '/p/' + id : ''))
+        .catch(() => '');
+      pr.then((u) => { if (!u) shortLinks.current.delete(json); });
+      shortLinks.current.set(json, pr);
+    }
+    return pr;
+  };
+  React.useEffect(() => { if (shareOpen) shortShareUrl(); }, [shareOpen]);
+
   const pdfFilename = () =>
     (raceName || 'race-plan').replace(/[\/\\:*?"<>|]+/g, '').trim().slice(0, 60) + '.pdf';
 
   const doShareLink = async () => {
     setShareOpen(false);
-    const url = buildShareUrl();
+    // Wait briefly for the short link; fall back to the self-contained #s= link.
+    const short = await Promise.race([
+      shortShareUrl(),
+      new Promise((res) => setTimeout(() => res(''), 4000)),
+    ]);
+    const url = short || buildShareUrl();
     if (RP_EXPORT) {
       const r = await RP_EXPORT.shareLink(url, raceName || t('pdf.defaultTitle'));
       if (r === 'copied') showToast(t('planner.linkCopied'));
