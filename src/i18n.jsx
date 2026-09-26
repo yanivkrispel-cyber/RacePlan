@@ -350,6 +350,9 @@ const DICTS = {
     'hub.athleteRaceName': 'המרוץ של {name}',
     'hub.resumeDefault': 'התכנון שלי',
 
+    'update.available': 'גרסה חדשה זמינה',
+    'update.reload': 'רענון',
+
     'settings.title': 'הגדרות',
     'settings.language': 'שפה',
     'settings.units': 'יחידות מידה',
@@ -772,6 +775,9 @@ const DICTS = {
     'hub.defaultRaceName': 'My race',
     'hub.athleteRaceName': "{name}'s race",
     'hub.resumeDefault': 'My plan',
+
+    'update.available': 'A new version is available',
+    'update.reload': 'Refresh',
 
     'settings.title': 'Settings',
     'settings.language': 'Language',
@@ -1196,6 +1202,9 @@ const DICTS = {
     'hub.athleteRaceName': 'Course de {name}',
     'hub.resumeDefault': 'Mon plan',
 
+    'update.available': 'Une nouvelle version est disponible',
+    'update.reload': 'Actualiser',
+
     'settings.title': 'Paramètres',
     'settings.language': 'Langue',
     'settings.units': 'Unités',
@@ -1618,6 +1627,9 @@ const DICTS = {
     'hub.defaultRaceName': 'Mi carrera',
     'hub.athleteRaceName': 'Carrera de {name}',
     'hub.resumeDefault': 'Mi plan',
+
+    'update.available': 'Hay una nueva versión disponible',
+    'update.reload': 'Actualizar',
 
     'settings.title': 'Ajustes',
     'settings.language': 'Idioma',

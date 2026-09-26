@@ -1472,6 +1472,11 @@ function PlannerB() {
     return () => { alive = false; };
   }, [shareId, signedIn]);
 
+  // A new deploy may reload the page silently only where nothing is lost:
+  // the sign-in screen or the Hub (see update.jsx).
+  const reloadSafe = !signedIn || view === 'hub';
+  React.useEffect(() => { if (window.RP_UPDATE) window.RP_UPDATE.setSafe(reloadSafe); }, [reloadSafe]);
+
   if (RP_FB && !fbUser) return <SignInScreen />;
   const isOwner = RP_FB ? (!!fbUser && fbUser.tier === 'owner') : RP_IS_OWNER;
   const userName = (fbUser && fbUser.name) || '';

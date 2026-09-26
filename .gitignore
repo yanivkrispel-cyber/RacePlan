@@ -21,3 +21,4 @@ web/logo.webp
 firebase-debug.log
 firestore-debug.log
 sa-key.json
+web/version.json

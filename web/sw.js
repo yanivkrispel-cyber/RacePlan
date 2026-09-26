@@ -1,7 +1,9 @@
 // web/sw.js — RacePlan PWA service worker.
 // The whole app is same-origin static files now, so it genuinely works offline.
 // Firebase / Google / font / CDN requests always go to the network.
-const CACHE = 'raceplan-app-v3';
+// CACHE is stamped with the build hash by build/build.mjs, so every deploy
+// ships a byte-different sw.js → browsers install it and drop the old cache.
+const CACHE = 'raceplan-f6027f64f77d';
 const SHELL = [
   '/', '/index.html', '/app.js', '/firebase-init.js', '/manifest.webmanifest',
   '/logo.webp', '/icons/boot-192.webp',
@@ -10,7 +12,7 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -24,11 +26,13 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
+  // The deploy probe (src/update.jsx) must always hit the network.
+  if (url.pathname === '/version.json') return;
 
-  // HTML + the app scripts: network-first (fresh on every launch), cache as
-  // offline fallback.
+  // HTML + the app scripts + JSON data: network-first (fresh on every
+  // launch), cache as offline fallback.
   const fresh = e.request.mode === 'navigate'
-    || /\/(app|firebase-init)\.js$/.test(url.pathname);
+    || /\/(app|firebase-init)\.js$|\.json$/.test(url.pathname);
   if (fresh) {
     e.respondWith(
       fetch(e.request).then((res) => {
