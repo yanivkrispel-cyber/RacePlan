@@ -23,6 +23,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as babel from '@babel/core';
+import { transformSync as esbuildTransform } from 'esbuild';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const r = (...p) => join(ROOT, ...p);
@@ -123,10 +124,8 @@ const transpiled = JSX_FILES.map((f) => {
 const logo = logoDataUri();
 writeLogoWebp();
 
-const assemble = (logoSrc) => [
-  '// <image-slot> web component',
-  imageSlot,
-  '',
+const assemble = (logoSrc, { imageSlot: withImageSlot }) => [
+  ...(withImageSlot ? ['// <image-slot> web component', imageSlot, ''] : []),
   '// RacePlan logo (set by build/build.mjs)',
   `window.__RACEPLAN_LOGO__ = ${JSON.stringify(logoSrc)};`,
   '',
@@ -138,8 +137,18 @@ const assemble = (logoSrc) => [
   '',
 ].join('\n');
 
-const appScript = assemble(logo);             // Apps Script: inline data URI
-const webBody = assemble('/logo.webp');      // Firebase: separate file
+// Apps Script (legacy): inline data URI, unminified, as it always shipped.
+const appScript = assemble(logo, { imageSlot: true });
+
+// Firebase (web/app.js): the logo as a separate file; no <image-slot> (only the
+// never-rendered LogoSlot used it); minified. Minification only renames locals
+// and strips whitespace/comments — every module still talks through window.*,
+// and the syntax is left as written (no target lowering). charset:'utf8'
+// keeps the Hebrew/French/Spanish strings as-is: the default escapes them to
+// \uXXXX and makes i18n bigger, not smaller.
+const webBody = esbuildTransform(assemble('/logo.webp', { imageSlot: false }), {
+  minify: true, charset: 'utf8', legalComments: 'none', loader: 'js',
+}).code;
 
 // ── write AppJs.gs ──────────────────────────────────────────────────────
 // RP_BUILD changes every build → doGet appends it as ?js=1&v=… so a redeploy

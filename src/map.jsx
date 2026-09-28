@@ -39,6 +39,43 @@ if (typeof document !== 'undefined' && !document.getElementById('rp-map-styles')
   document.head.appendChild(st);
 }
 
+// Leaflet (JS + CSS, ~190 KB) is loaded on demand instead of from index.html:
+// the map only ever appears inside the planner, so it has no business
+// render-blocking the sign-in / hub screens. It's prefetched once the page is
+// idle after load, so by the time a route is open it's normally already here;
+// RouteMap waits on it otherwise. Same pinned version + SRI hashes as before.
+const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+const LEAFLET_JS_SRI = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+const LEAFLET_CSS_SRI = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+let _leafletP = null;
+function loadLeaflet() {
+  if (window.L) return Promise.resolve(window.L);
+  if (_leafletP) return _leafletP;
+  _leafletP = new Promise((resolve, reject) => {
+    // The stylesheet goes *before* rp-map-styles so the dark restyle above
+    // still wins the cascade (equal specificity → later rule wins).
+    const link = document.createElement('link');
+    link.rel = 'stylesheet'; link.href = LEAFLET_CSS;
+    link.integrity = LEAFLET_CSS_SRI; link.crossOrigin = '';
+    document.head.insertBefore(link, document.getElementById('rp-map-styles'));
+    const s = document.createElement('script');
+    s.src = LEAFLET_JS; s.integrity = LEAFLET_JS_SRI; s.crossOrigin = '';
+    s.onload = () => (window.L ? resolve(window.L) : reject(new Error('leaflet')));
+    s.onerror = () => reject(new Error('leaflet'));
+    document.head.appendChild(s);
+  });
+  _leafletP.catch(() => { _leafletP = null; }); // offline → let a later mount retry
+  return _leafletP;
+}
+if (typeof document !== 'undefined' && typeof window !== 'undefined' && !window.L) {
+  const idle = () => (window.requestIdleCallback
+    ? window.requestIdleCallback(() => loadLeaflet().catch(() => {}), { timeout: 4000 })
+    : setTimeout(() => loadLeaflet().catch(() => {}), 1500));
+  if (document.readyState === 'complete') idle();
+  else window.addEventListener('load', idle, { once: true });
+}
+
 function _haversineKm(a, b) {
   const R = 6371, toRad = Math.PI / 180;
   const dLat = (b[0] - a[0]) * toRad, dLon = (b[1] - a[1]) * toRad;
@@ -85,6 +122,13 @@ function RouteMap({ track, profile, splits, height = 340 }) {
   const ref = React.useRef(null);
   const mapRef = React.useRef(null);
   const splitLayerRef = React.useRef(null);
+  const [leafletReady, setLeafletReady] = React.useState(() => !!window.L);
+  React.useEffect(() => {
+    if (leafletReady) return;
+    let alive = true;
+    loadLeaflet().then(() => { if (alive) setLeafletReady(true); }).catch(() => {});
+    return () => { alive = false; };
+  }, [leafletReady]);
 
   // The map itself + the route line depend only on the course. Split markers
   // move on every plan edit, so they live in their own layer/effect below —
@@ -206,7 +250,7 @@ function RouteMap({ track, profile, splits, height = 340 }) {
       map.remove();
       mapRef.current = null; splitLayerRef.current = null;
     };
-  }, [track, profile]);
+  }, [track, profile, leafletReady]);
 
   // Split markers — their own layer, cleared and refilled in place so a plan
   // edit never touches the map, its tiles or the user's current pan/zoom.
@@ -239,7 +283,7 @@ function RouteMap({ track, profile, splits, height = 340 }) {
       }
     }, 0);
     return () => { cancelled = true; clearTimeout(raf); };
-  }, [track, splits]);
+  }, [track, splits, leafletReady]);
 
   return (
     <div ref={ref} style={{

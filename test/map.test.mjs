@@ -105,5 +105,96 @@ console.log('── RouteMap: fitBounds vs. container visibility ──');
 }
 
 console.log('  ok   fits only against a real size, and exactly once when revealed from hidden');
+
+// ── Leaflet is loaded on demand (not from index.html) ──────────────────
+// A RouteMap that mounts before Leaflet has arrived must not throw or build a
+// half map; it must inject the script + stylesheet (the stylesheet *before*
+// the app's dark restyle so the restyle still wins the cascade) and build the
+// map once Leaflet is there.
+async function mountBeforeLeaflet() {
+  let effectQueue = [];
+  const states = [];
+  let hook = 0;
+  const React = {
+    createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+    useRef: (init) => ({ current: init }),
+    useState: (init) => {
+      const i = hook++;
+      if (!(i in states)) states[i] = typeof init === 'function' ? init() : init;
+      return [states[i], (v) => { states[i] = v; }];
+    },
+    useEffect: (fn) => { effectQueue.push(fn); },
+  };
+  const mapCalls = [];
+  const fitBoundsCalls = [];
+  const L = {
+    map: (container) => {
+      mapCalls.push(container);
+      return { invalidateSize: () => {}, fitBounds: () => { fitBoundsCalls.push(1); }, remove: () => {} };
+    },
+    tileLayer: () => ({ addTo() { return this; } }),
+    layerGroup: () => ({ addTo() { return this; }, clearLayers() {} }),
+    polyline: () => ({ addTo() { return this; }, getBounds: () => ({ plain: true }) }),
+    circleMarker: () => ({ addTo() { return this; }, bindPopup() { return this; } }),
+    latLngBounds: (track) => ({ track }),
+  };
+  class FakeResizeObserver {
+    constructor(cb) { this.cb = cb; }
+    observe(el) { this.cb([{ contentRect: { width: el.clientWidth, height: el.clientHeight } }]); }
+    disconnect() {}
+  }
+  const headOps = [];
+  const byId = {};
+  const document = {
+    readyState: 'loading', // page still loading: the idle prefetch hasn't fired
+    createElement: (tag) => ({ tag }),
+    getElementById: (id) => byId[id] || null,
+    head: {
+      appendChild: (el) => { headOps.push({ op: 'append', el }); if (el.id) byId[el.id] = el; },
+      insertBefore: (el, ref) => { headOps.push({ op: 'insertBefore', el, ref }); },
+    },
+  };
+  const win = { ResizeObserver: FakeResizeObserver, addEventListener: () => {} };
+  const ctx = {
+    console, React, window: win, document, ResizeObserver: FakeResizeObserver,
+    setTimeout: (fn) => { fn(); return 0; }, clearTimeout: () => {},
+  };
+  vm.createContext(ctx);
+  vm.runInContext(compile('src/map.jsx') + '\nthis.__RouteMap = RouteMap;', ctx);
+
+  const container = { clientWidth: 300, clientHeight: 200 };
+  const render = () => {
+    hook = 0; effectQueue = [];
+    const el = ctx.__RouteMap({ track: [[32, 34], [32.01, 34.01]], profile: null, splits: [], height: 300 });
+    el.props.ref.current = container;
+    effectQueue.forEach((fn) => fn());
+  };
+
+  render(); // mounts with no window.L
+  const script = headOps.find((o) => o.el.tag === 'script');
+  const link = headOps.find((o) => o.el.tag === 'link');
+  const mapsBeforeLoad = mapCalls.length;
+
+  win.L = L;          // the <script> finished executing…
+  script.el.onload(); // …and fired load
+  await new Promise((r) => setImmediate(r));
+  render();           // React re-renders after setLeafletReady(true)
+
+  return { mapsBeforeLoad, script, link, restyle: byId['rp-map-styles'], mapCalls, fitBoundsCalls };
+}
+
+{
+  const m = await mountBeforeLeaflet();
+  assert.equal(m.mapsBeforeLoad, 0, 'no map is built before Leaflet has loaded');
+  assert.ok(m.script && /leaflet@1\.9\.4\/dist\/leaflet\.js$/.test(m.script.el.src), 'injects the pinned leaflet.js');
+  assert.ok(m.script.el.integrity, 'leaflet.js keeps its SRI hash');
+  assert.ok(m.link && /leaflet\.css$/.test(m.link.el.href) && m.link.el.integrity, 'injects leaflet.css with SRI');
+  assert.equal(m.link.op, 'insertBefore', 'stylesheet is inserted, not appended…');
+  assert.equal(m.link.ref, m.restyle, '…right before the app\'s dark restyle, so the restyle wins the cascade');
+  assert.equal(m.mapCalls.length, 1, 'the map is built exactly once when Leaflet arrives');
+  assert.equal(m.fitBoundsCalls.length, 1, 'and fits the route');
+}
+console.log('  ok   mounts before Leaflet → loads it on demand (SRI, cascade order) and builds the map once');
+
 console.log('\n' + '='.repeat(60));
-console.log('map: 2 passed, 0 failed');
+console.log('map: 3 passed, 0 failed');
