@@ -513,6 +513,107 @@ function buildRoadStrips(THREE, points, width, thickness, uMax) {
   };
 }
 
+// The "height curtain": a translucent gold wall hanging from the road's
+// underside down to the floor, opaque at the road and fading out toward the
+// ground, so how high every part of the course sits reads at a glance from
+// any camera angle. A bright rim runs along its top edge, and the stretch the
+// runner has already covered (uProgress) glows brighter, like the road's own
+// reveal overlay. Plus a soft gold footprint on the floor where it lands.
+// Shaders write display-space colors directly (no tone mapping), so the gold
+// reads the same under every time-of-day/weather lighting.
+function buildHeightCurtain(THREE, points, width, thickness, floorY) {
+  const n = points.length;
+  const gold = new THREE.Color(0.96, 0.76, 0.29);
+  const group = new THREE.Group();
+
+  const wallMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+    uniforms: { uColor: { value: gold }, uProgress: { value: 0 }, uFloor: { value: floorY } },
+    vertexShader: `
+      attribute float aU; attribute float aTop;
+      varying float vU; varying float vY; varying float vTop;
+      void main() {
+        vU = aU; vTop = aTop; vY = position.y;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      uniform vec3 uColor; uniform float uProgress, uFloor;
+      varying float vU; varying float vY; varying float vTop;
+      void main() {
+        float h = clamp((vY - uFloor) / max(vTop - uFloor, 1e-3), 0.0, 1.0);
+        float a = 0.06 + 0.58 * pow(h, 1.5);
+        float rim = 1.0 - smoothstep(0.0, 0.3, vTop - vY);
+        a += rim * 0.55;
+        vec3 col = mix(uColor, vec3(1.0), rim * 0.3);
+        float done = step(vU, uProgress);
+        a *= mix(0.6, 1.0, done);
+        col *= mix(0.82, 1.12, done);
+        gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
+      }`,
+  });
+  {
+    const pos = [], uu = [], top = [], idx = [];
+    for (let i = 0; i < n; i++) {
+      const p = points[i], ty = p.y - thickness / 2, u = i / (n - 1);
+      pos.push(p.x, ty, p.z, p.x, floorY, p.z);
+      uu.push(u, u); top.push(ty, ty);
+    }
+    for (let i = 0; i < n - 1; i++) { const a = i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('aU', new THREE.Float32BufferAttribute(uu, 1));
+    geo.setAttribute('aTop', new THREE.Float32BufferAttribute(top, 1));
+    geo.setIndex(idx);
+    const mesh = new THREE.Mesh(geo, wallMat);
+    mesh.renderOrder = 5;
+    group.add(mesh);
+  }
+
+  const traceMat = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, toneMapped: false,
+    uniforms: { uColor: { value: gold }, uProgress: { value: 0 } },
+    vertexShader: `
+      attribute float aU; attribute float aS;
+      varying float vU; varying float vS;
+      void main() { vU = aU; vS = aS; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      uniform vec3 uColor; uniform float uProgress;
+      varying float vU; varying float vS;
+      void main() {
+        float core = pow(1.0 - abs(vS), 2.0);
+        gl_FragColor = vec4(uColor, core * mix(0.35, 0.75, step(vU, uProgress)));
+      }`,
+  });
+  {
+    const up = new THREE.Vector3(0, 1, 0);
+    const w = width * 0.9, y = floorY + 0.02;
+    const pos = [], uu = [], ss = [], idx = [];
+    for (let i = 0; i < n; i++) {
+      const prev = points[Math.max(0, i - 1)], next = points[Math.min(n - 1, i + 1)];
+      const tg = new THREE.Vector3(next.x - prev.x, 0, next.z - prev.z);
+      if (tg.lengthSq() < 1e-10) tg.set(1, 0, 0); else tg.normalize();
+      const side = new THREE.Vector3().crossVectors(up, tg).normalize();
+      const p = points[i], u = i / (n - 1);
+      pos.push(p.x + side.x * w, y, p.z + side.z * w, p.x - side.x * w, y, p.z - side.z * w);
+      uu.push(u, u); ss.push(-1, 1);
+    }
+    for (let i = 0; i < n - 1; i++) { const a = i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('aU', new THREE.Float32BufferAttribute(uu, 1));
+    geo.setAttribute('aS', new THREE.Float32BufferAttribute(ss, 1));
+    geo.setIndex(idx);
+    const mesh = new THREE.Mesh(geo, traceMat);
+    mesh.renderOrder = 4;
+    group.add(mesh);
+  }
+
+  return {
+    group,
+    setProgress(frac) { wallMat.uniforms.uProgress.value = frac; traceMat.uniforms.uProgress.value = frac; },
+  };
+}
+
 // Resample the track to even distance steps (smooths out however the raw GPX
 // points happened to be spaced) and attach interpolated elevation + a local
 // planar (x, z) position in meters, anchored at the route's start point.
@@ -684,19 +785,13 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   const revealIndexCount = revealGeo.index.count;
   const SURFACE_Y = roadThickness / 2 + 0.05; // lift markers/runner onto the road surface, not its centerline
 
-  // ── Ground "shadow" ribbon + drop-lines, purely for depth cues ──
+  // ── Ground "shadow" ribbon + the height curtain, for depth cues ──
   const groundCurve = new THREE.CatmullRomCurve3(roadPoints.map((p) => new THREE.Vector3(p.x, -0.35, p.z)));
   const groundGeo = new THREE.TubeGeometry(groundCurve, ROAD_STEPS, tubeRadius * 1.6, 6, false);
   scene.add(new THREE.Mesh(groundGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26 })));
 
-  const dropMat = new THREE.LineBasicMaterial({ color: 0x3a4258, transparent: true, opacity: 0.5 });
-  const DROP_COUNT = 14;
-  for (let i = 1; i < DROP_COUNT; i++) {
-    const idx = Math.round((i / DROP_COUNT) * (roadPoints.length - 1));
-    const top = roadPoints[idx];
-    const geo = new THREE.BufferGeometry().setFromPoints([top, new THREE.Vector3(top.x, -0.35, top.z)]);
-    scene.add(new THREE.Line(geo, dropMat));
-  }
+  const heightCurtain = buildHeightCurtain(THREE, roadPoints, roadWidth, roadThickness, FLOOR_Y);
+  scene.add(heightCurtain.group);
 
   // ── Start / finish markers + gates ──
   const markerGeo = new THREE.SphereGeometry(tubeRadius * 1.8, 16, 16);
@@ -974,6 +1069,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     const pos = curve.getPointAt(curFrac);
     runner.position.set(pos.x, pos.y + SURFACE_Y, pos.z);
     revealGeo.setDrawRange(0, Math.round(revealIndexCount * frac));
+    heightCurtain.setProgress(curFrac);
     applyAtmosphere(frac);
     // Headwind/tailwind/crosswind relative to wherever the route is actually
     // heading right here — not a single course-wide verdict, since a looping
