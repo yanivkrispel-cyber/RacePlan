@@ -1,0 +1,50 @@
+# Deploys Firebase Hosting on every push to main (and on demand).
+# Needs the repo secret FIREBASE_SERVICE_ACCOUNT: the JSON key of a service
+# account in raceplan-17e5b with the "Firebase Hosting Admin" role.
+name: Deploy hosting
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-hosting
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The test script also runs the build.
+      - run: npm test
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Deploy hosting
+        run: npx -y firebase-tools@15 deploy --only hosting --project raceplan-17e5b --non-interactive
+
+      - name: Verify live build
+        run: |
+          want=$(grep -o '__RACEPLAN_BUILD__ = "[0-9a-f]*"' web/app.js | head -1 | cut -d'"' -f2)
+          echo "built: $want"
+          for host in raceplan.coachkrispel.com raceplan-17e5b.web.app; do
+            got=$(curl -fsS -H 'Cache-Control: no-cache' "https://$host/app.js?cb=$GITHUB_RUN_ID" | grep -o '__RACEPLAN_BUILD__ = "[0-9a-f]*"' | head -1 | cut -d'"' -f2)
+            echo "$host: $got"
+            [ "$got" = "$want" ] || { echo "::error::$host serves $got, expected $want"; exit 1; }
+          done
