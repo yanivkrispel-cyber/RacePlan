@@ -246,7 +246,9 @@ function makeSignTexture(THREE, line1, line2) {
   return tex;
 }
 
-function buildSplitSign(THREE, curve, u, roadWidth, roadThickness, distText, timeText) {
+// `sideSign` -1 moves the sign to the runner's right — used where the road
+// has split into two lanes, so the sign doesn't stand in the opposite lane.
+function buildSplitSign(THREE, curve, u, roadWidth, roadThickness, distText, timeText, sideSign = 1) {
   const { side, up, point: base } = frameAtU(THREE, curve, u);
   const postHeight = roadWidth * 2.1;
 
@@ -255,7 +257,7 @@ function buildSplitSign(THREE, curve, u, roadWidth, roadThickness, distText, tim
     new THREE.CylinderGeometry(roadWidth * 0.035, roadWidth * 0.035, postHeight, 8),
     new THREE.MeshStandardMaterial({ color: 0x2a2e38, roughness: 0.7 }),
   );
-  const sideOffset = roadWidth / 2 + roadWidth * 0.28;
+  const sideOffset = sideSign * (roadWidth / 2 + roadWidth * 0.28);
   const basePos = base.clone().addScaledVector(side, sideOffset);
   post.position.copy(basePos).addScaledVector(up, postHeight / 2 + roadThickness / 2);
   post.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
@@ -469,6 +471,8 @@ function buildConfetti(THREE, count, spread, floorY) {
 // running route mostly consists of (invisible on a round tube, glaringly
 // wrong on a flat slab). Returns the top driving surface (textured) plus two
 // side walls so the road reads as a solid strip from any camera angle.
+// `width` is one number, or one per point (narrower where the road splits
+// into two lanes, see layoutPasses).
 function buildRoadStrips(THREE, points, width, thickness, uMax) {
   const n = points.length;
   const up = new THREE.Vector3(0, 1, 0);
@@ -480,11 +484,11 @@ function buildRoadStrips(THREE, points, width, thickness, uMax) {
     const side = new THREE.Vector3().crossVectors(up, tangent);
     if (side.lengthSq() < 1e-8) side.set(1, 0, 0); else side.normalize();
     const localUp = new THREE.Vector3().crossVectors(tangent, side).normalize();
-    const p = points[i];
-    topL.push(p.clone().addScaledVector(side, width / 2).addScaledVector(localUp, thickness / 2));
-    topR.push(p.clone().addScaledVector(side, -width / 2).addScaledVector(localUp, thickness / 2));
-    botL.push(p.clone().addScaledVector(side, width / 2).addScaledVector(localUp, -thickness / 2));
-    botR.push(p.clone().addScaledVector(side, -width / 2).addScaledVector(localUp, -thickness / 2));
+    const p = points[i], w = Array.isArray(width) ? width[i] : width;
+    topL.push(p.clone().addScaledVector(side, w / 2).addScaledVector(localUp, thickness / 2));
+    topR.push(p.clone().addScaledVector(side, -w / 2).addScaledVector(localUp, thickness / 2));
+    botL.push(p.clone().addScaledVector(side, w / 2).addScaledVector(localUp, -thickness / 2));
+    botR.push(p.clone().addScaledVector(side, -w / 2).addScaledVector(localUp, -thickness / 2));
   }
 
   function strip(a, b, vA, vB, textured) {
@@ -617,13 +621,27 @@ function buildHeightCurtain(THREE, points, width, thickness, floorY) {
 // Resample the track to even distance steps (smooths out however the raw GPX
 // points happened to be spaced) and attach interpolated elevation + a local
 // planar (x, z) position in meters, anchored at the route's start point.
+//
+// The profile's distances come from the full-resolution GPX, but `track` is a
+// separately thinned copy whose own length comes out shorter (thinning cuts
+// corners and drops GPS jitter: ~1–2% on a watch recording, ~200 m over
+// 15 km). Reading the profile at the thinned track's distance made every
+// height drift further back along the route, so the two legs of an
+// out-and-back stopped matching. Each sample is read at the same FRACTION of
+// the profile's own length instead, from the same smoothed profile the
+// elevation chart draws.
 function buildSamples(track, profile, steps) {
   const cum = [0];
   for (let i = 1; i < track.length; i++) cum.push(cum[i - 1] + _haversineKm(track[i - 1], track[i]));
   const totalKm = cum[cum.length - 1] || 0.001;
   const lat0 = track[0][0], lon0 = track[0][1];
   const R = 6371000, rad = Math.PI / 180;
-  const hasEle = Array.isArray(profile) && profile.some((p) => isFinite(p.ele));
+  const rawProfile = Array.isArray(profile) ? profile.filter((p) => isFinite(p.ele) && isFinite(p.d)) : [];
+  const hasEle = rawProfile.length >= 2;
+  const smooth = window.smoothElevProfile || ((d) => d);
+  const prof = hasEle ? smooth(rawProfile) : null;
+  const profKm = hasEle ? prof[prof.length - 1].d : 0;
+  const toProfKm = profKm > 0 ? profKm / totalKm : 1;
 
   const out = [];
   for (let s = 0; s <= steps; s++) {
@@ -636,12 +654,148 @@ function buildSamples(track, profile, steps) {
     const f = cum[hi] > cum[lo] ? (dKm - cum[lo]) / (cum[hi] - cum[lo]) : 0;
     const lat = track[lo][0] + (track[hi][0] - track[lo][0]) * f;
     const lon = track[lo][1] + (track[hi][1] - track[lo][1]) * f;
-    const ele = hasEle ? _interpEle(profile, dKm) : 0;
+    const ele = hasEle ? _interpEle(prof, dKm * toProfKm) : 0;
     const x = (lon - lon0) * rad * R * Math.cos(lat0 * rad);
     const z = -(lat - lat0) * rad * R;
     out.push({ dKm, x, z, ele });
   }
   return { samples: out, totalKm };
+}
+
+// Courses that run the same road more than once — out-and-backs, laps, a
+// lollipop's stem — draw that road once per pass, and in 3D the passes land
+// on top of each other: the road is drawn far wider than the few meters that
+// separate the passes in reality. Any difference in their heights (a watch's
+// barometer drifts a few meters over a race) then reads as two roads stacked
+// one above the other. This lays the passes out so they read as one road:
+//  - passes closer than SAME_ROAD_M are the same road and share one height
+//    (the average of what each pass recorded there);
+//  - passes in OPPOSITE directions that the drawn road would overlap become
+//    two lanes, each moved to its own side — normally the runner's right,
+//    or the side it already sits on when the two are on separate carriageways;
+//  - passes in the SAME direction (laps) stay on one lane; each later lap
+//    sits a hair higher so the coincident surfaces don't flicker.
+// Everything tapers in and out over a few samples wherever the passes part
+// ways; at a turnaround the two lanes meet in a rounded U-turn. Crossings
+// (passes meeting at an angle) are left alone. Pure, on planar meters, so it
+// can be tested without three.js.
+const SAME_ROAD_M = 25;
+const LANE_SHIFT = 0.33; // of the road width, each opposite lane's move to its side
+const LANE_NARROW = 0.45; // a lane is drawn this fraction of the full road width
+function layoutPasses(samples, roadWidthM) {
+  const n = samples.length;
+  const out = samples.map((s) => ({ x: s.x, z: s.z, ele: s.ele, lane: 0, lift: 0 }));
+  if (n < 4 || !(roadWidthM > 0)) return out;
+
+  const tx = new Array(n), tz = new Array(n), arc = [0];
+  for (let i = 0; i < n; i++) {
+    // over ±2 samples: a recorded track zig-zags at the sample scale
+    const a = samples[Math.max(0, i - 2)], b = samples[Math.min(n - 1, i + 2)];
+    const dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz) || 1;
+    tx[i] = dx / l; tz[i] = dz / l;
+    if (i) arc.push(arc[i - 1] + Math.hypot(samples[i].x - samples[i - 1].x, samples[i].z - samples[i - 1].z));
+  }
+  const reach = Math.max(SAME_ROAD_M, roadWidthM);
+  // The route's own stretch around a sample is never "another pass".
+  const skip = Math.max(150, 3 * reach);
+
+  // One closest point per other pass within `reach`.
+  const passes = [];
+  for (let i = 0; i < n; i++) {
+    const found = [];
+    let run = null;
+    for (let j = 0; j < n - 1; j++) {
+      const a = samples[j], b = samples[j + 1];
+      if (Math.abs((arc[j] + arc[j + 1]) / 2 - arc[i]) < skip) { if (run) { found.push(run); run = null; } continue; }
+      const vx = b.x - a.x, vz = b.z - a.z, L2 = vx * vx + vz * vz;
+      let f = L2 > 0 ? ((samples[i].x - a.x) * vx + (samples[i].z - a.z) * vz) / L2 : 0;
+      f = Math.max(0, Math.min(1, f));
+      const px = a.x + vx * f, pz = a.z + vz * f;
+      const d = Math.hypot(samples[i].x - px, samples[i].z - pz);
+      if (d < reach) {
+        if (!run || d < run.d) {
+          const L = Math.sqrt(L2) || 1;
+          run = { d, px, pz, ele: a.ele + (b.ele - a.ele) * f, arc: arc[j] + (arc[j + 1] - arc[j]) * f,
+            dot: tx[i] * (vx / L) + tz[i] * (vz / L) };
+        }
+      } else if (run) { found.push(run); run = null; }
+    }
+    if (run) found.push(run);
+    passes.push(found);
+  }
+
+  // Raw per-sample targets, before tapering.
+  const ramp = (d, full, none) => Math.max(0, Math.min(1, (none - d) / (none - full)));
+  const wH = new Array(n).fill(0), eleT = samples.map((s) => s.ele);
+  // lanes: a sideways target along each sample's own right-hand direction
+  // (a scalar, so tapering it doesn't shrink it on a winding road)
+  const wL = new Array(n).fill(0), lat = new Array(n).fill(0);
+  const lift = new Array(n).fill(0), side = new Array(n).fill(0), oppSigned = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    const same = passes[i].filter((p) => p.d < SAME_ROAD_M && Math.abs(p.dot) > 0.5);
+    if (same.length) {
+      eleT[i] = (samples[i].ele + same.reduce((acc, p) => acc + p.ele, 0)) / (same.length + 1);
+      wH[i] = Math.max(...same.map((p) => ramp(p.d, SAME_ROAD_M * 0.6, SAME_ROAD_M)));
+    }
+    let opp = null;
+    passes[i].forEach((p) => { if (p.dot < -0.5 && (!opp || p.d < opp.d)) opp = p; });
+    if (opp) {
+      wL[i] = ramp(opp.d, reach * 0.7, reach);
+      // signed lateral position of the other pass: > 0 = on this pass's right
+      oppSigned[i] = (opp.px - samples[i].x) * -tz[i] + (opp.pz - samples[i].z) * tx[i];
+      side[i] = 1;
+      lat[i] = oppSigned[i] / 2; // to the midline between the two passes
+    }
+    lift[i] = passes[i].filter((p) => p.dot > 0.5 && p.arc < arc[i]).length;
+  }
+
+  // Per stretch of lanes, pick the side: the runner's right, unless the other
+  // pass already sits clearly to the right (separate carriageways laid out
+  // the other way round) — then the left, so the two never cross over.
+  for (let i = 0; i < n;) {
+    if (!side[i]) { i++; continue; }
+    let j = i, sum = 0;
+    while (j < n && side[j]) { sum += oppSigned[j]; j++; }
+    const dir = sum / (j - i) > roadWidthM * 0.25 ? -1 : 1;
+    for (let k = i; k < j; k++) {
+      // from the midline out to its side — never closer than the passes
+      // already are (separate carriageways only ever move apart)
+      lat[k] += dir * Math.max(LANE_SHIFT * roadWidthM, Math.abs(oppSigned[k]) / 2);
+    }
+    i = j;
+  }
+
+  // `alongOnly`: average only over neighbours heading the same way — the
+  // sideways shift is measured in each sample's own frame, so it mustn't
+  // leak around a U-turn into a sample facing the other way.
+  const taper = (arr, alongOnly) => {
+    let a = arr;
+    for (let pass = 0; pass < 2; pass++) {
+      a = a.map((_, i) => {
+        let sum = 0, cnt = 0;
+        for (let k = -3; k <= 3; k++) {
+          const j = i + k;
+          if (j < 0 || j >= n || (alongOnly && tx[i] * tx[j] + tz[i] * tz[j] < 0.3)) continue;
+          sum += a[j]; cnt++;
+        }
+        return cnt ? sum / cnt : 0;
+      });
+    }
+    return a;
+  };
+  const hW = taper(wH);
+  const dEle = taper(eleT.map((e, i) => (e - samples[i].ele) * wH[i]));
+  const lW = taper(wL);
+  const side2 = taper(lat.map((v, i) => v * wL[i]), true);
+  const up = taper(lift);
+  for (let i = 0; i < n; i++) {
+    out[i].ele = samples[i].ele + (hW[i] > 0 ? dEle[i] : 0);
+    out[i].x = samples[i].x - tz[i] * side2[i]; // (-tz, tx) is the runner's right
+    out[i].z = samples[i].z + tx[i] * side2[i];
+    out[i].lane = lW[i];
+    out[i].lift = up[i];
+  }
+  return out;
 }
 
 // All the Three.js scene setup, the animation loop and the pointer/wheel
@@ -682,9 +836,13 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   const EXAGGERATION = 9;
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
 
-  const points = samples.map((s) => new THREE.Vector3(
+  const roadWidth = Math.max(1.4, TARGET_SIZE * 0.024);
+  const roadThickness = roadWidth * 0.22;
+  const laid = layoutPasses(samples, roadWidth / scale);
+  minEle = Math.min(...laid.map((s) => s.ele));
+  const points = laid.map((s) => new THREE.Vector3(
     (s.x - cx) * scale,
-    (s.ele - minEle) * scale * EXAGGERATION,
+    (s.ele - minEle) * scale * EXAGGERATION + s.lift * roadThickness * 0.5,
     (s.z - cz) * scale,
   ));
   const curve = new THREE.CatmullRomCurve3(points);
@@ -694,8 +852,19 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   // ribbon with no faceting at the original GPX vertices, and stays exactly
   // flush with the runner (which also travels via curve.getPointAt).
   const ROAD_STEPS = Math.max(300, Math.min(900, Math.round(totalKm * 60)));
-  const roadPoints = [];
-  for (let i = 0; i <= ROAD_STEPS; i++) roadPoints.push(curve.getPointAt(i / ROAD_STEPS));
+  // How far the road has split into lanes (0..1) at arc-length fraction u —
+  // the curve's own parameter t is uniform per sample, so map u -> t first.
+  const laneAtU = (u) => {
+    const k = curve.getUtoTmapping(u) * (laid.length - 1);
+    const k0 = Math.max(0, Math.min(laid.length - 2, Math.floor(k)));
+    return laid[k0].lane + (laid[k0 + 1].lane - laid[k0].lane) * (k - k0);
+  };
+  const roadPoints = [], roadWidths = [];
+  for (let i = 0; i <= ROAD_STEPS; i++) {
+    const u = i / ROAD_STEPS;
+    roadPoints.push(curve.getPointAt(u));
+    roadWidths.push(roadWidth * (1 - (1 - LANE_NARROW) * laneAtU(u)));
+  }
 
   // ── Scene ──
   const BASE_FOG_DENSITY = 0.0022;
@@ -746,13 +915,11 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
 
   // ── The road surface: a flat, paved ribbon with the "blue line" real
   // marathons paint down the tangent line for the broadcast cameras ──
-  const roadWidth = Math.max(1.4, TARGET_SIZE * 0.024);
-  const roadThickness = roadWidth * 0.22;
   const tubeRadius = roadWidth * 0.32; // scale reference for markers/shadow below
   const roadWorldLength = totalKm * 1000 * scale;
   const repeatX = Math.max(4, Math.round(roadWorldLength / 6));
   const roadTexture = makeRoadTexture(THREE);
-  const { topGeo, leftWallGeo, rightWallGeo } = buildRoadStrips(THREE, roadPoints, roadWidth, roadThickness, repeatX);
+  const { topGeo, leftWallGeo, rightWallGeo } = buildRoadStrips(THREE, roadPoints, roadWidths, roadThickness, repeatX);
 
   // Wet-weather forecasts make the pavement itself read as rain-slicked —
   // lower roughness / a touch of metalness reads as a sheen under the sun.
@@ -811,7 +978,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   (rows || []).slice(0, -1).forEach((r) => {
     const u = Math.max(0, Math.min(1, r.cumDist / (totalDist || 1)));
     const distText = U ? U.fmtDist(r.cumDist) : `${r.cumDist.toFixed(1)} km`;
-    scene.add(buildSplitSign(THREE, curve, u, roadWidth, roadThickness, distText, _fmtClock(r.cumTime)));
+    scene.add(buildSplitSign(THREE, curve, u, roadWidth, roadThickness, distText, _fmtClock(r.cumTime), laneAtU(u) > 0.2 ? -1 : 1));
   });
 
   // ── The runner ──
@@ -1211,6 +1378,10 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
   const distRef = React.useRef(null);
   const clockRef = React.useRef(null);
   const elevChartRef = React.useRef(null);
+  // The side chart's x axis is the profile's own distance, which needn't
+  // equal the plan's totalDist — move its marker by fraction of that axis.
+  const profKm = Array.isArray(profile) && profile.length > 1 && isFinite(profile[profile.length - 1].d)
+    ? profile[profile.length - 1].d : totalDist;
   const windRelRef = React.useRef(null);
   const stateRef = React.useRef(null);
   const [status, setStatus] = React.useState('loading'); // loading | ready | error
@@ -1248,7 +1419,7 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
           if (scrubRef.current) scrubRef.current.value = String(Math.round(frac * 1000));
           if (distRef.current) distRef.current.textContent = U ? U.fmtDist(frac * totalDist) : (frac * totalDist).toFixed(1);
           if (clockRef.current) clockRef.current.setSeconds(timeAtFrac(frac));
-          if (elevChartRef.current) elevChartRef.current.setProgress(frac * totalDist);
+          if (elevChartRef.current) elevChartRef.current.setProgress(frac * profKm);
           if (windRelRef.current) windRelRef.current.textContent = windRel ? t(WIND_REL_LABEL_KEY[windRel]) : '';
         }, stateRef, () => { if (!cancelled) setPlaying(false); });
         if (!cancelled) setStatus('ready'); else if (cleanupFn) cleanupFn();
@@ -1288,7 +1459,7 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
     if (stateRef.current) stateRef.current.seek(frac);
     if (distRef.current) distRef.current.textContent = U ? U.fmtDist(frac * totalDist) : (frac * totalDist).toFixed(1);
     if (clockRef.current) clockRef.current.setSeconds(timeAtFrac(frac));
-    if (elevChartRef.current) elevChartRef.current.setProgress(frac * totalDist);
+    if (elevChartRef.current) elevChartRef.current.setProgress(frac * profKm);
   };
 
   const body = (
@@ -1435,4 +1606,5 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
 
 window.ensureThree = ensureThree;
 window.mount3D = mount3D;
+window.ROUTE3D_LAYOUT = { buildSamples, layoutPasses };
 window.Route3DView = Route3DView;
