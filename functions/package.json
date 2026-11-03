@@ -1,9 +1,9 @@
 {
   "name": "raceplan-functions",
   "private": true,
-  "description": "RacePlan Cloud Functions — community-submission email notifications.",
+  "description": "RacePlan Cloud Functions — community-submission email notifications, send to watch (Garmin).",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "dependencies": {
