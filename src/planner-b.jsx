@@ -1805,6 +1805,9 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
   const videoCancelRef = React.useRef(false);
   const printRef = React.useRef(null);
   const [showElevation, setShowElevation] = React.useState(true);
+  // lime: the pace profile in 3D by default (Kris, 3.11.2026); a flat toggle, remembered per device
+  const [pace3d, setPace3d] = React.useState(() => { try { return localStorage.getItem('rp-pace3d') !== '0'; } catch (e) { return true; } });
+  const togglePace3d = () => setPace3d((v) => { try { localStorage.setItem('rp-pace3d', v ? '0' : '1'); } catch (e) {} return !v; });
   const [showMyPlans, setShowMyPlans] = React.useState(false);
   const [goalOpen, setGoalOpen] = React.useState(false);
   const [valueEditor, setValueEditor] = React.useState(null); // { id, type, value }
@@ -2285,6 +2288,24 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
             </span>
           )}
         </div>
+        {LUI && window.PaceChart3D && (
+          <button onClick={togglePace3d} aria-pressed={pace3d} aria-label={t('chart3d.toggle')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: pace3d ? 'var(--rp-gold-wash)' : 'transparent',
+              border: `1px solid ${pace3d ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
+              borderRadius: 'var(--rp-r-8)', padding: '5px 10px', cursor: 'pointer',
+              fontSize: 11.5, fontWeight: 600, minHeight: 32, flex: '0 0 auto',
+              color: pace3d ? 'var(--rp-gold)' : 'var(--rp-text-dim)',
+            }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+              <path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12" />
+            </svg>
+            {t('chart3d.on')}
+          </button>
+        )}
         {p.course?.profile && (
           <button
             onClick={() => setShowElevation((v) => !v)}
@@ -2307,16 +2328,14 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
           </button>
         )}
       </div>
-      <PaceChart rows={plan.rows} avgPace={plan.avgPace} totalDist={plan.totalDist}
-        variant="area" colors={themeB}
-        height={isWide && hasRoute ? 180 : (canEditBoundaries ? 210 : 185)}
-        elevationProfile={p.course?.profile ?? null}
-        showElevation={showElevation}
-        interactive={canEditBoundaries}
-        segments={p.segments}
-        extrema={courseExtrema}
-        highlight={LUI ? selSeg : null}
-        onSegmentsChange={p.replaceSegments} />
+      {React.createElement((LUI && pace3d && window.PaceChart3D) || PaceChart, {
+        rows: plan.rows, avgPace: plan.avgPace, totalDist: plan.totalDist,
+        variant: 'area', colors: themeB,
+        height: isWide && hasRoute ? 180 : (canEditBoundaries ? 210 : 185),
+        elevationProfile: p.course?.profile ?? null,
+        showElevation, interactive: canEditBoundaries, segments: p.segments, extrema: courseExtrema,
+        highlight: LUI ? selSeg : null, onSegmentsChange: p.replaceSegments })}
+
     </div>
   );
 
