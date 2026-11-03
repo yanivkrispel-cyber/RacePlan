@@ -93,6 +93,134 @@
 <body>
 <div id="root"></div>
 <div id="boot"><img src="/icons/boot-192.webp" width="96" height="96" alt="RACE PLAN" fetchpriority="high" /><svg width="120" height="69" viewBox="-12 -6 178 102" aria-label="RACE PLAN"><g transform="skewX(-14) translate(14 0)" fill="none" stroke-linejoin="miter" stroke-miterlimit="3"><path d="M12 92 V10 H44 C64 10 70 22 70 33 C70 46 62 56 44 56 H12 M42 56 L66 92 M86 92 V10 H118 C138 10 144 22 144 33 C144 46 136 56 118 56 H86" stroke="#DDFF4A" stroke-width="26"/><path d="M12 92 V10 H44 C64 10 70 22 70 33 C70 46 62 56 44 56 H12 M42 56 L66 92 M86 92 V10 H118 C138 10 144 22 144 33 C144 46 136 56 118 56 H86" stroke="#050605" stroke-width="15"/><path d="M12 92 V10 H44 C64 10 70 22 70 33 C70 46 62 56 44 56 H12 M42 56 L66 92 M86 92 V10 H118 C138 10 144 22 144 33 C144 46 136 56 118 56 H86" stroke="#DDFF4A" stroke-width="6"/></g></svg></div>
+<style>
+  /* lime boot: the route of the race you're planning draws itself around the logo (Kris, 4.11.2026) */
+  .rp-rt{position:fixed;inset:0;z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+    background:#050605;transition:opacity .28s ease;pointer-events:none}
+  #boot.rp-rt{z-index:2000}
+  .rp-rt.out{opacity:0}
+  .rp-rt-stage{position:relative;width:min(78vw,300px);aspect-ratio:1}
+  .rp-rt-stage > svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  .rp-rt-logo{position:absolute;left:50%;top:50%;width:38%;transform:translate(-50%,-50%);transition:filter .3s ease}
+  .rp-rt-logo svg{display:block!important;width:100%;height:auto}
+  .rp-rt.lit .rp-rt-logo{filter:drop-shadow(0 0 14px rgba(221,255,74,.75))}
+  .rp-rt-line{fill:none;stroke:#DDFF4A;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 5px rgba(221,255,74,.8))}
+  .rp-rt-ghost{fill:none;stroke:rgba(221,255,74,.12);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .rp-rt-km{fill:#050605;stroke:#DDFF4A;stroke-width:1.6;opacity:0;transition:opacity .18s}
+  .rp-rt-km.on{opacity:1}
+  .rp-rt-hud{font:700 12px/1 "JetBrains Mono",ui-monospace,Consolas,monospace;letter-spacing:.18em;color:#8f9686;direction:ltr;
+    font-variant-numeric:tabular-nums;min-height:12px}
+  .rp-rt-hud b{color:#DDFF4A;font-weight:700}
+</style>
+<script>
+(function () {
+  if (document.documentElement.getAttribute('data-ui') !== 'lime') return;
+  var NS = 'http://www.w3.org/2000/svg', S = 300, PAD = 18;
+  var reduce = false;
+  try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+  var bootLogo = document.querySelector('#boot svg');
+  var LOGO = bootLogo ? bootLogo.outerHTML : '';
+
+  // the course of the saved plan, else a sample loop: [[x, y]] in screen space (y down)
+  function course(track, dist) {
+    var pts = [], d = dist || 0;
+    if (!track) {
+      try {
+        var p = JSON.parse(localStorage.getItem('rp-plan-v1') || 'null'), c = p && p.c;
+        if (c && c.track && c.track.length > 8) { track = c.track; d = c.dist || 0; }
+      } catch (e) {}
+    }
+    if (track && track.length > 8) {
+      var k = Math.cos(track[0][0] * Math.PI / 180), step = Math.max(1, Math.floor(track.length / 420));
+      for (var i = 0; i < track.length; i += step) pts.push([track[i][1] * k, -track[i][0]]);
+      var last = track[track.length - 1]; pts.push([last[1] * k, -last[0]]);
+    } else {
+      for (var j = 0; j <= 140; j++) {
+        var a = j / 140 * Math.PI * 2 - Math.PI / 2;
+        pts.push([Math.cos(a) * (1 + 0.1 * Math.sin(3 * a)), Math.sin(a) * 0.86 * (1 + 0.08 * Math.cos(5 * a))]);
+      }
+      d = d || 42.2;
+    }
+    var x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    pts.forEach(function (q) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); });
+    var sc = (S - 2 * PAD) / Math.max(x1 - x0, y1 - y0, 1e-9), ox = (S - (x1 - x0) * sc) / 2, oy = (S - (y1 - y0) * sc) / 2;
+    return { d: d, path: pts.map(function (q, i) { return (i ? 'L' : 'M') + ((q[0] - x0) * sc + ox).toFixed(1) + ' ' + ((q[1] - y0) * sc + oy).toFixed(1); }).join('') };
+  }
+  function el(tag, attrs, parent) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  // Draws the course into `host` (filled with the stage), `dur` ms for the whole line. finish(cb) runs the rest of
+  // the line fast, lights the logo, fades out and calls cb.
+  function show(host, o) {
+    var c = course(o.track, o.dist);
+    host.classList.add('rp-rt');
+    var stage = document.createElement('div'); stage.className = 'rp-rt-stage';
+    var svg = el('svg', { viewBox: '0 0 ' + S + ' ' + S, 'aria-hidden': 'true' }, stage);
+    el('path', { d: c.path, 'class': 'rp-rt-ghost' }, svg);
+    var line = el('path', { d: c.path, 'class': 'rp-rt-line' }, svg);
+    var L = line.getTotalLength() || 1;
+    line.style.strokeDasharray = L + ' ' + L; line.style.strokeDashoffset = L;
+    var kms = [];
+    for (var km = 10; km < c.d - 1; km += 10) {
+      var pt = line.getPointAtLength(L * km / c.d);
+      kms.push({ f: km / c.d, e: el('circle', { cx: pt.x.toFixed(1), cy: pt.y.toFixed(1), r: 3.6, 'class': 'rp-rt-km' }, svg) });
+    }
+    var glow = el('circle', { r: 9, fill: 'rgba(221,255,74,.28)' }, svg);
+    var dot = el('circle', { r: 4.6, fill: '#F4FFD0' }, svg);
+    var logo = document.createElement('div'); logo.className = 'rp-rt-logo'; logo.innerHTML = LOGO;
+    stage.appendChild(logo);
+    var hud = document.createElement('div'); hud.className = 'rp-rt-hud';
+    host.innerHTML = ''; host.appendChild(stage); host.appendChild(hud);
+
+    var t0 = performance.now(), p = 0, ending = null, ended = false, lastT = t0;
+    function paint(f) {
+      line.style.strokeDashoffset = (L * (1 - f)).toFixed(1);
+      var q = line.getPointAtLength(L * f);
+      dot.setAttribute('cx', q.x); dot.setAttribute('cy', q.y); glow.setAttribute('cx', q.x); glow.setAttribute('cy', q.y);
+      kms.forEach(function (k) { if (f >= k.f) k.e.classList.add('on'); });
+      hud.innerHTML = 'KM <b>' + (c.d * f).toFixed(1) + '</b>';
+    }
+    function done() {
+      if (ended) return; ended = true;
+      paint(1); host.classList.add('lit');
+      setTimeout(function () { host.classList.add('out'); setTimeout(function () { if (ending) ending(); }, 300); }, reduce ? 120 : 260);
+    }
+    function tick(now) {
+      if (ended) return;
+      var dt = now - lastT; lastT = now;
+      if (ending) p = Math.min(1, p + dt / 300); // the app is ready: the rest of the line in about 0.3 s
+      else p = Math.min(0.97, 1 - Math.pow(1 - (now - t0) / o.dur, 2)); // ease out, waits near the end for the app
+      paint(p);
+      if (p >= 1) { done(); return; }
+      requestAnimationFrame(tick);
+    }
+    if (reduce) paint(1); else requestAnimationFrame(tick);
+    return { finish: function (cb) { ending = cb || function () {}; if (reduce || p >= 0.97 && !o.wait) done(); } };
+  }
+
+  // the boot splash: runs until the app mounts (build.mjs BOOTSTRAP calls RP_BOOT_FINISH)
+  var boot = document.getElementById('boot');
+  if (boot) {
+    var run = show(boot, { dur: 1700 });
+    window.RP_BOOT_FINISH = function () {
+      window.RP_BOOT_FINISH = null;
+      run.finish(function () { if (boot.parentNode) boot.remove(); });
+    };
+  }
+  // opening a plan from the home screen: a short version over the planner while it mounts
+  window.RP_ROUTE_INTRO = function (track, dist) {
+    var host = document.createElement('div');
+    document.body.appendChild(host);
+    var r = show(host, { track: track, dist: dist, dur: 650 });
+    setTimeout(function () { r.finish(function () { host.remove(); }); }, 450);
+  };
+})();
+</script>
+
 
 <!-- React 18.3.1 UMD, self-hosted (build/fetch-vendor.mjs) — no third-party origin on the critical path -->
 <script defer src="/vendor/react-18.3.1.production.min.js"></script>

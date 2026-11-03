@@ -62,7 +62,8 @@ const JSX_FILES = [
 const BOOTSTRAP = `
 (function () {
   function mount() {
-    var b = document.getElementById('boot'); if (b) b.remove();
+    // lime: the boot route finishes its line, lights the logo and fades out over the mounted app
+    var b = document.getElementById('boot'); if (b) { if (window.RP_BOOT_FINISH) window.RP_BOOT_FINISH(); else b.remove(); }
     ReactDOM.createRoot(document.getElementById('root')).render(<><window.PlannerB /><window.UpdateBanner /></>);
   }
   if (typeof window !== 'undefined' && window.RP_FIREBASE && window.RP_FIREBASE.ready) {

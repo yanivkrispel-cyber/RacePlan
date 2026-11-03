@@ -1650,7 +1650,12 @@ function PlannerB() {
       <HubScreen
         isOwner={isOwner}
         userName={userName}
-        onEnter={(handoff) => { setSeed(handoff || null); setRunKey((k) => k + 1); setView('planner'); }}
+        onEnter={(handoff) => {
+          // lime: a short route intro over the planner while it mounts (web/index.html, Kris 4.11.2026)
+          const c = handoff && (handoff.course || handoff.c);
+          if (window.RP_ROUTE_INTRO) window.RP_ROUTE_INTRO(c && c.track ? c.track : null, c && c.dist);
+          setSeed(handoff || null); setRunKey((k) => k + 1); setView('planner');
+        }}
       />
     );
   }
