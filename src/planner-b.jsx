@@ -204,15 +204,14 @@ function _windDirLabel(deg) {
   return t('weather.dir.' + keys[Math.round(deg / 45) % 8]);
 }
 
-function _weatherIcon(code) {
-  if (code === 0) return '☀️';
-  if (code <= 3) return '⛅';
-  if (code <= 48) return '🌫';
-  if (code <= 67) return '🌦';
-  if (code <= 77) return '❄️';
-  if (code <= 82) return '🌧';
-  return '⛈';
+function _weatherIcon(code, size = 18) {
+  const G = window.RPGlyph;
+  const k = code === 0 ? 'sun' : code <= 3 ? 'partly' : code <= 48 ? 'fog' : code <= 67 ? 'drizzle'
+    : code <= 77 ? 'snow' : code <= 82 ? 'rain' : 'storm';
+  const I = G && G[k];
+  return I ? <I size={size} /> : null;
 }
+const _Glyph = ({ k, ...p }) => { const G = window.RPGlyph; const I = G && G[k]; return I ? <I {...p} /> : null; };
 
 // Race-day conditions in one line: the forecast and the heat model's take on
 // it (see docs/HEAT.md) used to be two stacked cards costing ~190px of the
@@ -229,7 +228,7 @@ function ConditionsBar({ weather, status, advisory, onApply }) {
         background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
         borderRadius: 'var(--rp-r-12)', padding: '10px 14px', marginBottom: 10,
         fontSize: 13, color: 'var(--rp-text-dim)' }}>
-        <span style={{ fontSize: 16 }}>🌍</span> {t('weather.loading')}
+        <span style={{ display: 'flex', color: 'var(--rp-gold)' }}><_Glyph k="globe" size={16} /></span> {t('weather.loading')}
       </div>
     );
   }
@@ -262,8 +261,9 @@ function ConditionsBar({ weather, status, advisory, onApply }) {
             font: 'inherit', cursor: 'pointer', color: 'var(--rp-text)', minWidth: 0,
             display: 'flex', alignItems: 'center', gap: 7, flex: '1 1 auto', textAlign: 'start',
           }}>
-          <span style={{ fontSize: 18, lineHeight: 1, flex: '0 0 auto' }}>
-            {isHistorical ? '📊' : _weatherIcon(weather.code)}
+          <span style={{ lineHeight: 1, flex: '0 0 auto', display: 'flex', color: 'var(--rp-gold)' }}
+            title={isHistorical ? t('weather.historicalNote') : undefined}>
+            {isHistorical ? <_Glyph k="history" size={18} /> : _weatherIcon(weather.code)}
           </span>
           <span style={{ fontFamily: 'var(--rp-font-display)', fontSize: 16, fontWeight: 800,
             fontVariantNumeric: 'tabular-nums' }}>{weather.temp}°C</span>
@@ -275,7 +275,7 @@ function ConditionsBar({ weather, status, advisory, onApply }) {
             <>
               {sep}
               <span style={{ fontSize: 12, fontWeight: 700, color: LIME ? '#FFB13D' : 'var(--rp-gold)', whiteSpace: 'nowrap' }}>
-                🌡️ {t('heat.chipDelta', { sec: deltaDisp, unit: per })}
+                <_Glyph k="thermo" size={13} /> {t('heat.chipDelta', { sec: deltaDisp, unit: per })}
               </span>
             </>
           )}
@@ -347,7 +347,7 @@ function ConditionsBar({ weather, status, advisory, onApply }) {
             <div style={{ fontSize: 11, color: 'var(--rp-text-dim)' }}>
               {t('heat.summary', { sec: deltaDisp, unit: per })}
               {' — '}
-              {warnKey ? t('heat.warn.' + warnKey) : t('heat.disclaimer')}
+              {warnKey ? <><_Glyph k="warn" size={12} style={{ color: LIME ? '#FFB13D' : 'var(--rp-gold)' }} /> {t('heat.warn.' + warnKey)}</> : t('heat.disclaimer')}
             </div>
           )}
         </div>
@@ -2230,10 +2230,10 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
       aria-pressed={p.totalLocked}
       style={{
         appearance: 'none', background: 'transparent', border: 'none', padding: 2,
-        cursor: 'pointer', lineHeight: 1, fontSize: 13,
-        opacity: p.totalLocked ? 1 : 0.4, filter: p.totalLocked ? 'none' : 'grayscale(1)',
+        cursor: 'pointer', lineHeight: 1, fontSize: 13, display: 'inline-flex', color: 'inherit',
+        opacity: p.totalLocked ? 1 : 0.45,
       }}
-    >{p.totalLocked ? '🔒' : '🔓'}</button>
+    ><_Glyph k={p.totalLocked ? 'lock' : 'unlock'} size={15} sw={2.2} /></button>
   ) : null;
 
   const hasRoute = !!(p.course && p.course.track && p.course.track.length > 1);
@@ -2750,10 +2750,16 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
           </button>
         </div>
 
+        {/* lime: the watch is a strip right under the segments, its sheet holds the rest (Kris, 3.11.2026) */}
+        {LUI && window.WatchStrip && (
+          <window.WatchStrip segments={p.segments} profile={p.course?.profile ?? null}
+            raceName={raceName} raceDate={raceDate} onToast={showToast} />
+        )}
+
         <ConditionsBar weather={weather} status={weatherStatus}
           advisory={heatAdvisory} onApply={applyHeatAdjustment} />
 
-        {WatchCard && (
+        {!LUI && WatchCard && (
           <WatchCard segments={p.segments} profile={p.course?.profile ?? null}
             raceName={raceName} raceDate={raceDate} onToast={showToast} />
         )}

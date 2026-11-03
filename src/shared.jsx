@@ -530,5 +530,38 @@ function useEscape(onEscape, active = true) {
   }, [active]);
 }
 
+// Line icons in place of emoji (Kris, 3.11.2026: "no generic icons", the lock and the weather first).
+// currentColor on a 24 grid, so each sits in any text colour; `fill` for the solid ones (play / pause).
+const CLOUD = 'M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.24';
+const _G = (d, solid) => function RPGlyphIcon({ size = 16, sw = 2, style, title }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={solid ? 'currentColor' : 'none'}
+      stroke={solid ? 'none' : 'currentColor'} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"
+      role={title ? 'img' : undefined} aria-label={title || undefined} aria-hidden={title ? undefined : 'true'}
+      style={{ display: 'inline-block', verticalAlign: '-0.16em', flex: '0 0 auto', ...style }}>
+      {[].concat(d).map((x, i) => (typeof x === 'string' ? <path key={i} d={x} /> : <React.Fragment key={i}>{x}</React.Fragment>))}
+    </svg>
+  );
+};
+const RPGlyph = {
+  lock: _G([<rect x="5" y="11" width="14" height="10" rx="2.5" />, 'M8 11V8a4 4 0 0 1 8 0v3']),
+  unlock: _G([<rect x="5" y="11" width="14" height="10" rx="2.5" />, 'M8 11V8a4 4 0 0 1 7.6-1.8']),
+  sun: _G([<circle cx="12" cy="12" r="4" />, 'M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41']),
+  partly: _G(['M12 2v2M4.93 4.93l1.41 1.41M20 12h2M19.07 4.93l-1.41 1.41', 'M15.95 12.65a4 4 0 0 0-5.93-4.13', 'M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z']),
+  fog: _G([CLOUD, 'M16 17H7M17 21H9']),
+  drizzle: _G([CLOUD, 'M8 19v1M8 14v1M16 19v1M16 14v1M12 21v1M12 16v1']),
+  rain: _G([CLOUD, 'M16 14v6M8 14v6M12 16v6']),
+  snow: _G([CLOUD, 'M8 15h.01M8 19h.01M12 17h.01M12 21h.01M16 15h.01M16 19h.01']),
+  storm: _G(['M6 16.33A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 .5 8.97', 'm13 12-3 5h4l-3 5']),
+  history: _G(['M3 3v18h18', 'M18 17V9M13 17V5M8 17v-3']),
+  globe: _G([<circle cx="12" cy="12" r="10" />, 'M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20']),
+  thermo: _G(['M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z']),
+  warn: _G(['m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z', 'M12 9v4M12 17h.01']),
+  check: _G(['M20 6 9 17l-5-5']),
+  pin: _G(['M20 10c0 5-8 12-8 12s-8-7-8-12a8 8 0 0 1 16 0Z', <circle cx="12" cy="10" r="3" />]),
+  play: _G(['M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z'], true),
+  pause: _G([<rect x="6" y="4" width="4" height="16" rx="1.2" />, <rect x="14" y="4" width="4" height="16" rx="1.2" />], true),
+};
+
 Object.assign(window, { Stepper, LogoSlot, ZoneLegend, SevenSeg, ClockDot, ClockDisplay, useEscape,
-  CLOCK_VARS, ClockCorners, RPMark, RPIcon, RPWordmark });
+  CLOCK_VARS, ClockCorners, RPMark, RPIcon, RPWordmark, RPGlyph });

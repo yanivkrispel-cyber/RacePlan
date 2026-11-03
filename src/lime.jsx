@@ -123,8 +123,9 @@ if (LIME_ON && !document.getElementById('rp-lime-styles')) {
   .rp-tab-btn:active:not(:disabled){transform:scale(.94)}
   /* phones only: wide screens keep the two-column layout and their own bars */
   @media (min-width:1024px){.rp-tabbar{display:none}}
-  .rp-has-tabbar{padding-bottom:calc(var(--rp-tabbar-h) + env(safe-area-inset-bottom) + 12px)!important}
-  @media (min-width:1024px){.rp-has-tabbar{padding-bottom:24px!important}}
+  /* :root raises it over the planner's own phone rule (.rp-planner-wrap padding, later in the page): the chart ended under the tab bar */
+  :root .rp-has-tabbar{padding-bottom:calc(var(--rp-tabbar-h) + env(safe-area-inset-bottom) + 12px)!important}
+  @media (min-width:1024px){:root .rp-has-tabbar{padding-bottom:24px!important}}
   .rp-segbar{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px}
   /* sheets rise from the bottom on phones */
   .rp-lgrab{display:block;width:38px;height:4px;border-radius:2px;background:rgba(244,246,238,.25);margin:-6px auto 12px}
@@ -238,7 +239,7 @@ function SegmentsList({ plan, colors, onEditValue, onStepPace, onRemove, elevati
                 <b>{tL('raceday.untilKm', { dist: fmtDistL(r.cumDist) })}</b>
                 <span>
                   <bdi>{dnum(r.distance)} {unit}</bdi>
-                  {i === remainderIdx && <> · 🔒</>}
+                  {i === remainderIdx && <> · {((window.RPGlyph && window.RPGlyph.lock) ? <window.RPGlyph.lock size={13} sw={2.2} style={{ color: 'var(--rp-gold)' }} /> : null)}</>}
                   {elTxt && <> · <bdi className={el > 0 ? 'up' : el < 0 ? 'dn' : ''}>{elTxt}</bdi></>}
                   {w && <> · <span className={w.kind === 'head' ? 'up' : w.kind === 'tail' ? 'tw' : ''}>{tL(WIND_KEY_L[w.kind])}</span></>}
                 </span>
@@ -263,7 +264,7 @@ function SegmentsList({ plan, colors, onEditValue, onStepPace, onRemove, elevati
                 </div>
                 <div className="rp-sl-meta">
                   {i === remainderIdx
-                    ? <span className="chip fixed" title={tL('segTable.remainderHint')}>🔒 <bdi>{dnum(r.distance)} {unit}</bdi></span>
+                    ? <span className="chip fixed" title={tL('segTable.remainderHint')}>{((window.RPGlyph && window.RPGlyph.lock) ? <window.RPGlyph.lock size={13} sw={2.2} style={{ color: 'var(--rp-gold)' }} /> : null)} <bdi>{dnum(r.distance)} {unit}</bdi></span>
                     : (
                       <button type="button" className="chip" onClick={() => onEditValue && onEditValue(r.id, 'dist', r.distance)}>
                         {tL('segTable.distance', { unit })}: <bdi>{dnum(r.distance)}</bdi></button>)}
