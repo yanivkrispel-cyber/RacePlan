@@ -376,6 +376,11 @@ const PaceBandImage = React.forwardRef(function PaceBandImage({ raceName, raceDa
 // chips, then the pace band, the night-before list and the step detail folded away.
 
 const CHECK_STORE = 'rp-watch-check';
+// the runner's own lines (gels, sunglasses…), the same for every race; ticks stay per race
+const OWN_STORE = 'rp-watch-check-own';
+const SUG_KEYS = ['gels', 'sunglasses', 'bib', 'vaseline', 'cap', 'breakfast'];
+const readOwn = () => { try { const v = JSON.parse(localStorage.getItem(OWN_STORE) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
+const writeOwn = (v) => { try { localStorage.setItem(OWN_STORE, JSON.stringify(v)); } catch (e) {} };
 const isoDay = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const fmtPaceW = (sec) => (UW ? UW.fmtPace(sec) : WP.formatPace(sec));
 const fmtShortDay = (iso) => {
@@ -490,6 +495,15 @@ if (window.RP_LIME && !document.getElementById('rp-watch-styles')) {
   .rp-wcheck input:checked{background:var(--rp-gold);border-color:var(--rp-gold)}
   .rp-wcheck input:checked::after{content:"";width:6px;height:11px;border:solid var(--rp-on-gold);border-width:0 2.5px 2.5px 0;transform:rotate(45deg) translate(-1px,-1px)}
   .rp-wcheck input:checked + span{color:var(--rp-text-dim);text-decoration:line-through}
+  .rp-wcheck.own{cursor:default;padding-inline-end:8px}
+  .rp-wdel{appearance:none;flex:0 0 auto;width:34px;height:34px;border-radius:50%;border:0;background:transparent;
+    color:var(--rp-text-dim);display:grid;place-items:center;cursor:pointer}
+  .rp-wdel:hover,.rp-wdel:focus-visible{color:var(--rp-text);background:rgba(255,255,255,.05)}
+  .rp-wadd{display:flex;gap:8px;padding:8px 14px 10px}
+  .rp-wadd input{flex:1;min-width:0;font:inherit;font-size:15px;padding:8px 12px;border-radius:12px;min-height:40px;
+    border:1px solid var(--rp-line-input);background:transparent;color:var(--rp-text)}
+  .rp-wadd input:focus{outline:none;border-color:var(--rp-gold-line)}
+  .rp-wadd input::placeholder{color:var(--rp-text-dim)}
   .rp-wstep{display:grid;grid-template-columns:24px 1fr auto;gap:10px;align-items:center;padding:10px 14px}
   .rp-wstep + .rp-wstep{border-top:1px solid var(--rp-line)}
   .rp-wstep .n{font-family:var(--rp-font-mono);font-size:11px;color:var(--rp-text-dim)}
@@ -611,6 +625,22 @@ function WatchSheet({ g, model, segments, raceName, raceDate, onClose, onSaveBan
     try { const all = JSON.parse(localStorage.getItem(CHECK_STORE) || '{}') || {}; all[checkKey] = next; localStorage.setItem(CHECK_STORE, JSON.stringify(all)); } catch (e) {}
     return next;
   });
+  const [own, setOwn] = React.useState(readOwn);
+  const [draft, setDraft] = React.useState('');
+  const addOwn = (text) => {
+    const tx = String(text || '').trim().slice(0, 80);
+    if (!tx) return;
+    setOwn((prev) => {
+      if (prev.some((o) => o.text === tx) || prev.length >= 30) return prev;
+      const next = [...prev, { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), text: tx }];
+      writeOwn(next); return next;
+    });
+    try { if (navigator.vibrate) navigator.vibrate(6); } catch (e) {}
+  };
+  const removeOwn = (id) => setOwn((prev) => { const next = prev.filter((o) => o.id !== id); writeOwn(next); return next; });
+  const allChecks = [...CHECK_KEYS, ...own.map((o) => 'own:' + o.id)];
+  const doneN = checked.filter((k) => allChecks.includes(k)).length;
+  const sugs = SUG_KEYS.map((k) => tw('watch.check.sug.' + k)).filter((tx) => !own.some((o) => o.text === tx));
   React.useEffect(() => {
     const k = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', k);
@@ -736,13 +766,41 @@ function WatchSheet({ g, model, segments, raceName, raceDate, onClose, onSaveBan
               style={{ borderColor: 'var(--rp-gold-line)', color: 'var(--rp-gold)', fontWeight: 800 }}>
               {bandBusy ? spinner : tw('watch.band.saveShort')}</button>
           </div>
-          <Fold title={tw('watch.check.short')} meta={tw('watch.check.count', { done: checked.length, n: CHECK_KEYS.length })}>
+          <Fold title={tw('watch.check.short')} meta={tw('watch.check.count', { done: doneN, n: allChecks.length })}>
             {CHECK_KEYS.map((k) => (
               <label key={k} className="rp-wcheck">
                 <input type="checkbox" checked={checked.includes(k)} onChange={() => toggle(k)} />
                 <span>{tw(k)}</span>
               </label>
             ))}
+            {own.map((o) => (
+              <div key={o.id} className="rp-wcheck own">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 11, flex: 1, minWidth: 0, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={checked.includes('own:' + o.id)} onChange={() => toggle('own:' + o.id)} />
+                  <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{o.text}</span>
+                </label>
+                <button type="button" className="rp-wdel" onClick={() => removeOwn(o.id)} aria-label={tw('watch.check.remove') + ' ' + o.text}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+                    strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+                </button>
+              </div>
+            ))}
+            <form className="rp-wadd" onSubmit={(e) => { e.preventDefault(); addOwn(draft); setDraft(''); }}>
+              <input id="rp-watch-check-new" type="text" value={draft} maxLength={80} enterKeyHint="done"
+                onChange={(e) => setDraft(e.target.value)} placeholder={tw('watch.check.add')} aria-label={tw('watch.check.add')} />
+              <button type="submit" className="rp-wchip" disabled={!draft.trim()}
+                style={{ borderColor: 'var(--rp-gold-line)', color: 'var(--rp-gold)', fontWeight: 800 }}>{tw('watch.check.addBtn')}</button>
+            </form>
+            {sugs.length > 0 && (
+              <div className="rp-wchips" style={{ padding: '0 14px 12px' }}>
+                {sugs.map((tx) => (
+                  <button type="button" key={tx} className="rp-wchip" onClick={() => addOwn(tx)}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"
+                      strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>{tx}
+                  </button>
+                ))}
+              </div>
+            )}
           </Fold>
           <Fold title={tw('watch.steps.title')} meta={tw('watch.blocks', { count: n })}>
             {blocks.map((b, i) => (
