@@ -5,7 +5,7 @@ const { useRacePlan, formatPace, formatClock, parseClock, formatKm, PaceChart,
         parseGpx, RouteMap, Route3DView, round2, clearSavedPlan,
         AthleteDB, AthletePanel, MyPlansDB, MyPlansPanel, RouteLibrary, RaceAdminPanel,
         PrintableSummary, ActionSheet, RP_EXPORT, ValueEditor, RP_HEAT,
-        computeSegmentElevations, buildPlanSegments, SevenSeg, ClockDot, ClockDisplay } = window;
+        computeSegmentElevations, buildPlanSegments, SevenSeg, ClockDot, ClockDisplay, WatchCard } = window;
 const I18N = window.I18N;
 const useEscape = window.useEscape || (() => {});
 const t = (I18N && I18N.t) || ((k) => k);
@@ -2232,6 +2232,9 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
         /* Off-screen printable summary — the html2canvas target for PDF. */
         .rp-print-wrap { position: fixed; left: -10000px; top: 0; width: 720px;
           pointer-events: none; }
+        /* Off-screen pace band — the html2canvas target for the phone image. */
+        .rp-band-wrap { position: fixed; left: -10000px; top: 0; width: 390px; pointer-events: none; }
+        @media print { .rp-band-wrap { display: none !important; } }
         @media print {
           body { background: #fff !important; }
           .rp-cq > .rp-planner-wrap { display: none !important; }
@@ -2451,6 +2454,11 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
 
         <ConditionsBar weather={weather} status={weatherStatus}
           advisory={heatAdvisory} onApply={applyHeatAdjustment} />
+
+        {WatchCard && (
+          <WatchCard segments={p.segments} profile={p.course?.profile ?? null}
+            raceName={raceName} raceDate={raceDate} onToast={showToast} />
+        )}
 
         {/* Actions. Two that carry the plan forward stay on the bar; the rest
             — import, libraries, navigation, reset — are one tap deeper, so
