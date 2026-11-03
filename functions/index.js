@@ -47,3 +47,12 @@ exports.notifyRouteSubmission = onDocumentCreated(
     });
   }
 );
+
+// ── Send to watch (Garmin Training API) ─────────────────────────────────
+// OFF until RacePlan has its own Garmin app registration: GARMIN_ENABLED in functions/.env. While it is
+// false these functions are not exported at all, so a functions deploy never asks for the Garmin
+// secrets. To switch on (docs/GARMIN.md): set the three secrets, GARMIN_ENABLED=true, deploy functions,
+// then add the /api/garmin/* hosting rewrites.
+if (process.env.GARMIN_ENABLED === 'true') {
+  Object.assign(exports, require('./garmin-functions'));
+}

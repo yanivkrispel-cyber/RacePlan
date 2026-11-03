@@ -50,6 +50,20 @@ service cloud.firestore {
       allow list, update, delete: if false;
     }
 
+    // Send to watch (functions/garmin.js). Only the Cloud Functions write here (admin SDK). A runner
+    // may read their own connection state and their own sends; the tokens and the OAuth states are
+    // never readable from a browser.
+    match /garminLinks/{uid} {
+      allow get:   if signedIn() && request.auth.uid == uid;
+      allow list, write: if false;
+      match /sent/{id} {
+        allow read:  if signedIn() && request.auth.uid == uid;
+        allow write: if false;
+      }
+    }
+    match /garminTokens/{uid} { allow read, write: if false; }
+    match /garminOAuth/{state} { allow read, write: if false; }
+
     // Community route submissions. Any verified user may propose a GPX route
     // for a race; only the coach reads the queue and approves / rejects.
     // Approval itself writes the course onto races/{id} (owner-only above).
