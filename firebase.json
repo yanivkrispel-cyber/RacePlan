@@ -30,6 +30,7 @@
     {
       "source": "functions",
       "codebase": "default",
+      "predeploy": ["node build/sync-functions.mjs"],
       "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
     }
   ]

@@ -68,6 +68,35 @@ const RP_EXPORT = (() => {
     return 'downloaded';
   }
 
+  // A node as a PNG (the pace band for the phone's lock screen): to the share sheet, else a download.
+  async function nodeToPngBlob(node, opts) {
+    opts = opts || {};
+    await ensureScript(H2C, 'html2canvas');
+    const canvas = await window.html2canvas(node, {
+      scale: opts.scale || 3, backgroundColor: null, useCORS: true, logging: false,
+    });
+    return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('no image'))), 'image/png'));
+  }
+
+  async function shareImage(node, filename, title) {
+    const blob = await nodeToPngBlob(node);
+    const file = new File([blob], filename, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: title || filename });
+        return 'shared';
+      } catch (e) {
+        if (e && e.name === 'AbortError') return 'cancelled';
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    return 'downloaded';
+  }
+
   async function shareLink(url, title) {
     if (navigator.share) {
       try { await navigator.share({ title, url }); return 'shared'; }
@@ -81,7 +110,7 @@ const RP_EXPORT = (() => {
     return 'prompt';
   }
 
-  return { ensureScript, nodeToPdfBlob, sharePdf, shareLink };
+  return { ensureScript, nodeToPdfBlob, sharePdf, nodeToPngBlob, shareImage, shareLink };
 })();
 
 // ── PrintableSummary ─────────────────────────────────────────────────────

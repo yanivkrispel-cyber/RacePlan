@@ -47,6 +47,8 @@ const JSX_FILES = [
   'src/myplans.jsx',
   'src/routes.jsx',
   'src/exporting.jsx',
+  'src/watch.jsx',
+  'src/watchcard.jsx',
   'src/valueeditor.jsx',
   'src/update.jsx',
   'src/planner-b.jsx',
