@@ -24,6 +24,8 @@ below are done. While it's off, a functions deploy is the same as before and nev
   (`https://www.garmin.com/en-US/forms/StarterGarminConnectDeveloperAccess/`) sent 3.11.2026 as
   "RacePlan (CoachKrispel)", email `raceplan@coachkrispel.com` (a Zoho alias of yaniv.krispel@, so Garmin's
   mail lands in the normal inbox), Training API only, 100 to 1000 users. Waiting for Garmin's reply.
+- 3.11.2026: the company was approved (account raceplan@coachkrispel.com), and the app "RacePlan" was
+  added in it (Training API, redirect /api/garmin/callback). App status: Pending, waiting for Garmin.
 - Starter tier: up to 1,000 connected users per company, Training and Courses API included.
 - When the new account opens, the add-app form limits: description at most 450 characters, the data-use
   field at most 300.
