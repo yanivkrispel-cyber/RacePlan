@@ -803,6 +803,170 @@ function layoutPasses(samples, roadWidthM) {
 // orbit-camera controls. Returns a cleanup function that tears everything
 // down; mutates `stateRef.current` with a `playing` flag and a `seek(frac)`
 // function the React shell can drive from its own controls.
+// ── Real ground (lime, src/terrain3d.jsx): the terrain as a shaded map, the route as a ribbon of light on it with a
+// light curtain down to the ground, start and finish as glows. Same frame and the same vertical scale as the route,
+// so the road climbs the hill it really climbs. `groundW(x, z)` is the ground height at a world point.
+const TER_TUBE_V = `attribute float aU; varying float vU; void main(){ vU = aU; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const TER_TUBE_F = `uniform float uProg, uDim, uA, uHead, uFeatOn; uniform vec2 uFeat; uniform vec3 uColor, uFeatColor; varying float vU;
+  void main(){ float d = step(vU, uProg);
+    float inF = uFeatOn * smoothstep(uFeat.x - 0.002, uFeat.x + 0.002, vU) * (1.0 - smoothstep(uFeat.y - 0.002, uFeat.y + 0.002, vU));
+    vec3 base = mix(uColor, uFeatColor, inF);
+    vec3 c = mix(base * mix(uDim, 1.0, inF * 0.7), base, d);
+    float h = exp(-pow((vU - uProg) * uHead, 2.0)); c += vec3(0.9, 1.0, 0.75) * h * 0.8; gl_FragColor = vec4(c * uA, 1.0); }`;
+const TER_CUR_V = `attribute float aU; attribute float aT; varying float vU; varying float vT;
+  void main(){ vU = aU; vT = aT; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const TER_CUR_F = `uniform float uProg, uBase, uLit; uniform vec3 uColor; varying float vU; varying float vT;
+  void main(){ float d = step(vU, uProg); float a = pow(vT, 1.6) * (uBase + d * uLit); gl_FragColor = vec4(uColor * a, 1.0); }`;
+
+function terGlowTexture(THREE) {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.22, 'rgba(255,255,255,.55)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+function buildTerrainWorld(THREE, scene, o) {
+  const { TER, scale, cx, cz, ex, roadPoints, roadWidth } = o;
+  const additive = (x) => Object.assign({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }, x);
+  const yOf = (e) => (e - TER.eMin) * scale * ex;
+  const wx0 = (TER.minX - cx) * scale, wz0 = (TER.minZ - cz) * scale, ww = TER.W * scale, wh = TER.H * scale;
+  const groundW = (x, z) => {
+    const fx = ((x - wx0) / ww) * (TER.gx - 1), fy = ((z - wz0) / wh) * (TER.gy - 1);
+    const x0 = Math.max(0, Math.min(TER.gx - 2, Math.floor(fx))), y0 = Math.max(0, Math.min(TER.gy - 2, Math.floor(fy)));
+    const tx = Math.max(0, Math.min(1, fx - x0)), ty = Math.max(0, Math.min(1, fy - y0)), G = TER.grid, w = TER.gx;
+    return yOf(G[y0 * w + x0] * (1 - tx) * (1 - ty) + G[y0 * w + x0 + 1] * tx * (1 - ty) + G[(y0 + 1) * w + x0] * (1 - tx) * ty + G[(y0 + 1) * w + x0 + 1] * tx * ty);
+  };
+
+  // the ground: one mesh per height-grid point, the baked map on it
+  const geo = new THREE.PlaneGeometry(ww, wh, TER.gx - 1, TER.gy - 1);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  for (let k = 0; k < TER.gx * TER.gy; k++) pos.setY(k, yOf(TER.grid[k]));
+  pos.needsUpdate = true;
+  geo.computeBoundingSphere();
+  const tex = new THREE.CanvasTexture(TER.texture);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = 8;
+  const ground = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+  ground.position.set(wx0 + ww / 2, 0, wz0 + wh / 2);
+  scene.add(ground);
+
+  // the plate's cut sides, so the ground reads as a block of land and not a floating sheet
+  const base = -Math.max(1.2, (TER.eMax - TER.eMin) * scale * ex * 0.18);
+  const wallPos = [], wallCol = [], wallIdx = [];
+  const edge = (list) => {
+    const start = wallPos.length / 3;
+    list.forEach(([i, j], n) => {
+      const x = wx0 + (i / (TER.gx - 1)) * ww, z = wz0 + (j / (TER.gy - 1)) * wh, y = yOf(TER.grid[j * TER.gx + i]);
+      wallPos.push(x, y, z, x, base, z); wallCol.push(0.09, 0.11, 0.06, 0.02, 0.024, 0.02);
+      if (n) { const b = start + (n - 1) * 2; wallIdx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); }
+    });
+  };
+  const top = [], bot = [], lef = [], rig = [];
+  for (let i = 0; i < TER.gx; i++) { top.push([i, 0]); bot.push([i, TER.gy - 1]); }
+  for (let j = 0; j < TER.gy; j++) { lef.push([0, j]); rig.push([TER.gx - 1, j]); }
+  [top, bot, lef, rig].forEach(edge);
+  const wg = new THREE.BufferGeometry();
+  wg.setAttribute('position', new THREE.Float32BufferAttribute(wallPos, 3));
+  wg.setAttribute('color', new THREE.Float32BufferAttribute(wallCol, 3));
+  wg.setIndex(wallIdx);
+  scene.add(new THREE.Mesh(wg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, toneMapped: false })));
+  const under = new THREE.Mesh(new THREE.PlaneGeometry(ww * 14, wh * 14), new THREE.MeshBasicMaterial({ color: 0x040504, toneMapped: false }));
+  under.rotation.x = -Math.PI / 2; under.position.set(wx0 + ww / 2, base - 0.05, wz0 + wh / 2);
+  scene.add(under);
+
+  // the route: a core of light, a halo, and a curtain down to the ground; run part bright, the rest dimmed
+  const lime = new THREE.Color(0xDDFF4A);
+  const curve = new THREE.CatmullRomCurve3(roadPoints, false, 'centripetal');
+  const TS = Math.min(3000, roadPoints.length * 3), RS = 6;
+  const progU = [];
+  const featColor = new THREE.Color(0xFFB547), feat = new THREE.Vector2(0, 0);
+  [[roadWidth * 0.3, 1, 140, 0.5, false], [roadWidth * 0.7, 0.22, 60, 0.55, true]].forEach(([r, a, head, dim, glow]) => {
+    const g = new THREE.TubeGeometry(curve, TS, r, RS, false);
+    const n = g.attributes.position.count, au = new Float32Array(n);
+    for (let v = 0; v < n; v++) au[v] = Math.floor(v / (RS + 1)) / TS;
+    g.setAttribute('aU', new THREE.BufferAttribute(au, 1));
+    const un = { uProg: { value: 0 }, uDim: { value: dim }, uA: { value: a }, uHead: { value: head }, uColor: { value: lime },
+      uFeat: { value: feat }, uFeatOn: { value: 0 }, uFeatColor: { value: featColor } };
+    const m = glow ? additive({ uniforms: un, vertexShader: TER_TUBE_V, fragmentShader: TER_TUBE_F })
+      : { uniforms: un, vertexShader: TER_TUBE_V, fragmentShader: TER_TUBE_F, toneMapped: false };
+    scene.add(new THREE.Mesh(g, new THREE.ShaderMaterial(m)));
+    progU.push(un);
+  });
+  {
+    const cp = [], au = [], at = [], idx = [];
+    roadPoints.forEach((p, i) => {
+      const u = i / (roadPoints.length - 1);
+      cp.push(p.x, p.y, p.z, p.x, groundW(p.x, p.z) - 0.02, p.z); au.push(u, u); at.push(1, 0);
+      if (i) { const b = (i - 1) * 2; idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2); }
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(cp, 3));
+    g.setAttribute('aU', new THREE.Float32BufferAttribute(au, 1));
+    g.setAttribute('aT', new THREE.Float32BufferAttribute(at, 1));
+    g.setIndex(idx);
+    const un = { uProg: { value: 0 }, uBase: { value: 0.2 }, uLit: { value: 0.36 }, uColor: { value: lime } };
+    scene.add(new THREE.Mesh(g, new THREE.ShaderMaterial(additive({ uniforms: un, vertexShader: TER_CUR_V, fragmentShader: TER_CUR_F, side: THREE.DoubleSide }))));
+    progU.push(un);
+  }
+  const glowTex = terGlowTexture(THREE);
+  const glowAt = (p, color, size) => {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial(additive({ map: glowTex, color })));
+    sp.scale.set(size, size, 1); sp.position.copy(p); scene.add(sp); return sp;
+  };
+  glowAt(roadPoints[0], 0xDDFF4A, roadWidth * 7);
+  glowAt(roadPoints[roadPoints.length - 1], 0xF4F6EE, roadWidth * 7);
+  return {
+    groundW, glowAt, glowTex,
+    setProgress(u) { progU.forEach((un) => { un.uProg.value = u; }); },
+    // light one stretch of the route (a climb amber, a descent ice), `on` 0..1 fades it
+    setFeature(f, on) {
+      if (f) { feat.set(f.u0, f.u1); featColor.setHex(f.kind === 'climb' ? 0xFFB547 : 0x8FD0FF); }
+      progU.forEach((un) => { if (un.uFeatOn) un.uFeatOn.value = on; });
+    },
+  };
+}
+
+// ── Cinema (lime + terrain): the cards over the scene, and the HTML tags that follow points in it ──
+if (LIME3 && typeof document !== 'undefined' && !document.getElementById('rp-cine-styles')) {
+  const st = document.createElement('style');
+  st.id = 'rp-cine-styles';
+  st.textContent = `
+  .rp-cine-tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  .rp-cine-tag{position:absolute;transform:translate(-50%,-100%);white-space:nowrap;font:700 10.5px/1.2 var(--rp-font-ui);
+    color:#eef6d8;background:rgba(5,6,5,.62);border:1px solid rgba(221,255,74,.22);border-radius:6px;padding:2px 6px;
+    text-shadow:0 0 6px rgba(5,6,5,.9);transition:opacity .2s}
+  .rp-cine-tag.km{font-family:var(--rp-font-mono);font-size:9.5px;color:#cfd6c0;background:rgba(5,6,5,.5);border-color:rgba(255,255,255,.12);direction:ltr}
+  .rp-cine-tag.climb{color:#FFB547;border-color:rgba(255,181,71,.45)}
+  .rp-cine-tag.descent{color:#8fd0ff;border-color:rgba(143,208,255,.4)}
+  .rp-cine-card{position:absolute;inset-inline:12px;bottom:12px;pointer-events:none;background:rgba(5,6,5,.8);
+    border:1px solid rgba(221,255,74,.28);border-radius:16px;padding:10px 13px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+    opacity:0;transform:translateY(8px);transition:opacity .35s ease,transform .35s ease;max-width:440px;margin-inline:auto}
+  .rp-cine-card.on{opacity:1;transform:none}
+  .rp-cine-card.compact{inset-inline-start:auto;inset-inline-end:8px;bottom:16px;max-width:min(64%,360px);padding:7px 10px;border-radius:12px}
+  .rp-cine-card.compact .s{display:none}
+  .rp-cine-card.compact .t{font-size:13px}
+  .rp-cine-card.compact .k{font-size:9px;margin-bottom:3px}
+  .rp-cine-card .k{font:700 10px/1 var(--rp-font-mono);letter-spacing:.16em;color:#DDFF4A;direction:ltr;text-align:start;display:block;margin-bottom:5px}
+  .rp-cine-card.climb .k{color:#FFB547}.rp-cine-card.descent .k{color:#8fd0ff}
+  .rp-cine-card .t{font:800 15px/1.3 var(--rp-font-display);color:#F4F6EE}
+  .rp-cine-card .s{font:500 12.5px/1.45 var(--rp-font-ui);color:#b9c0ae;margin-top:3px}
+  .rp-cine-card bdi{font-variant-numeric:tabular-nums}
+  .rp-cine-attr{position:absolute;inset-inline-end:8px;bottom:3px;font:500 8.5px/1 var(--rp-font-ui);color:rgba(255,255,255,.34);
+    pointer-events:none;direction:ltr}
+  @media (prefers-reduced-motion:reduce){.rp-cine-card{transition:none}}
+  `;
+  document.head.appendChild(st);
+}
+const cineEsc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// a translation with its values isolated: numbers glued to Hebrew text keep their place ("ב-1.2 ק"מ")
+const cineT = (key, p) => {
+  const q = {};
+  Object.keys(p || {}).forEach((k) => { q[k] = '\u0001' + k + '\u0002'; });
+  return cineEsc(t(key, q)).replace(/\u0001(\w+)\u0002/g, (_, k) => '<bdi>' + cineEsc(p[k]) + '</bdi>');
+};
+
 function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   const { track, profile, rows, totalDist, weather, raceTime, raceName } = data;
   if (!track || track.length < 2) throw new Error('route3d: no track');
@@ -819,7 +983,10 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   const weatherKind = weatherKindFromCode(weather && weather.code);
   const weatherFilter = WEATHER_FILTERS[weatherKind] || WEATHER_FILTERS.clear;
 
-  const STEPS = Math.max(60, Math.min(240, Math.round((totalDist || 5) * 24)));
+  const hasTer = LIME3 && !!data.terrain;
+  // on the ground the route needs more points: the hills between two samples must not swallow it
+  const STEPS = hasTer ? Math.max(120, Math.min(560, Math.round((totalDist || 5) * 14)))
+    : Math.max(60, Math.min(240, Math.round((totalDist || 5) * 24)));
   const { samples, totalKm } = buildSamples(track, profile, STEPS);
 
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, minEle = Infinity, maxEle = -Infinity;
@@ -836,14 +1003,31 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   // the same trick physical relief maps use.
   const EXAGGERATION = 9;
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
+  // ── Real ground (lime): one vertical scale for the ground and the route, so a climb on the road is the hill it
+  // climbs. Picked from the relief around the course: enough that a flat city course still shows its bridges,
+  // never the spiky 9x of the floating road (rejected 5.10.2026), at least 1.6x so a mountain course reads as one.
+  const TER = hasTer ? data.terrain : null;
+  const terrainAt = TER && window.TERRAIN3D ? window.TERRAIN3D.sampler(TER) : null;
+  // the course's own relief on the ground (not the whole map box, whose valleys would flatten a city course's hills)
+  let courseRelief = 0;
+  if (TER) {
+    let lo = Infinity, hi = -Infinity;
+    samples.forEach((sm) => { const e = terrainAt(sm.x, sm.z); lo = Math.min(lo, e); hi = Math.max(hi, e); });
+    courseRelief = Math.max(15, hi - lo);
+  }
+  // the course's climbing as about a tenth of the scene's width: a 2 % road reads as a climb, between 2x and 5x
+  const TER_EX = TER ? Math.max(2, Math.min(5, (TARGET_SIZE * 0.1) / (courseRelief * scale))) : 0;
+  const yGround = (x, z) => (terrainAt(x, z) - TER.eMin) * scale * TER_EX; // x, z in source meters
 
-  const roadWidth = Math.max(1.4, TARGET_SIZE * 0.024);
+  // on the ground the route is a ribbon of light, a few tens of meters wide, not the floating road's broad slab
+  const roadWidth = TER ? Math.max(0.32, TARGET_SIZE * 0.0055) : Math.max(1.4, TARGET_SIZE * 0.024);
   const roadThickness = roadWidth * 0.22;
   const laid = layoutPasses(samples, roadWidth / scale);
   minEle = Math.min(...laid.map((s) => s.ele));
   const points = laid.map((s) => new THREE.Vector3(
     (s.x - cx) * scale,
-    (s.ele - minEle) * scale * EXAGGERATION + s.lift * roadThickness * 0.5,
+    TER ? yGround(s.x, s.z) + roadWidth * (0.9 + s.lift * 0.4)
+      : (s.ele - minEle) * scale * EXAGGERATION + s.lift * roadThickness * 0.5,
     (s.z - cz) * scale,
   ));
   const curve = new THREE.CatmullRomCurve3(points);
@@ -866,6 +1050,9 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     roadPoints.push(curve.getPointAt(u));
     roadWidths.push(roadWidth * (1 - (1 - LANE_NARROW) * laneAtU(u)));
   }
+  // between two samples the smooth curve can cut into a crest: keep every drawn point above the ground
+  const groundAtW = TER ? (x, z) => yGround(x / scale + cx, z / scale + cz) : null;
+  if (TER) roadPoints.forEach((p) => { const g = groundAtW(p.x, p.z) + roadWidth * 0.55; if (p.y < g) p.y = g; });
 
   // ── Scene ──
   const BASE_FOG_DENSITY = 0.0022;
@@ -874,6 +1061,8 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   scene.fog = new THREE.FogExp2(0x2e2438, BASE_FOG_DENSITY);
   const sky = makeSkyDome(THREE, 3000);
   scene.add(sky.mesh);
+  // lime on the ground: no daylight dome; the route is the light (the day / weather still tints the fog's density)
+  if (hasTer) { sky.mesh.visible = false; scene.background.setHex(0x050605); }
 
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -897,6 +1086,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   // complexity/cost here) that reads as "premium wet-look pavement" rather
   // than a CAD viewport.
   const FLOOR_Y = -0.42;
+  const addLegacy = (obj) => { if (!TER) scene.add(obj); return obj; };
   // Roughness/metalness tuned to avoid a blown-out sun-glint hotspot now that
   // the default chase-cam view sits low and close to the floor — a grazing
   // view angle onto a near-mirror surface (the old wide overview angle's
@@ -906,13 +1096,13 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(TARGET_SIZE * 9, TARGET_SIZE * 9), floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = FLOOR_Y;
-  scene.add(floor);
+  addLegacy(floor);
 
   const grid = new THREE.GridHelper(TARGET_SIZE * 2.2, 22, LIME3 ? 0x2a3318 : 0x2a3346, LIME3 ? 0x161a10 : 0x1a2030);
   grid.position.y = FLOOR_Y + 0.01;
   grid.material.transparent = true;
   grid.material.opacity = 0.35;
-  scene.add(grid);
+  addLegacy(grid);
 
   // ── The road surface: a flat, paved ribbon with the "blue line" real
   // marathons paint down the tangent line for the broadcast cameras ──
@@ -925,12 +1115,12 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   // Wet-weather forecasts make the pavement itself read as rain-slicked —
   // lower roughness / a touch of metalness reads as a sheen under the sun.
   const wet = weatherFilter.wet;
-  scene.add(new THREE.Mesh(topGeo, new THREE.MeshStandardMaterial({
+  addLegacy(new THREE.Mesh(topGeo, new THREE.MeshStandardMaterial({
     map: roadTexture, roughness: 0.92 - wet * 0.55, metalness: 0.02 + wet * 0.35, side: THREE.DoubleSide,
   })));
   const wallMat = new THREE.MeshStandardMaterial({ color: 0x1b1e26, roughness: 0.95 });
-  scene.add(new THREE.Mesh(leftWallGeo, wallMat));
-  scene.add(new THREE.Mesh(rightWallGeo, wallMat));
+  addLegacy(new THREE.Mesh(leftWallGeo, wallMat));
+  addLegacy(new THREE.Mesh(rightWallGeo, wallMat));
 
   // A soft, low-opacity mirrored copy of the road surface beneath the floor
   // plane — reflecting a mesh about a horizontal plane y=FLOOR_Y is just
@@ -940,7 +1130,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   }));
   reflMesh.position.y = FLOOR_Y * 2;
   reflMesh.scale.y = -1;
-  scene.add(reflMesh);
+  addLegacy(reflMesh);
 
   // "Already run" reveal — a brighter overlay whose draw range grows with
   // progress, so the travelled portion visibly lights up while playing.
@@ -949,29 +1139,29 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   const revealMesh = new THREE.Mesh(revealGeo, new THREE.MeshStandardMaterial({
     map: roadTexture, emissive: LIME3 ? 0x1a200a : 0x2a2010, emissiveIntensity: 0.55, roughness: 0.7, side: THREE.DoubleSide,
   }));
-  scene.add(revealMesh);
+  addLegacy(revealMesh);
   const revealIndexCount = revealGeo.index.count;
   const SURFACE_Y = roadThickness / 2 + 0.05; // lift markers/runner onto the road surface, not its centerline
 
   // ── Ground "shadow" ribbon + the height curtain, for depth cues ──
   const groundCurve = new THREE.CatmullRomCurve3(roadPoints.map((p) => new THREE.Vector3(p.x, -0.35, p.z)));
   const groundGeo = new THREE.TubeGeometry(groundCurve, ROAD_STEPS, tubeRadius * 1.6, 6, false);
-  scene.add(new THREE.Mesh(groundGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26 })));
+  addLegacy(new THREE.Mesh(groundGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26 })));
 
   const heightCurtain = buildHeightCurtain(THREE, roadPoints, roadWidth, roadThickness, FLOOR_Y);
-  scene.add(heightCurtain.group);
+  addLegacy(heightCurtain.group);
 
   // ── Start / finish markers + gates ──
   const markerGeo = new THREE.SphereGeometry(tubeRadius * 1.8, 16, 16);
   const startMesh = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({ color: LIME3 ? 0xDDFF4A : 0x8091BE, emissive: LIME3 ? 0x2a3305 : 0x1a1f33 }));
   startMesh.position.copy(points[0]); startMesh.position.y += SURFACE_Y;
-  scene.add(startMesh);
+  addLegacy(startMesh);
   const finishMesh = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({ color: LIME3 ? 0xF4F6EE : 0xC15A2E, emissive: LIME3 ? 0x222222 : 0x2a0f05 }));
   finishMesh.position.copy(points[points.length - 1]); finishMesh.position.y += SURFACE_Y;
-  scene.add(finishMesh);
+  addLegacy(finishMesh);
 
-  scene.add(buildGate(THREE, curve, 0, roadWidth, roadThickness, t('view3d.startGate'), false, LIME3 ? 0xDDFF4A : 0x8091BE));
-  scene.add(buildGate(THREE, curve, 1, roadWidth, roadThickness, t('view3d.finishGate'), true, LIME3 ? 0xF4F6EE : 0xC15A2E, raceName || ''));
+  addLegacy(buildGate(THREE, curve, 0, roadWidth, roadThickness, t('view3d.startGate'), false, LIME3 ? 0xDDFF4A : 0x8091BE));
+  addLegacy(buildGate(THREE, curve, 1, roadWidth, roadThickness, t('view3d.finishGate'), true, LIME3 ? 0xF4F6EE : 0xC15A2E, raceName || ''));
 
   // ── Split signs — one per interior plan-segment boundary, showing the
   // checkpoint's cumulative distance and cumulative planned time, like a
@@ -979,8 +1169,10 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   (rows || []).slice(0, -1).forEach((r) => {
     const u = Math.max(0, Math.min(1, r.cumDist / (totalDist || 1)));
     const distText = U ? U.fmtDist(r.cumDist) : `${r.cumDist.toFixed(1)} km`;
-    scene.add(buildSplitSign(THREE, curve, u, roadWidth, roadThickness, distText, _fmtClock(r.cumTime), laneAtU(u) > 0.2 ? -1 : 1));
+    addLegacy(buildSplitSign(THREE, curve, u, roadWidth, roadThickness, distText, _fmtClock(r.cumTime), laneAtU(u) > 0.2 ? -1 : 1));
   });
+
+  const terWorld = TER ? buildTerrainWorld(THREE, scene, { TER, scale, cx, cz, ex: TER_EX, roadPoints, roadWidth }) : null;
 
   // ── The runner ──
   const runner = new THREE.Mesh(
@@ -989,6 +1181,14 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   );
   runner.add(new THREE.PointLight(LIME3 ? 0xDDFF4A : 0xF5C24A, 1.1, TARGET_SIZE * 0.4));
   scene.add(runner);
+  if (terWorld) { // a glow and a thin beam of light, so the runner is found from far above
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: terWorld.glowTex, color: 0xDDFF4A, transparent: true,
+      blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    glow.scale.set(roadWidth * 8, roadWidth * 8, 1); runner.add(glow);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(roadWidth * 0.08, roadWidth * 0.08, roadWidth * 22, 8, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xDDFF4A, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    beam.position.y = roadWidth * 11; runner.add(beam);
+  }
 
   // ── Rain, only when the real forecast for race day calls for it ──
   const rain = weatherFilter.rain ? buildRain(THREE, 700, TARGET_SIZE * 2.6, TARGET_SIZE * 0.55) : null;
@@ -996,7 +1196,8 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
 
   // ── Finish-line confetti — bursts once per lap of the animation, the
   // moment the runner crosses the finish (see the loop-wrap check in tick). ──
-  const confetti = buildConfetti(THREE, 220, roadWidth * 3.2, FLOOR_Y);
+  const confetti = buildConfetti(THREE, 220, TER ? roadWidth * 9 : roadWidth * 3.2,
+    TER ? groundAtW(points[points.length - 1].x, points[points.length - 1].z) : FLOOR_Y);
   scene.add(confetti.points);
   const finishPoint = points[points.length - 1].clone();
   finishPoint.y += SURFACE_Y;
@@ -1051,6 +1252,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     hemi.groundColor.copy(_cHemiGround);
     hemi.intensity = hemiI * weatherFilter.hemiMult;
     scene.fog.color.copy(_cHorizon);
+    if (TER) scene.fog.color.setHex(0x050605); // lime on the ground: black, so the far hills fade into the page
     scene.fog.density = BASE_FOG_DENSITY * weatherFilter.fogMult;
   }
 
@@ -1090,6 +1292,12 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   // rather than exactly grazing it.
   const GROUND_MARGIN = 0.6;
   const _up = new THREE.Vector3(0, 1, 0);
+  // the eye stays above the ground (the floor was y=0; real ground is higher in places)
+  function groundClamp(p) {
+    if (!TER) return;
+    const g = groundAtW(p.x, p.z) + roadWidth * 3;
+    if (p.y < g) p.y = g;
+  }
   function applyCameraOrbit() {
     const maxPolar = Math.acos(Math.max(-1, Math.min(1, (GROUND_MARGIN - target.y) / radius)));
     polar = Math.max(0.12, Math.min(maxPolar, polar));
@@ -1098,6 +1306,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
       target.y + radius * Math.cos(polar),
       target.z + radius * Math.sin(polar) * Math.cos(azimuth),
     );
+    groundClamp(camera.position);
     camera.lookAt(target);
   }
   // Runner's-eye view: parked at head height on the runner's own point,
@@ -1108,6 +1317,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     const tangent = curve.getTangentAt(curFrac).normalize();
     const eyePos = point.clone().addScaledVector(_up, SURFACE_Y + roadWidth * 1.6);
     camera.position.copy(eyePos);
+    groundClamp(camera.position);
     const yawed = tangent.applyAxisAngle(_up, povYaw);
     camera.lookAt(eyePos.clone().addScaledVector(yawed, TARGET_SIZE * 0.15));
   }
@@ -1118,10 +1328,198 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     const point = curve.getPointAt(curFrac);
     const tangent = curve.getTangentAt(curFrac).normalize();
     const side = new THREE.Vector3().crossVectors(_up, tangent).normalize();
-    camera.position.copy(point).addScaledVector(side, roadWidth * 9).addScaledVector(_up, SURFACE_Y + roadWidth * 2.2);
+    camera.position.copy(point).addScaledVector(side, roadWidth * (TER ? 26 : 9)).addScaledVector(_up, SURFACE_Y + roadWidth * (TER ? 9 : 2.2));
+    groundClamp(camera.position);
     camera.lookAt(point.clone().addScaledVector(_up, SURFACE_Y + roadWidth * 1.2));
   }
+  // ── Cinema (option D): an opening orbit, the run with the camera tucked behind, slowing and swinging to the
+  // side at every real climb and descent with a card of what the plan says there, a closing orbit at the finish.
+  const kmU = 1000 * scale; // world units per km
+  const profEnd = Array.isArray(profile) && profile.length > 1 && isFinite(profile[profile.length - 1].d)
+    ? profile[profile.length - 1].d : (totalDist || 1);
+  const timeAtDist = (d) => {
+    if (d <= 0) return 0;
+    const last = checkpoints[checkpoints.length - 1];
+    if (d >= last.cumDist) return last.cumTime;
+    let lo = 0, hi = checkpoints.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (checkpoints[m].cumDist <= d) lo = m; else hi = m; }
+    const a = checkpoints[lo], b = checkpoints[hi];
+    return a.cumTime + (b.cumDist > a.cumDist ? (d - a.cumDist) / (b.cumDist - a.cumDist) : 0) * (b.cumTime - a.cumTime);
+  };
+  const features = TER && window.TERRAIN3D ? window.TERRAIN3D.findClimbs(profile).map((c) => {
+    const u0 = Math.max(0, c.d0 / profEnd), u1 = Math.min(1, c.d1 / profEnd);
+    const pd0 = u0 * totalDist, pd1 = u1 * totalDist;
+    return { ...c, u0, u1, pace: (timeAtDist(pd1) - timeAtDist(pd0)) / Math.max(0.01, pd1 - pd0) };
+  }) : [];
+  {
+    const keep = (kind, n) => features.filter((f) => f.kind === kind).sort((a, b) => b.gain - a.gain).slice(0, n);
+    const kept = keep('climb', 4).concat(keep('descent', 2)).sort((a, b) => a.u0 - b.u0);
+    features.length = 0; kept.forEach((f) => features.push(f));
+  }
+  const climbsOnly = features.filter((f) => f.kind === 'climb');
+  const avgPace = totalTime / Math.max(0.01, totalDist || 1);
+  const totalGain = Math.round(data.gain || 0);
+  const fmtP = (sec) => (U ? U.fmtPace(sec) + ' ' + U.paceUnit() : _fmtClock(sec));
+  const fmtD = (km) => (U ? U.fmtDist(km) : km.toFixed(1) + ' km');
+  const fmtE = (m) => (U ? U.fmtElev(m) : Math.round(m) + ' m');
+  const unitUp = U && U.system === 'imperial' ? 'MI' : 'KM';
+  const dispD1 = (km) => (U ? U.dispDistNum(km) : km.toFixed(1));
+  const CINE_RUN_SEC = 26;        // the run itself at 1x, before the slow-downs on the hills
+  const cine = { phase: 'intro', pt: 0, yaw: 0, card: '', hd: new THREE.Vector3(0, 0, -1), feat: null, featOn: 0 };
+  const wantPos = new THREE.Vector3(), wantLook = new THREE.Vector3(), camLook = new THREE.Vector3();
+  let courseCenter = new THREE.Vector3(), courseR = TARGET_SIZE * 0.5;
+  {
+    const bb = new THREE.Box3(); roadPoints.forEach((p) => bb.expandByPoint(p));
+    bb.getCenter(courseCenter); const sz = new THREE.Vector3(); bb.getSize(sz); courseR = Math.max(sz.x, sz.z) * 0.5;
+  }
+  // the overlays: tags that follow points, the card, the map credit
+  let tagLayer = null, cardEl = null;
+  const tags = [];
+  if (TER) {
+    tagLayer = document.createElement('div'); tagLayer.className = 'rp-cine-tags'; container.appendChild(tagLayer);
+    cardEl = document.createElement('div'); cardEl.className = 'rp-cine-card'; container.appendChild(cardEl);
+    const attr = document.createElement('div'); attr.className = 'rp-cine-attr'; attr.textContent = TER.attribution; container.appendChild(attr);
+    const tag = (html, p, cls, lift = 1) => {
+      const el = document.createElement('div'); el.className = 'rp-cine-tag ' + (cls || ''); el.innerHTML = html; tagLayer.appendChild(el);
+      tags.push({ el, p: p.clone().add(new THREE.Vector3(0, roadWidth * 3 * lift, 0)), cls });
+    };
+    tag(cineEsc(t('view3d.startGate')), roadPoints[0], '', 1.4);
+    tag(cineEsc(t('view3d.finishGate')), roadPoints[roadPoints.length - 1], '', 1.4);
+    const stepKm = U && U.system === 'imperial' ? 1.609344 * 5 : 5;
+    for (let k = stepKm; k < (totalDist || 0) - stepKm * 0.4; k += stepKm) {
+      tag(cineEsc(dispD1(k)) + ' ' + unitUp, curve.getPointAt(Math.min(1, k / totalDist)), 'km', 0.6);
+    }
+    let nc = 0, nd = 0;
+    features.forEach((f) => {
+      const n = f.kind === 'climb' ? ++nc : ++nd;
+      tag(cineEsc(t(f.kind === 'climb' ? 'view3d.cine.tagClimb' : 'view3d.cine.tagDescent', { n })),
+        curve.getPointAt(f.kind === 'climb' ? f.u1 : f.u0), f.kind, 1.2);
+      f.n = n;
+    });
+  }
+  const _pv = new THREE.Vector3();
+  function placeTags() {
+    if (!tagLayer) return;
+    const w = container.clientWidth, h = container.clientHeight;
+    tags.forEach((tg) => {
+      _pv.copy(tg.p).project(camera);
+      const far = camera.position.distanceTo(tg.p) > TARGET_SIZE * (tg.cls === 'km' ? 0.75 : 1.6);
+      if (_pv.z > 1 || _pv.x < -1.1 || _pv.x > 1.1 || _pv.y < -1.1 || _pv.y > 1.1 || far) { tg.el.style.opacity = '0'; return; }
+      tg.el.style.opacity = '1';
+      tg.el.style.left = ((_pv.x + 1) / 2 * w).toFixed(1) + 'px';
+      tg.el.style.top = ((1 - _pv.y) / 2 * h).toFixed(1) + 'px';
+    });
+  }
+  function showCard(key, cls, k, title, sub) {
+    if (!cardEl || key === cine.card) return;
+    cine.card = key;
+    if (!key) { cardEl.classList.remove('on'); return; }
+    cardEl.className = 'rp-cine-card on ' + (cls || '') + (container.clientHeight < 360 ? ' compact' : '');
+    cardEl.innerHTML = '<span class="k">' + cineEsc(k) + '</span><div class="t">' + title + '</div>' + (sub ? '<div class="s">' + sub + '</div>' : '');
+  }
+  function cineIntro() {
+    const nC = climbsOnly.length;
+    const sub = nC === 0 ? cineT('view3d.cine.introFlat', { gain: fmtE(totalGain) })
+      : cineT(nC === 1 ? 'view3d.cine.introSub.one' : 'view3d.cine.introSub.other', { gain: fmtE(totalGain), n: nC });
+    showCard('intro', '', 'START · ' + dispD1(totalDist || 0) + ' ' + unitUp, cineT('view3d.cine.intro', { name: raceName || t('view3d.title'), time: _fmtClock(totalTime) }), sub);
+  }
+  function cineOrbit(dt, a0, rate, k) {
+    const a = a0 + cine.pt * rate + cine.yaw, R = courseR * k;
+    wantPos.set(courseCenter.x + Math.sin(a) * R, courseCenter.y + R * 0.72, courseCenter.z + Math.cos(a) * R);
+    wantLook.copy(courseCenter);
+  }
+  // one step of the film; returns the distance fraction the runner is at
+  function cineStep(dt, rate) {
+    cine.pt += dt;
+    if (cine.phase === 'intro') {
+      cineOrbit(dt, -0.55, 0.1, 1.55); cineIntro(); updateRunner(0);
+      if (terWorld) terWorld.setFeature(null, 0);
+      if (cine.pt > 4.6) { cine.phase = 'run'; cine.pt = 0; elapsed = 0; }
+      return 0;
+    }
+    if (cine.phase === 'outro') {
+      cineOrbit(dt, 0.6, 0.07, 1.35);
+      if (cine.pt <= dt + 1e-6) updateRunner(1);
+      if (terWorld) terWorld.setFeature(null, 0);
+      showCard('outro', '', 'FINISH · ' + _fmtClock(totalTime), cineT('view3d.cine.finish', { time: _fmtClock(totalTime) }),
+        cineT('view3d.cine.finishSub', { avg: fmtP(avgPace) }));
+      if (cine.pt > 5.2) return -1; // done
+      return 1;
+    }
+    let frac = distFractionAtTime(elapsed);
+    const lead = 0.25 / Math.max(1, totalDist), tail = 0.08 / Math.max(1, totalDist);
+    const f = features.find((x) => frac >= x.u0 - lead && frac <= x.u1 + tail);
+    if (f) cine.feat = f;
+    cine.featOn += ((f ? 1 : 0) - cine.featOn) * Math.min(1, dt * 3 || (f ? 1 : 0));
+    if (terWorld) terWorld.setFeature(cine.feat, cine.featOn);
+    const slow = f ? (f.kind === 'climb' ? 0.36 : 0.5) : 1;
+    elapsed += dt * (totalTime / CINE_RUN_SEC) * rate * slow;
+    if (elapsed >= totalTime) { elapsed = totalTime; cine.phase = 'outro'; cine.pt = 0; confetti.burst(finishPoint); }
+    frac = distFractionAtTime(elapsed);
+    updateRunner(frac);
+    const p = runner.position;
+    const tg = curve.getTangentAt(Math.min(0.999, frac)); tg.y = 0;
+    if (tg.lengthSq() > 1e-8) cine.hd.lerp(tg.normalize(), 1 - Math.exp(-dt * 1.6)).normalize();
+    if (f) {
+      const A = curve.getPointAt(f.u0), B = curve.getPointAt(f.u1), M = A.clone().add(B).multiplyScalar(0.5);
+      const dir = B.clone().sub(A); dir.y = 0; if (dir.lengthSq() < 1e-8) dir.copy(cine.hd); dir.normalize();
+      // from the side, low, so the slope stands against the horizon; once per stretch, the side with nothing in
+      // the way (a hill between the camera and the road would hide the very climb it is there to show)
+      const dist = Math.max(kmU * 0.8, A.distanceTo(B) * 0.82);
+      const baseUp = dist * 0.07 + Math.abs(B.y - A.y) * 0.35 + roadWidth * 5;
+      if (!f.cam) {
+        let best = null;
+        [1, -1].forEach((sg) => {
+          const sd = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(sg);
+          const c = M.clone().addScaledVector(sd, dist).addScaledVector(_up, baseUp);
+          let block = 0;
+          [A, M, B].forEach((T) => {
+            for (let k = 1; k < 14; k++) {
+              const q = c.clone().lerp(T, k / 14);
+              block = Math.max(block, groundAtW(q.x, q.z) + roadWidth * 2 - q.y);
+            }
+          });
+          if (!best || block < best.block) best = { sg, block };
+        });
+        f.cam = { sg: best.sg, lift: Math.max(0, best.block) * 1.15 };
+      }
+      const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(f.cam.sg).applyAxisAngle(_up, cine.yaw);
+      wantPos.copy(M).addScaledVector(side, dist).addScaledVector(_up, baseUp + f.cam.lift);
+      wantLook.copy(M).lerp(p, 0.35);
+      const climb = f.kind === 'climb';
+      showCard('f' + f.d0, f.kind, (climb ? 'CLIMB ' : 'DESCENT ') + f.n + ' · ' + dispD1(f.u0 * totalDist) + ' ' + unitUp,
+        cineT(climb ? 'view3d.cine.climb' : 'view3d.cine.descent', { n: f.n, gain: fmtE(f.gain), len: fmtD(f.len) }),
+        cineT(climb ? 'view3d.cine.climbSub' : 'view3d.cine.descentSub', { grade: f.grade.toFixed(1) + '%', pace: fmtP(f.pace), avg: fmtP(avgPace) }));
+    } else {
+      const off = cine.hd.clone().multiplyScalar(-kmU * 0.95).applyAxisAngle(_up, cine.yaw + 0.5);
+      wantPos.copy(p).add(off).addScaledVector(_up, kmU * 0.5 + roadWidth * 4);
+      wantLook.copy(p).addScaledVector(cine.hd, kmU * 0.3);
+      const next = climbsOnly.find((x) => x.u0 > frac);
+      const rs = rows || [];
+      const seg = rs.find((r) => r.cumDist >= frac * totalDist - 1e-6) || rs[rs.length - 1];
+      const segPace = seg ? fmtP(seg.paceSec) : '';
+      if (next) {
+        const away = Math.max(0, (next.u0 - frac) * totalDist);
+        showCard('n' + next.n + ':' + Math.round(away * 2), '', 'NEXT CLIMB · ' + dispD1(away) + ' ' + unitUp,
+          cineT('view3d.cine.next', { n: next.n, dist: fmtD(away) }), cineT('view3d.cine.nextSub', { pace: segPace }));
+      } else if (climbsOnly.length) {
+        showCard('last', '', 'TO THE FINISH', cineT('view3d.cine.last', {}), cineT('view3d.cine.lastSub', { pace: segPace }));
+      } else {
+        showCard('flat:' + Math.round(frac * 10), '', 'PACE · ' + dispD1(frac * totalDist) + ' ' + unitUp,
+          cineT('view3d.cine.flat', {}), cineT('view3d.cine.nextSub', { pace: segPace }));
+      }
+    }
+    return frac;
+  }
+  function cineCamera(dt) {
+    const k = 1 - Math.exp(-dt * (cine.phase === 'run' ? 1.5 : 1.1));
+    camera.position.lerp(wantPos, k);
+    camLook.lerp(wantLook, k);
+    groundClamp(camera.position);
+    camera.lookAt(camLook);
+  }
   function applyCamera() {
+    if (cameraMode === 'cinema') { cineCamera(0); return; }
     if (cameraMode === 'pov') applyCameraPov();
     else if (cameraMode === 'broadcast') applyCameraBroadcast();
     else applyCameraOrbit();
@@ -1130,8 +1528,17 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   // wherever the runner is currently facing so the cut never opens on the
   // wrong side of the road.
   function switchCameraMode(mode) {
-    if (!CAMERA_DEFAULTS[mode] && mode !== 'pov' && mode !== 'broadcast') return;
+    if (!CAMERA_DEFAULTS[mode] && mode !== 'pov' && mode !== 'broadcast' && !(mode === 'cinema' && TER)) return;
+    const was = cameraMode;
     cameraMode = mode;
+    if (cardEl && mode !== 'cinema') showCard('', '');
+    if (mode === 'cinema' && was !== 'cinema') {
+      // start the film from the top, from where the camera is now
+      cine.phase = 'intro'; cine.pt = 0; cine.yaw = 0; finished = false; elapsed = 0;
+      camLook.copy(courseCenter); cineOrbit(0, -0.55, 0.1, 1.55);
+      if (was === 'free' && camera.position.lengthSq() > 0) { /* glide from the overview */ } else camera.position.copy(wantPos);
+      return;
+    }
     if (mode === 'chase') {
       const tangent = curve.getTangentAt(curFrac);
       azimuth = Math.atan2(-tangent.x, -tangent.z);
@@ -1174,7 +1581,9 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     if (dragLast && pointers.size === 1) {
       const dx = e.clientX - dragLast.x, dy = e.clientY - dragLast.y;
       dragLast = { x: e.clientX, y: e.clientY };
-      if (orbitMode) {
+      if (cameraMode === 'cinema') {
+        cine.yaw = Math.max(-1.2, Math.min(1.2, cine.yaw - dx * 0.006));
+      } else if (orbitMode) {
         azimuth -= dx * 0.006;
         polar -= dy * 0.006;
         applyCamera();
@@ -1238,6 +1647,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     runner.position.set(pos.x, pos.y + SURFACE_Y, pos.z);
     revealGeo.setDrawRange(0, Math.round(revealIndexCount * frac));
     heightCurtain.setProgress(curFrac);
+    if (terWorld) terWorld.setProgress(curFrac);
     applyAtmosphere(frac);
     // Headwind/tailwind/crosswind relative to wherever the route is actually
     // heading right here — not a single course-wide verdict, since a looping
@@ -1265,13 +1675,29 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     // costs nothing instead of rendering every frame into a hidden canvas.
     suspended: false,
     rate: 1, // playback-speed multiplier, driven by the speed selector
-    seek(frac) { finished = false; elapsed = frac * totalTime; updateRunner(frac); applyCamera(); },
+    seek(frac) {
+      finished = false; elapsed = timeAtDist(frac * (totalDist || 0)); updateRunner(frac);
+      if (cameraMode === 'cinema') { cine.phase = 'run'; cine.pt = 0; cineStep(0, 0); } else applyCamera();
+    },
     setCameraMode: switchCameraMode,
     // Forces an immediate synchronous paint, bypassing the internal rAF-driven
     // tick() loop below — used by scripted/offscreen capture (videoshare.jsx)
     // so a frame is guaranteed on-canvas right after seek(), regardless of
     // whether requestAnimationFrame is currently being throttled.
     renderNow() { renderer.render(scene, camera); },
+    // tests: jump the film to a point (phase 'intro' | 'run' | 'outro', frac along the course) and settle the camera there
+    cineAt(phase, frac) {
+      if (cameraMode !== 'cinema') return false;
+      cine.phase = phase; cine.pt = phase === 'run' ? 0 : 1;
+      if (phase === 'run') { elapsed = timeAtDist(frac * (totalDist || 0)); cineStep(0, 0); } else { cineStep(0, 0); if (phase === 'outro') updateRunner(1); }
+      cine.featOn = cine.feat && phase === 'run' && features.some((x) => frac >= x.u0 && frac <= x.u1) ? 1 : 0;
+      if (terWorld) terWorld.setFeature(cine.feat, cine.featOn);
+      for (let i = 0; i < 400; i++) cineCamera(0.05);
+      placeTags(); renderer.render(scene, camera);
+      return true;
+    },
+    features: () => features.map((f) => ({ kind: f.kind, u0: f.u0, u1: f.u1, gain: Math.round(f.gain), len: +f.len.toFixed(2) })),
+    ex: TER_EX,
   };
   updateRunner(0);
 
@@ -1286,7 +1712,15 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     const dt = Math.min(0.05, (now - lastT) / 1000);
     lastT = now;
 
-    if (stateRef.current.playing) {
+    if (cameraMode === 'cinema') {
+      if (stateRef.current.playing) {
+        if (finished) { elapsed = 0; finished = false; cine.phase = 'intro'; cine.pt = 0; }
+        const fr = cineStep(dt, (stateRef.current.rate || 1) * 2);
+        if (fr < 0) { finished = true; stateRef.current.playing = false; cine.phase = 'outro'; if (onFinish) onFinish(); }
+      }
+      if (now - lastInteraction > 1400 && pointers.size === 0) cine.yaw *= Math.max(0, 1 - dt * 0.9);
+      cineCamera(dt);
+    } else if (stateRef.current.playing) {
       if (finished) { elapsed = 0; finished = false; }
       elapsed += dt * speedMult * (stateRef.current.rate || 1);
       if (elapsed >= totalTime) {
@@ -1318,7 +1752,8 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     if (cameraMode === 'pov' && now - lastInteraction > 600 && pointers.size === 0) {
       povYaw *= Math.max(0, 1 - dt * 2.5); // ease the look-around back to dead-ahead
     }
-    applyCamera();
+    if (cameraMode !== 'cinema') applyCamera();
+    placeTags();
     runner.rotation.y += dt * 3;
 
     if (rain) {
@@ -1350,11 +1785,12 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     });
     renderer.dispose();
     if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
+    container.querySelectorAll('.rp-cine-tags, .rp-cine-card, .rp-cine-attr').forEach((el) => el.remove());
   };
 }
 
 const CAMERA_MODE_OPTIONS = ['free', 'chase', 'pov', 'broadcast'];
-const CAMERA_MODE_LABEL_KEY = { free: 'view3d.camFree', chase: 'view3d.camChase', pov: 'view3d.camPov', broadcast: 'view3d.camBroadcast' };
+const CAMERA_MODE_LABEL_KEY = { cinema: 'view3d.camCinema', free: 'view3d.camFree', chase: 'view3d.camChase', pov: 'view3d.camPov', broadcast: 'view3d.camBroadcast' };
 const SPEED_OPTIONS = [0.5, 1, 2, 4];
 const WIND_REL_LABEL_KEY = { head: 'view3d.windHead', tail: 'view3d.windTail', cross: 'view3d.windCross' };
 
@@ -1388,6 +1824,26 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
   const [status, setStatus] = React.useState('loading'); // loading | ready | error
   const [playing, setPlaying] = React.useState(true);
   const [cameraMode, setCameraMode] = React.useState('free');
+  const [hasTer, setHasTer] = React.useState(false); // lime: real ground loaded, the film is on
+  const hudKmRef = React.useRef(null), hudPaceRef = React.useRef(null), hudGradeRef = React.useRef(null);
+  // the plan's pace and the road's grade where the runner is, for the clock's line under it
+  const profPts = React.useMemo(() => (Array.isArray(profile) ? profile.filter((p) => isFinite(p.ele) && isFinite(p.d)) : []), [profile]);
+  const hudAt = (frac) => {
+    const d = frac * (totalDist || 0);
+    const r = (rows || []).find((x) => x.cumDist >= d - 1e-6) || (rows || [])[(rows || []).length - 1];
+    let grade = null;
+    if (profPts.length > 1) {
+      const pd = frac * profKm, h = Math.min(0.15, profKm / 40);
+      const e1 = _interpEle(profPts, Math.min(profKm, pd + h)), e0 = _interpEle(profPts, Math.max(0, pd - h));
+      grade = ((e1 - e0) / (Math.max(0.01, Math.min(profKm, pd + h) - Math.max(0, pd - h)) * 1000)) * 100;
+    }
+    if (hudKmRef.current) hudKmRef.current.textContent = U ? U.dispDistNum(d) : d.toFixed(1);
+    if (hudPaceRef.current) hudPaceRef.current.textContent = r ? (U ? U.fmtPace(r.paceSec) : _fmtClock(r.paceSec)) : '';
+    if (hudGradeRef.current && grade != null) {
+      hudGradeRef.current.textContent = (grade >= 0 ? '+' : '') + grade.toFixed(1) + '%';
+      hudGradeRef.current.style.color = grade > 1.5 ? '#FFB547' : grade < -1.5 ? '#8fd0ff' : '';
+    }
+  };
   const [speed, setSpeed] = React.useState(0.5);
 
   // Cumulative plan time (seconds) at a given fraction of the total distance
@@ -1413,17 +1869,26 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
   React.useEffect(() => {
     let cancelled = false;
     let cleanupFn = null;
-    ensureThree().then((THREE) => {
+    // lime: the real ground under the course (src/terrain3d.jsx); without it within a few seconds, the floor as before
+    const terP = LIME3 && window.TERRAIN3D && Array.isArray(track) && track.length > 1
+      ? Promise.race([window.TERRAIN3D.loadTerrain(track), new Promise((r) => setTimeout(() => r(null), 9000))]).catch(() => null)
+      : Promise.resolve(null);
+    Promise.all([ensureThree(), terP]).then(([THREE, terrain]) => {
       if (cancelled || !mountRef.current) return;
       try {
-        cleanupFn = mount3D(THREE, mountRef.current, { track, profile, rows, totalDist, weather, raceTime, raceName }, (frac, windRel) => {
+        cleanupFn = mount3D(THREE, mountRef.current, { track, profile, rows, totalDist, weather, raceTime, raceName, gain, terrain }, (frac, windRel) => {
+          hudAt(frac);
           if (scrubRef.current) scrubRef.current.value = String(Math.round(frac * 1000));
           if (distRef.current) distRef.current.textContent = U ? U.fmtDist(frac * totalDist) : (frac * totalDist).toFixed(1);
           if (clockRef.current) clockRef.current.setSeconds(timeAtFrac(frac));
           if (elevChartRef.current) elevChartRef.current.setProgress(frac * profKm);
           if (windRelRef.current) windRelRef.current.textContent = windRel ? t(WIND_REL_LABEL_KEY[windRel]) : '';
         }, stateRef, () => { if (!cancelled) setPlaying(false); });
-        if (!cancelled) setStatus('ready'); else if (cleanupFn) cleanupFn();
+        if (!cancelled) {
+          if (mountRef.current) mountRef.current._rp3d = stateRef; // tests reach the scene through the element
+          if (terrain) { setHasTer(true); setCameraMode('cinema'); }
+          setStatus('ready');
+        } else if (cleanupFn) cleanupFn();
       } catch (e) {
         try { console.warn('[Route3DView] init failed', e); } catch (e2) {}
         if (!cancelled) setStatus('error');
@@ -1488,6 +1953,12 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
 
       <style>{`
         .rp-view3d-body { flex: 1; display: flex; min-height: 0; }
+        .rp-hud3d { position: absolute; top: 10px; inset-inline-start: 10px; pointer-events: none; z-index: 2;
+          background: rgba(5,6,5,.72); border: 1px solid rgba(221,255,74,.24); border-radius: 12px; padding: 7px 10px 6px;
+          backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; flex-direction: column; gap: 4px; }
+        .rp-hud3d-row { display: flex; gap: 10px; direction: ltr; justify-content: flex-start;
+          font: 600 10px/1 var(--rp-font-mono, ui-monospace, monospace); letter-spacing: .08em; color: rgba(244,246,238,.55); }
+        .rp-hud3d-row b { color: #F4F6EE; font-weight: 700; font-variant-numeric: tabular-nums; }
         .rp-view3d-elev { width: 260px; flex: 0 0 auto; border-inline-start: 1px solid rgba(255,255,255,.08);
           padding: 10px 12px; display: flex; flex-direction: column; }
         .rp-view3d-camrow { display: flex; align-items: center; gap: 14px; padding: 8px 16px;
@@ -1525,9 +1996,19 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
               {status === 'loading' ? t('view3d.loading') : t('view3d.loadError')}
             </div>
           )}
-          {status === 'ready' && (
+          {status === 'ready' && !LIME3 && (
             <div style={{ position: 'absolute', top: 10, insetInlineStart: 12, fontSize: 11,
               color: 'rgba(255,255,255,.45)', pointerEvents: 'none' }}>{t('view3d.dragHint')}</div>
+          )}
+          {status === 'ready' && LIME3 && (
+            <div className="rp-hud3d" aria-hidden="true">
+              <RunClock ref={clockRef} digitH={17} />
+              <div className="rp-hud3d-row">
+                <span><b ref={hudKmRef}>0</b> {U && U.system === 'imperial' ? 'MI' : 'KM'}</span>
+                <span><b ref={hudPaceRef} /></span>
+                <span><b ref={hudGradeRef} /></span>
+              </div>
+            </div>
           )}
           {status === 'ready' && weather && weather.windSpeed >= WIND_VIS_THRESHOLD_KMH && (
             <div style={{ position: 'absolute', top: 10, insetInlineEnd: 12, display: 'flex', alignItems: 'center',
@@ -1545,7 +2026,7 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
         </div>
         {status === 'ready' && ElevationChart && (
           <div className="rp-view3d-elev">
-            <RunClock ref={clockRef} digitH={22} />
+            {!LIME3 && <RunClock ref={clockRef} digitH={22} />}
             <div style={{ fontSize: 11.5, fontWeight: 700, color: 'rgba(255,255,255,.55)', margin: '10px 0 4px' }}>
               {t('chart.elevChartTitle')}
             </div>
@@ -1560,7 +2041,7 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
       {status === 'ready' && (
         <div className="rp-view3d-camrow">
           <div className="rp-view3d-camgroup">
-            {CAMERA_MODE_OPTIONS.map((mode) => (
+            {(hasTer ? ['cinema'].concat(CAMERA_MODE_OPTIONS) : CAMERA_MODE_OPTIONS).map((mode) => (
               <button key={mode} onClick={() => setCameraMode(mode)} style={{
                 padding: '5px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
                 border: '1px solid ' + (cameraMode === mode ? 'var(--rp-gold)' : 'rgba(255,255,255,.18)'),
