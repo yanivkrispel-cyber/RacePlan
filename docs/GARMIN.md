@@ -52,3 +52,15 @@ below are done. While it's off, a functions deploy is the same as before and nev
 7. The app screen: preview, connect, send, rehearsal, pace band, the night-before checklist, a privacy page section.
 8. First real send on Kris's watch. Check: the bands, that a slow block does not beep, OPEN on the last step, the
    +0.7 % drift, how the cue text looks on the watch (Hebrew too).
+
+## Switch-on (3.11.2026: the RacePlan app is Approved)
+Built: the closed list (`functions/.env` GARMIN_ALLOW, the owner first), `RP_FIREBASE.garminCall`, the Garmin
+section in the card (connect, send on race day, rehearsal, disconnect), and the `/api/garmin/*` rewrites in
+firebase.json. `GARMIN_ENABLED=true`. In order (Kris runs them; the order matters: the rewrites need the functions):
+1. Garmin portal, app RacePlan: Show key, for the Client ID and the Client Secret.
+2. `firebase functions:secrets:set GARMIN_CLIENT_ID`, `... GARMIN_CLIENT_SECRET`, `... GARMIN_WEBHOOK_KEY` (a long random string).
+3. `firebase deploy --only functions,firestore:rules`
+4. `npm run deploy:hosting`
+5. API Configuration Tool (apis.garmin.com/tools): deregistration + user permissions push to
+   `https://raceplan.coachkrispel.com/api/garmin/push?k=<GARMIN_WEBHOOK_KEY>`.
+6. First send on Kris's watch.

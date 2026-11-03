@@ -5,7 +5,9 @@
 //                           the Garmin send uses), the pace band image, the night-before checklist
 //   window.PaceBandImage  — the lock-screen image (rendered off-screen, rasterised by RP_EXPORT.shareImage)
 //
-// Send to Garmin is not here yet: it waits for RacePlan's own Garmin app (docs/GARMIN.md).
+//   GarminSection         — connect / send on race day / rehearsal / disconnect, through the Cloud Functions
+//                           (functions/garmin*.js). Only for the closed list (functions/.env GARMIN_ALLOW);
+//                           everyone else, and a build without the functions, sees "coming soon".
 
 const WP = window.WATCHPLAN;
 const I18N_W = window.I18N;
@@ -29,8 +31,151 @@ function watchModel(segments, profile) {
 
 const cueKey = (b, i, n) => (n > 1 && i === 0 ? 'first' : n > 1 && i === n - 1 ? 'last' : b.kind);
 
+// Garmin's consent returns to the app as /#garmin=<result>, usually onto the home screen: the result waits in
+// sessionStorage until the card shows it, and the hash goes so a reload doesn't show it twice.
+const BACK_KEY = 'rp-garmin-back';
+try {
+  const m = /^#garmin=([a-z]+)$/.exec(window.location.hash || '');
+  if (m) {
+    sessionStorage.setItem(BACK_KEY, m[1]);
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+  }
+} catch (e) { /* storage blocked: the result is just not shown */ }
+const takeBack = () => { try { const r = sessionStorage.getItem(BACK_KEY); sessionStorage.removeItem(BACK_KEY); return r; } catch (e) { return null; } };
+const hasBack = () => { try { return !!sessionStorage.getItem(BACK_KEY); } catch (e) { return false; } };
+
+const BACK_RESULTS = new Set(['connected', 'denied', 'expired', 'failed', 'taken', 'noperm']);
+const ERR_KEYS = new Set(['reconnect', 'noperm', 'rate_limited', 'not_connected', 'not_allowed', 'past', 'bad_plan']);
+function errText(e) {
+  const code = e && e.code;
+  const past = code === 'bad_request' && Array.isArray(e.detail) && e.detail.includes('past');
+  const k = past ? 'past' : code;
+  return tw(ERR_KEYS.has(k) ? 'watch.g.err.' + k : 'watch.g.err.generic');
+}
+
+/** At most `max` profile points for the request (the server takes up to 3000): every k-th, and the last. */
+function thinProfile(profile, max) {
+  if (!Array.isArray(profile) || profile.length < 2) return null;
+  if (profile.length <= max) return profile.map((p) => ({ d: p.d, ele: p.ele }));
+  const k = Math.ceil(profile.length / max), out = [];
+  for (let i = 0; i < profile.length; i += k) out.push({ d: profile[i].d, ele: profile[i].ele });
+  const last = profile[profile.length - 1];
+  if (out[out.length - 1].d !== last.d) out.push({ d: last.d, ele: last.ele });
+  return out;
+}
+
+const fmtDay = (day) => {
+  try { return I18N_W && I18N_W.fmtDate ? I18N_W.fmtDate(new Date(day + 'T12:00:00')) : day; } catch (e) { return day; }
+};
+
+function GarminSection({ segments, profile, raceName, raceDate, totalKm, onToast }) {
+  const FB = window.RP_FIREBASE;
+  const usable = !!(FB && FB.user && FB.garminCall);
+  const [st, setSt] = React.useState(null); // null = asking; {allowed, connected, broken, canSend}
+  const [busy, setBusy] = React.useState('');
+  const [sure, setSure] = React.useState(false); // disconnect takes a second tap
+  const [rehDate, setRehDate] = React.useState('');
+  const [rehKm, setRehKm] = React.useState(() => Math.max(5, Math.round((totalKm || 0) * 0.65)));
+  const toast = (m) => { if (onToast) onToast(m); };
+
+  const refresh = React.useCallback(() => {
+    if (!usable) return;
+    FB.garminCall('Status').then(setSt).catch(() => setSt({ allowed: false }));
+  }, [usable]);
+  React.useEffect(() => {
+    refresh();
+    const r = takeBack();
+    if (r && BACK_RESULTS.has(r)) toast(tw('watch.g.back.' + r));
+  }, [refresh]);
+
+  if (!usable || !st || !st.allowed) {
+    return <p style={{ margin: 0, fontSize: 12, color: 'var(--rp-text-dim)' }}>{tw('watch.garminSoon')}</p>;
+  }
+
+  const run = async (what, fn) => {
+    if (busy) return;
+    setBusy(what);
+    try { await fn(); } catch (e) { toast(errText(e)); if (e && (e.code === 'reconnect' || e.code === 'not_connected')) refresh(); }
+    finally { setBusy(''); }
+  };
+  const connect = () => run('connect', async () => {
+    const r = await FB.garminCall('Connect');
+    window.location.assign(r.url);
+  });
+  const payload = (extra) => ({
+    name: raceName || '', planId: raceName || 'plan',
+    segments: segments.filter((s) => s && s.distance > 0 && s.paceSec > 0).map((s) => ({ distance: s.distance, paceSec: s.paceSec })),
+    profile: thinProfile(profile, 1500), ...extra,
+  });
+  const sendRace = () => run('race', async () => {
+    const r = await FB.garminCall('Send', payload({ date: raceDate, kind: 'race' }));
+    toast(tw('watch.g.sent', { date: fmtDay(r.date) }));
+  });
+  const sendRehearsal = () => run('rehearsal', async () => {
+    const r = await FB.garminCall('Send', payload({ date: rehDate, kind: 'rehearsal', rehearsalKm: Number(rehKm) }));
+    toast(tw('watch.g.sentRehearsal', { date: fmtDay(r.date) }));
+  });
+  const disconnect = () => {
+    if (!sure) { setSure(true); setTimeout(() => setSure(false), 4000); return; }
+    setSure(false);
+    run('disconnect', async () => { await FB.garminCall('Disconnect'); toast(tw('watch.g.disconnected')); refresh(); });
+  };
+
+  const box = { display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', borderRadius: 'var(--rp-r-12)',
+    background: 'var(--rp-gold-wash)', border: '1px solid var(--rp-gold-line)' };
+  const small = { padding: '7px 12px', fontSize: 12.5 };
+  const input = { font: 'inherit', fontSize: 12.5, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--rp-line-input)',
+    background: 'var(--rp-surface)', color: 'var(--rp-text)' };
+
+  if (!st.connected) {
+    return (
+      <div style={box}>
+        <div style={{ fontSize: 13, fontWeight: 800 }}>Garmin</div>
+        <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5 }}>{tw(st.broken ? 'watch.g.reconnectIntro' : 'watch.g.intro')}</p>
+        <button className="rp-btn" onClick={connect} disabled={!!busy} style={{ ...small, alignSelf: 'flex-start' }}>
+          {busy === 'connect' ? tw('watch.g.connecting') : tw('watch.g.connect')}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={box}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 800 }}>Garmin</span>
+        <span style={{ fontSize: 12, color: 'var(--rp-text-dim)' }}>{tw('watch.g.connected')}</span>
+      </div>
+      {!st.canSend && <p style={{ margin: 0, fontSize: 12.5 }}>{tw('watch.g.err.noperm')}</p>}
+      {raceDate ? (
+        <button className="rp-btn" onClick={sendRace} disabled={!!busy || !st.canSend} style={{ ...small, alignSelf: 'flex-start' }}>
+          {busy === 'race' ? tw('watch.g.sending') : tw('watch.g.send', { date: fmtDay(raceDate) })}
+        </button>
+      ) : (
+        <p style={{ margin: 0, fontSize: 12.5 }}>{tw('watch.g.needDate')}</p>
+      )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12.5 }}>{tw('watch.g.rehearsal')}</span>
+        <input id="rp-garmin-reh-date" type="date" value={rehDate} onChange={(e) => setRehDate(e.target.value)}
+          aria-label={tw('watch.g.rehearsalDate')} style={input} />
+        <input id="rp-garmin-reh-km" type="number" min="5" max="45" step="1" value={rehKm}
+          onChange={(e) => setRehKm(e.target.value)} aria-label={tw('watch.g.rehearsalKm')} style={{ ...input, width: 64 }} />
+        <span style={{ fontSize: 12.5, color: 'var(--rp-text-dim)' }}>{tw('units.km')}</span>
+        <button className="rp-btn" onClick={sendRehearsal} disabled={!!busy || !rehDate || !st.canSend} style={small}>
+          {busy === 'rehearsal' ? tw('watch.g.sending') : tw('watch.g.sendRehearsal')}
+        </button>
+      </div>
+      <button onClick={disconnect} disabled={!!busy}
+        style={{ alignSelf: 'flex-start', appearance: 'none', background: 'none', border: 'none', padding: 0, font: 'inherit',
+          fontSize: 12, color: sure ? 'var(--rp-gold)' : 'var(--rp-text-dim)', textDecoration: 'underline', cursor: 'pointer' }}>
+        {busy === 'disconnect' ? tw('watch.g.disconnecting') : sure ? tw('watch.g.disconnectSure') : tw('watch.g.disconnect')}
+      </button>
+    </div>
+  );
+}
+
 function WatchCard({ segments, profile, raceName, raceDate, onToast }) {
-  const [open, setOpen] = React.useState(false);
+  // open by itself when coming back from Garmin's consent, so the result shows where it belongs
+  const [open, setOpen] = React.useState(hasBack);
   const [busy, setBusy] = React.useState(false);
   const bandRef = React.useRef(null);
   const units = UW ? UW.system : 'metric';
@@ -128,7 +273,8 @@ function WatchCard({ segments, profile, raceName, raceDate, onToast }) {
             </ul>
           </div>
 
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--rp-text-dim)' }}>{tw('watch.garminSoon')}</p>
+          <GarminSection segments={segments} profile={profile} raceName={raceName} raceDate={raceDate}
+            totalKm={blocks.length ? blocks[blocks.length - 1].endKm : 0} onToast={onToast} />
         </div>
       )}
 
@@ -183,4 +329,4 @@ const PaceBandImage = React.forwardRef(function PaceBandImage({ raceName, raceDa
   );
 });
 
-Object.assign(window, { WatchCard, PaceBandImage, watchModel });
+Object.assign(window, { WatchCard, PaceBandImage, GarminSection, watchModel, thinProfile });

@@ -87,6 +87,30 @@ function st() {
   return _st;
 }
 
+// Cloud Functions (send to watch), loaded on first use like Firestore.
+let _fn = null;
+function fns() {
+  if (!_fn) {
+    _fn = import(FB_CDN + 'firebase-functions.js').then((m) => ({ ...m, functions: m.getFunctions(app, 'us-central1') }));
+    _fn.catch(() => { _fn = null; });
+  }
+  return _fn;
+}
+/** garminCall('Status' | 'Connect' | 'Send' | 'Disconnect', data) -> the function's answer. A refusal throws
+ *  an Error whose .code is the server's own code (not_connected, reconnect, noperm, rate_limited, ...). */
+async function garminCall(name, data) {
+  const m = await fns();
+  try {
+    const r = await m.httpsCallable(m.functions, 'garmin' + name)(data || {});
+    return r.data;
+  } catch (e) {
+    const err = new Error((e && e.message) || 'failed');
+    err.code = (e && e.details && e.details.code) || 'failed';
+    err.detail = (e && e.details && e.details.detail) || null;
+    throw err;
+  }
+}
+
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
 
@@ -469,4 +493,5 @@ window.RP_FIREBASE = {
   submissionReview,
   shareCreate,
   shareLoad,
+  garminCall,
 };

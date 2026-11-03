@@ -4,6 +4,8 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       { "source": "/privacy", "destination": "/privacy.html" },
+      { "source": "/api/garmin/callback", "function": { "functionId": "garminCallback", "region": "us-central1" } },
+      { "source": "/api/garmin/push", "function": { "functionId": "garminPush", "region": "us-central1" } },
       { "source": "**", "destination": "/index.html" }
     ],
     "headers": [

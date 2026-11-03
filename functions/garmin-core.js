@@ -150,10 +150,19 @@ function readAccountPush(body) {
   return out;
 }
 
+/** The closed list (Kris 3.11.2026: Garmin for the owner and chosen athletes first). A verified Google email only. */
+function readAllowList(env) {
+  return new Set(String(env || '').toLowerCase().split(/[\s,;]+/).map((x) => x.trim()).filter((x) => /^[^@\s]+@[^@\s]+$/.test(x)));
+}
+function isAllowed(list, token) {
+  if (!token || token.email_verified !== true || typeof token.email !== 'string') return false;
+  return list.has(token.email.toLowerCase());
+}
+
 module.exports = {
   AUTHORIZE_URL, TOKEN_URL, API_BASE, USER_ID_PATH, PERMISSIONS_PATH, REGISTRATION_PATH, WORKOUT_PATH, WORKOUT_ONE_PATH,
   SCHEDULE_PATH, WORKOUT_IMPORT, STATE_TTL_MS, SENDS_PER_DAY,
   newVerifier, challengeOf, newState, authorizeUrl, tokenRequestBody, refreshRequestBody,
   readTokens, refreshDue, readUserId, readPermissions, readId, refusalOf, scheduleBody,
-  backTo, isDay, addDays, readSendRequest, readAccountPush,
+  backTo, isDay, addDays, readSendRequest, readAccountPush, readAllowList, isAllowed,
 };

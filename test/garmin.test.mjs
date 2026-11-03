@@ -124,6 +124,17 @@ console.log('\n── core ──');
   eq(pushes[1].permissions[0], 'ACTIVITY_EXPORT', 'with the new permissions');
 }
 
+console.log('\n── the closed list ──');
+{
+  const L = G.readAllowList(' Yaniv.Krispel@gmail.com, a@b.co;bad , ');
+  eq(L.size, 2, 'two valid emails read, the bad one dropped');
+  eq(G.isAllowed(L, { email: 'yaniv.krispel@GMAIL.com', email_verified: true }), true, 'listed + verified: allowed (any case)');
+  eq(G.isAllowed(L, { email: 'yaniv.krispel@gmail.com', email_verified: false }), false, 'not verified: refused');
+  eq(G.isAllowed(L, { email: 'other@gmail.com', email_verified: true }), false, 'not listed: refused');
+  eq(G.isAllowed(L, null), false, 'signed out: refused');
+  eq(G.readAllowList('').size, 0, 'an empty list allows nobody');
+}
+
 console.log('\n── off until configured ──');
 {
   const s = setup(null);
