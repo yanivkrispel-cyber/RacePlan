@@ -64,3 +64,12 @@ firebase.json. `GARMIN_ENABLED=true`. In order (Kris runs them; the order matter
 5. API Configuration Tool (apis.garmin.com/tools): deregistration + user permissions push to
    `https://raceplan.coachkrispel.com/api/garmin/push?k=<GARMIN_WEBHOOK_KEY>`.
 6. First send on Kris's watch.
+
+## Done (3.11.2026, evening)
+- Kris's Garmin connected; the first race-day workout reached his Garmin calendar.
+- Push endpoints (apis.garmin.com/tools, Endpoint Configuration): Deregistrations and User Permissions Change,
+  enabled, to `https://us-central1-raceplan-17e5b.cloudfunctions.net/garminPush/<GARMIN_WEBHOOK_KEY>`. Garmin's form
+  drops a `?k=` query on save, so the key is the last path segment (b88a55e). Without or with a wrong key: 401 (tested).
+- Fixed on the way: a doubled GARMIN_CLIENT_ID (now refused unless a UUID); the service worker served the app shell
+  at /api/garmin/callback (988bdf3: /api/ is never the worker's). That sw.js fix needs a hosting deploy.
+- Open: a run with the workout on the watch (all segments, only too-fast alerts, the last step ends at the finish).
