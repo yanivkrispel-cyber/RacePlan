@@ -73,3 +73,5 @@ firebase.json. `GARMIN_ENABLED=true`. In order (Kris runs them; the order matter
 - Fixed on the way: a doubled GARMIN_CLIENT_ID (now refused unless a UUID); the service worker served the app shell
   at /api/garmin/callback (988bdf3: /api/ is never the worker's). That sw.js fix needs a hosting deploy.
 - Open: a run with the workout on the watch (all segments, only too-fast alerts, the last step ends at the finish).
+- Same evening (9803d2a, deployed): open to every signed-in user, future ones too (`GARMIN_ALLOW=*`); a mail
+  to Kris at 900 and at 1000 linked users (`garminCapacityWatch`, europe-west1; `garminMeta/capacity`). 45 users on 3.11.
