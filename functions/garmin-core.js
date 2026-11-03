@@ -150,13 +150,30 @@ function readAccountPush(body) {
   return out;
 }
 
-/** The closed list (Kris 3.11.2026: Garmin for the owner and chosen athletes first). A verified Google email only. */
+/**
+ * Who may connect Garmin. Kris 3.11.2026, first the owner only, then the same evening: "everyone, future users
+ * too". GARMIN_ALLOW=* opens it to every signed-in user with a verified email; a list of emails still works
+ * (to close it again to a few). A verified email is required either way.
+ */
 function readAllowList(env) {
-  return new Set(String(env || '').toLowerCase().split(/[\s,;]+/).map((x) => x.trim()).filter((x) => /^[^@\s]+@[^@\s]+$/.test(x)));
+  const raw = String(env || '').trim();
+  if (raw === '*') return { all: true, has: () => true, size: Infinity };
+  return new Set(raw.toLowerCase().split(/[\s,;]+/).map((x) => x.trim()).filter((x) => /^[^@\s]+@[^@\s]+$/.test(x)));
 }
 function isAllowed(list, token) {
   if (!token || token.email_verified !== true || typeof token.email !== 'string') return false;
   return list.has(token.email.toLowerCase());
+}
+
+/**
+ * Starter tier: up to 1,000 connected users. Kris 3.11.2026: "at 900 I want to know". Which thresholds a count
+ * of linked users has newly reached, given the ones already mailed (each is mailed once).
+ */
+const CAPACITY_LIMIT = 1000;
+const CAPACITY_ALERTS = [900, 1000];
+function capacityAlerts(count, alreadySent) {
+  const sent = new Set((alreadySent || []).map(Number));
+  return CAPACITY_ALERTS.filter((t) => count >= t && !sent.has(t));
 }
 
 module.exports = {
@@ -165,4 +182,5 @@ module.exports = {
   newVerifier, challengeOf, newState, authorizeUrl, tokenRequestBody, refreshRequestBody,
   readTokens, refreshDue, readUserId, readPermissions, readId, refusalOf, scheduleBody,
   backTo, isDay, addDays, readSendRequest, readAccountPush, readAllowList, isAllowed,
+  CAPACITY_LIMIT, CAPACITY_ALERTS, capacityAlerts,
 };

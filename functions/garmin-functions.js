@@ -63,6 +63,49 @@ exports.garminPreview = callable((uid, data) => { if (!uid) throw new GarminErro
 exports.garminSend = callable((uid, data) => garmin.send(uid, data));
 exports.garminDisconnect = callable((uid) => garmin.disconnect(uid), true);
 
+// Kris 3.11.2026: "at 900 I want to know" (Starter tier: 1,000 connected users). Runs when a link becomes
+// "linked", counts the linked ones, and mails each threshold once (garminMeta/capacity keeps which were sent).
+const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { capacityAlerts, CAPACITY_LIMIT } = require('./garmin-core');
+const GMAIL_USER = defineSecret('GMAIL_USER');
+const GMAIL_APP_PASSWORD = defineSecret('GMAIL_APP_PASSWORD');
+const NOTIFY_TO = 'yaniv.krispel@gmail.com';
+
+exports.garminCapacityWatch = onDocumentWritten(
+  { document: 'garminLinks/{uid}', secrets: [GMAIL_USER, GMAIL_APP_PASSWORD] },
+  async (event) => {
+    const before = event.data && event.data.before && event.data.before.data();
+    const after = event.data && event.data.after && event.data.after.data();
+    if (!after || after.status !== 'linked' || (before && before.status === 'linked')) return; // only a new link
+    const db = admin.firestore();
+    const count = (await db.collection('garminLinks').where('status', '==', 'linked').count().get()).data().count;
+    const metaRef = db.collection('garminMeta').doc('capacity');
+    const meta = (await metaRef.get()).data() || {};
+    const due = capacityAlerts(count, meta.sent);
+    if (!due.length) return;
+    const nodemailer = require('nodemailer');
+    const mail = nodemailer.createTransport({ service: 'gmail', auth: { user: GMAIL_USER.value(), pass: GMAIL_APP_PASSWORD.value() } });
+    const top = Math.max(...due);
+    await mail.sendMail({
+      from: `RacePlan <${GMAIL_USER.value()}>`,
+      to: NOTIFY_TO,
+      subject: top >= CAPACITY_LIMIT
+        ? `⚠️ RacePlan Garmin: הגעתם למגבלה, ${count} מתוך ${CAPACITY_LIMIT} משתמשים מחוברים`
+        : `RacePlan Garmin: ${count} משתמשים מחוברים מתוך ${CAPACITY_LIMIT}`,
+      text: [
+        `כרגע ${count} משתמשים מחוברים ל-Garmin דרך RacePlan.`,
+        `המגבלה של רמת Starter היא ${CAPACITY_LIMIT} משתמשים.`,
+        top >= CAPACITY_LIMIT
+          ? 'חיבורים חדשים עלולים להיחסם. כדאי לפנות ל-Garmin לגבי Enterprise, או לסגור את השליחה לרשימה (GARMIN_ALLOW).'
+          : 'כדאי להתחיל לבדוק מעבר ל-Enterprise מול Garmin, לפני שמגיעים למגבלה.',
+        '',
+        'https://developerportal.garmin.com/developer-programs/enterprise-access',
+      ].join('\n'),
+    });
+    await metaRef.set({ sent: [...new Set([...(meta.sent || []).map(Number), ...due])], lastCount: count, updatedAt: new Date().toISOString() }, { merge: true });
+  }
+);
+
 exports.garminCallback = onRequest({ secrets }, async (req, res) => {
   let to;
   try { to = await garmin.callback(req.query || {}); }

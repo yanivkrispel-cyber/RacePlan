@@ -133,6 +133,20 @@ console.log('\n── the closed list ──');
   eq(G.isAllowed(L, { email: 'other@gmail.com', email_verified: true }), false, 'not listed: refused');
   eq(G.isAllowed(L, null), false, 'signed out: refused');
   eq(G.readAllowList('').size, 0, 'an empty list allows nobody');
+  const ALL = G.readAllowList('*');
+  eq(G.isAllowed(ALL, { email: 'anyone@example.com', email_verified: true }), true, '*: any verified user');
+  eq(G.isAllowed(ALL, { email: 'anyone@example.com', email_verified: false }), false, '*: still not an unverified one');
+  eq(G.isAllowed(ALL, null), false, '*: still not a signed-out one');
+}
+
+console.log('\n── the 900 alert ──');
+{
+  eq(G.capacityAlerts(899, []).join(), '', '899 connected: nothing');
+  eq(G.capacityAlerts(900, []).join(), '900', '900: the alert');
+  eq(G.capacityAlerts(950, [900]).join(), '', 'already mailed: not again');
+  eq(G.capacityAlerts(1000, [900]).join(), '1000', '1000: the limit itself');
+  eq(G.capacityAlerts(1000, []).join(), '900,1000', 'a jump past both: both');
+  eq(G.capacityAlerts(1000, ['900', '1000']).join(), '', 'kept as strings: still known');
 }
 
 console.log('\n── off until configured ──');
