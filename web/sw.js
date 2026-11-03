@@ -4,7 +4,7 @@
 // fonts are same-origin now, so they're cached like the rest of the shell).
 // CACHE is stamped with the build hash by build/build.mjs, so every deploy
 // ships a byte-different sw.js → browsers install it and drop the old cache.
-const CACHE = 'raceplan-8eb3abaf6a47';
+const CACHE = 'raceplan-e95e01207b3d';
 const SHELL = [
   '/', '/index.html', '/app.js', '/firebase-init.js', '/manifest.webmanifest',
   '/logo.webp', '/icons/boot-192.webp',
@@ -31,6 +31,11 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
   // The deploy probe (src/update.jsx) must always hit the network.
   if (url.pathname === '/version.json') return;
+  // The Cloud Functions behind /api/ (Garmin's consent returns to /api/garmin/callback and is answered with a
+  // redirect back into the app) are never the worker's: 3.11.2026 the redirect came back to the worker as an
+  // opaque response, failed the res.ok check below and the cached app shell was served at the callback URL,
+  // stuck on the logo.
+  if (url.pathname.startsWith('/api/')) return;
 
   // HTML + the app scripts + JSON data: network-first (fresh on every
   // launch), cache as offline fallback.
@@ -39,6 +44,8 @@ self.addEventListener('fetch', (e) => {
   if (fresh) {
     e.respondWith(
       fetch(e.request).then((res) => {
+        // a redirect is the page's to follow, never an error to replace with the cached shell
+        if (res.type === 'opaqueredirect' || res.redirected) return res;
         // A non-2xx (e.g. a transient 503 from the origin) must NOT be
         // cached or handed to the page as if it were the real app — that
         // poisons the cache with an error body and breaks the mount.
