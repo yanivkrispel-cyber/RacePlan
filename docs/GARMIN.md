@@ -18,6 +18,16 @@ below are done. While it's off, a functions deploy is the same as before and nev
 - Tests: `test/watch.test.mjs`, `test/garmin.test.mjs` (the whole flow against a fake Firestore and a fake Garmin).
   Not yet run against the real Garmin.
 
+## Status (3.11.2026)
+- A second app under the CoachKrispel company is refused: "Basic-tier company can create only one app".
+- So RacePlan applied as its own company: Starter access request form
+  (`https://www.garmin.com/en-US/forms/StarterGarminConnectDeveloperAccess/`) sent 3.11.2026 as
+  "RacePlan (CoachKrispel)", email `raceplan@coachkrispel.com` (a Zoho alias of yaniv.krispel@, so Garmin's
+  mail lands in the normal inbox), Training API only, 100 to 1000 users. Waiting for Garmin's reply.
+- Starter tier: up to 1,000 connected users per company, Training and Courses API included.
+- When the new account opens, the add-app form limits: description at most 450 characters, the data-use
+  field at most 300.
+
 ## Steps only Kris can do
 1. developerportal.garmin.com: register a SECOND app, "RacePlan", **Training API only** (WORKOUT_IMPORT). Do not
    reuse the coach app's keys: one notification URL per app, and that approval covers up to 100 coached athletes.
