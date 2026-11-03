@@ -97,6 +97,21 @@ const RP_EXPORT = (() => {
     return 'downloaded';
   }
 
+  // Save to the phone, not the share sheet (Kris, 3.11.2026: "save opens share, not the gallery"). A download
+  // lands in Downloads, which Android's gallery shows. iOS has no way to put a download in Photos, so there the
+  // share sheet stays (its first action is "Save Image").
+  async function saveImage(node, filename, title) {
+    const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (ios) return shareImage(node, filename, title);
+    const blob = await nodeToPngBlob(node);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    return 'downloaded';
+  }
+
   async function shareLink(url, title) {
     if (navigator.share) {
       try { await navigator.share({ title, url }); return 'shared'; }
@@ -110,7 +125,7 @@ const RP_EXPORT = (() => {
     return 'prompt';
   }
 
-  return { ensureScript, nodeToPdfBlob, sharePdf, nodeToPngBlob, shareImage, shareLink };
+  return { ensureScript, nodeToPdfBlob, sharePdf, nodeToPngBlob, shareImage, saveImage, shareLink };
 })();
 
 // ── PrintableSummary ─────────────────────────────────────────────────────

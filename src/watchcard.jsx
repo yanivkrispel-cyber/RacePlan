@@ -229,8 +229,8 @@ function WatchCard({ segments, profile, raceName, raceDate, onToast }) {
     if (!X || !X.shareImage || !bandRef.current || busy) return;
     setBusy(true);
     try {
-      const r = await X.shareImage(bandRef.current, 'raceplan-pace-band.png', raceName || tw('watch.band.title'));
-      if (r !== 'cancelled' && onToast) onToast(tw('watch.band.saved'));
+      const r = await (X.saveImage || X.shareImage)(bandRef.current, 'raceplan-pace-band.png', raceName || tw('watch.band.title'));
+      if (r !== 'cancelled' && onToast) onToast(tw(r === 'downloaded' ? 'watch.band.savedDl' : 'watch.band.saved'));
     } catch (e) {
       if (onToast) onToast(tw('watch.band.failed'));
     } finally { setBusy(false); }
@@ -693,8 +693,9 @@ function WatchSheet({ g, model, segments, raceName, raceDate, onClose, onSaveBan
         {primary}
 
         {connected && (
-          <div className="rp-wcard"><div className="rp-wcard-in">
-            <div className="rp-wrow-t"><b>{tw('watch.reh.title')}</b><span>{tw('watch.reh.sub')}</span></div>
+          <div className="rp-wcard">
+          <Fold title={tw('watch.reh.title')} sub={tw('watch.reh.sub')}>
+          <div className="rp-wcard-in" style={{ paddingTop: 2 }}>
             <div className="rp-wchips" role="group" aria-label={tw('watch.g.rehearsalDate')}>
               {days.map((d) => (
                 <button type="button" key={d.iso} className="rp-wchip" aria-pressed={!rehOther && rehDay === d.iso}
@@ -720,7 +721,9 @@ function WatchSheet({ g, model, segments, raceName, raceDate, onClose, onSaveBan
               <b>{busy === 'rehearsal' ? tw('watch.g.sending')
                 : rehDay ? tIso('watch.reh.sendOn', { date: fmtShortDay(rehDay) }, 'date') : tw('watch.reh.send')}</b>
             </button>
-          </div></div>
+          </div>
+          </Fold>
+          </div>
         )}
 
         <div className="rp-wcard">
@@ -784,8 +787,8 @@ function WatchStrip({ segments, profile, raceName, raceDate, onToast }) {
     if (!X || !X.shareImage || !bandRef.current || bandBusy) return;
     setBandBusy(true);
     try {
-      const r = await X.shareImage(bandRef.current, 'raceplan-pace-band.png', raceName || tw('watch.band.title'));
-      if (r !== 'cancelled' && onToast) onToast(tw('watch.band.saved'));
+      const r = await (X.saveImage || X.shareImage)(bandRef.current, 'raceplan-pace-band.png', raceName || tw('watch.band.title'));
+      if (r !== 'cancelled' && onToast) onToast(tw(r === 'downloaded' ? 'watch.band.savedDl' : 'watch.band.saved'));
     } catch (e) { if (onToast) onToast(tw('watch.band.failed')); }
     finally { setBandBusy(false); }
   };
