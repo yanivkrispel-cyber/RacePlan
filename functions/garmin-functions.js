@@ -23,10 +23,19 @@ const garmin = createGarmin({
   db: admin.firestore(),
   fetch: (...a) => fetch(...a),
   log: (...a) => console.warn(...a),
-  config: () => ({
-    clientId: GARMIN_CLIENT_ID.value(), clientSecret: GARMIN_CLIENT_SECRET.value(),
-    webhookKey: GARMIN_WEBHOOK_KEY.value(), redirectUri: REDIRECT_URI, appUrl: APP_URL,
-  }),
+  config: () => {
+    // 3.11.2026: the first GARMIN_CLIENT_ID was pasted twice (72 characters) and Garmin's consent page only said
+    // "something went wrong". A Client ID is a UUID: anything else is refused here, and said so in the log.
+    const clientId = String(GARMIN_CLIENT_ID.value() || '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId)) {
+      console.error(`GARMIN_CLIENT_ID is not a UUID (${clientId.length} characters): set it again`);
+      return null;
+    }
+    return {
+      clientId, clientSecret: String(GARMIN_CLIENT_SECRET.value() || '').trim(),
+      webhookKey: String(GARMIN_WEBHOOK_KEY.value() || '').trim(), redirectUri: REDIRECT_URI, appUrl: APP_URL,
+    };
+  },
 });
 
 const CODES = {

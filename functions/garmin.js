@@ -61,17 +61,21 @@ function createGarmin(deps) {
     if (!state || state.length > 100) return back('failed');
     const ref = db.collection('garminOAuth').doc(state);
     const snap = await ref.get();
-    if (!snap.exists) return back('expired');
+    if (!snap.exists) { log('garmin callback: unknown or used state'); return back('expired'); }
     await ref.delete(); // once: a replayed callback finds nothing
     const st = snap.data();
     if (!st || !st.uid || !st.verifier || now() - Number(st.createdAt) > G.STATE_TTL_MS) return back('expired');
-    if (query.error || typeof query.code !== 'string' || !query.code) return back('denied');
+    if (query.error || typeof query.code !== 'string' || !query.code) {
+      // what Garmin said, never the code itself (a short, sanitised word)
+      log('garmin callback: no code', String(query.error || 'none').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 60));
+      return back('denied');
+    }
 
     const { tok, status } = await postToken(G.tokenRequestBody(c.clientId, c.clientSecret, query.code, st.verifier, c.redirectUri));
     if (!tok) { log('garmin token exchange failed', status); return back('failed'); }
     const idA = await api(tok.access, 'GET', G.USER_ID_PATH);
     const garminUserId = idA.ok ? G.readUserId(idA.data) : null;
-    if (!garminUserId) return back('failed');
+    if (!garminUserId) { log('garmin callback: user id failed', idA.status); return back('failed'); }
 
     // one Garmin account belongs to one RacePlan account at a time
     const other = await links().where('garminUserId', '==', garminUserId).limit(5).get();
