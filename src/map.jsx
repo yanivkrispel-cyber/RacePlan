@@ -22,6 +22,13 @@ const ZONE_COLOR = LIME
   ? { fast: '#FF5A36', target: '#DDFF4A', easy: '#7fd3ff' }
   : { fast: '#C15A2E', target: '#C9A24B', easy: '#8091BE' };
 const MAP_INK = LIME ? '#050605' : '#111528'; // the ring around a map dot
+// lime: split points are small black discs with the kilometre in lime, and the
+// start / finish are labelled tags (Leaflet divIcons, styled in rp-map-styles)
+function _limeBadge(L, text, kind) {
+  const w = kind === 'split' ? Math.max(24, 10 + String(text).length * 7) : 26;
+  return L.divIcon({ className: 'rp-mbadge rp-mbadge-' + kind, html: '<span>' + text + '</span>',
+    iconSize: [w, w > 26 ? 24 : w], iconAnchor: [w / 2, (w > 26 ? 24 : w) / 2] });
+}
 
 // Leaflet's stock chrome (white zoom buttons, white attribution bar and popups)
 // glares on the dark map — restyle it with the app's tokens, once.
@@ -36,6 +43,11 @@ if (typeof document !== 'undefined' && !document.getElementById('rp-map-styles')
   .leaflet-bar a.leaflet-disabled{background:var(--rp-surface);color:var(--rp-placeholder)}
   .leaflet-container .leaflet-control-attribution{background:${LIME ? 'rgba(5,6,5,.75)' : 'rgba(17,21,40,.72)'};color:var(--rp-text-dim)}
   .leaflet-container .leaflet-control-attribution a{color:var(--rp-text-soft)}
+  .rp-mbadge{display:flex!important;align-items:center;justify-content:center;border-radius:999px;
+    font:800 10.5px/1 "Heebo",system-ui,sans-serif;font-variant-numeric:tabular-nums;box-shadow:0 0 0 2px #050605}
+  .rp-mbadge-split{background:#050605;border:1.5px solid #DDFF4A;color:#DDFF4A}
+  .rp-mbadge-start{background:#DDFF4A;color:#050605;box-shadow:0 0 0 2px #050605,0 0 14px rgba(221,255,74,.6)}
+  .rp-mbadge-finish{background:#F4F6EE;color:#050605}
   .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--rp-surface-2);color:var(--rp-text);
     box-shadow:var(--rp-shadow-modal)}
   .leaflet-popup-content{font-family:var(--rp-font-ui);font-weight:600;font-size:12.5px}
@@ -218,8 +230,13 @@ function RouteMap({ track, profile, splits, height = 340 }) {
         bounds = poly.getBounds();
       }
 
-      dot(track[0], LIME ? '#DDFF4A' : '#8091BE');                 // start  (navy-muted)
-      dot(track[track.length - 1], LIME ? '#F4F6EE' : '#C15A2E');  // finish (danger)
+      if (LIME) {
+        L.marker(track[track.length - 1], { icon: _limeBadge(L, 'F', 'finish'), keyboard: false }).addTo(map);
+        L.marker(track[0], { icon: _limeBadge(L, 'S', 'start'), keyboard: false }).addTo(map);
+      } else {
+        dot(track[0], '#8091BE');                 // start  (navy-muted)
+        dot(track[track.length - 1], '#C15A2E');  // finish (danger)
+      }
       try { map.fitBounds(bounds, { padding: [26, 26] }); } catch (e) {}
     }
 
@@ -278,6 +295,11 @@ function RouteMap({ track, profile, splits, height = 340 }) {
           const latlng = _latLngAtKm(track, cum, s.cumDist);
           if (!isFinite(latlng[0]) || !isFinite(latlng[1])) return;
           const label = `${U ? U.fmtDist(s.cumDist) : s.cumDist + ' km'} · ${U ? U.fmtPace(s.paceSec) + ' ' + U.paceUnit() : s.paceSec}`;
+          if (LIME) {
+            const km = U ? U.dispDistNum(s.cumDist, 0) : Math.round(s.cumDist);
+            L.marker(latlng, { icon: _limeBadge(L, km, 'split'), keyboard: false }).bindPopup(label).addTo(group);
+            return;
+          }
           L.circleMarker(latlng, {
             radius: 5, color: MAP_INK, weight: 2,
             fillColor: ZONE_COLOR[s.zone] || ZONE_COLOR.target, fillOpacity: 1,

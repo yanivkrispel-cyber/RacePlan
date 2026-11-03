@@ -74,7 +74,7 @@ function makeRoadTexture(THREE) {
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#3c3f45';
+  ctx.fillStyle = LIME3 ? '#22261c' : '#3c3f45';
   ctx.fillRect(0, 0, w, h);
 
   const speck = (x, y, r, alpha, dark) => {
@@ -98,7 +98,7 @@ function makeRoadTexture(THREE) {
   ctx.fillRect(0, h / 2 - lineH / 2, w, lineH * 0.26);
 
   // subtle white shoulder lines near each edge, like real road markings
-  ctx.fillStyle = 'rgba(255,255,255,.42)';
+  ctx.fillStyle = LIME3 ? 'rgba(221,255,74,.7)' : 'rgba(255,255,255,.42)';
   ctx.fillRect(0, h * 0.1, w, h * 0.016);
   ctx.fillRect(0, h * 0.884, w, h * 0.016);
 
@@ -1365,7 +1365,7 @@ const WIND_REL_LABEL_KEY = { head: 'view3d.windHead', tail: 'view3d.windTail', c
 const RunClock = React.forwardRef(function RunClock({ digitH }, outerRef) {
   const [sec, setSec] = React.useState(0);
   React.useImperativeHandle(outerRef, () => ({ setSeconds: setSec }), []);
-  return ClockDisplay ? <ClockDisplay totalSec={sec} digitH={digitH} /> : null;
+  return ClockDisplay ? <ClockDisplay totalSec={sec} digitH={digitH} live /> : null;
 });
 
 // `embedded`: render inline inside a host panel (the planner's visual column /

@@ -126,6 +126,63 @@ if (LIME_ON && !document.getElementById('rp-lime-styles')) {
   .rp-has-tabbar{padding-bottom:calc(var(--rp-tabbar-h) + env(safe-area-inset-bottom) + 12px)!important}
   @media (min-width:1024px){.rp-has-tabbar{padding-bottom:24px!important}}
   .rp-segbar{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px}
+  /* sheets rise from the bottom on phones */
+  .rp-lgrab{display:block;width:38px;height:4px;border-radius:2px;background:rgba(244,246,238,.25);margin:-6px auto 12px}
+  .rp-lsheet{background:linear-gradient(180deg,#13160f,#070807)!important;border-color:rgba(221,255,74,.16)!important}
+  @media (max-width:640px){
+    .rp-lsheet-wrap{align-items:flex-end!important;padding:0!important}
+    .rp-lsheet{max-width:none!important;border-radius:26px 26px 0 0!important;max-height:94vh!important;
+      padding-bottom:calc(18px + env(safe-area-inset-bottom))!important;animation:rp-sheet-up .28s cubic-bezier(.2,.9,.25,1)}
+  }
+  @keyframes rp-sheet-up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+  /* a line that draws itself in */
+  .rp-ldraw{stroke-dasharray:420;stroke-dashoffset:420;animation:rp-draw 1.2s .15s ease-out forwards}
+  @keyframes rp-draw{to{stroke-dashoffset:0}}
+  /* hub tiles */
+  .rp-ltiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .rp-ltile{all:unset;box-sizing:border-box;cursor:pointer;display:grid;gap:2px;padding:13px 14px;border-radius:16px;
+    background:var(--rp-surface);border:1px solid var(--rp-line);text-align:start}
+  .rp-ltile:only-child{grid-column:1/-1}
+  .rp-ltile b{font-size:14.5px;font-weight:800;color:var(--rp-text)}
+  .rp-ltile span{font-size:12px;color:var(--rp-text-dim)}
+  .rp-ltile:active{background:var(--rp-surface-2)}
+  .rp-ltile:focus-visible{box-shadow:var(--rp-focus)}
+  /* segments list */
+  .rp-sl{display:flex;flex-direction:column}
+  .rp-sl-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:0 2px 8px;font-size:11px;color:var(--rp-text-dim)}
+  .rp-sl-head .rp-hud{font-size:10px;color:var(--rp-gold)}
+  .rp-sl-row{border-bottom:1px solid var(--rp-line);transition:background .2s,border-color .2s}
+  .rp-sl-main{all:unset;box-sizing:border-box;width:100%;cursor:pointer;display:grid;grid-template-columns:24px 1fr auto 6px;
+    gap:10px;align-items:center;padding:10px 2px;-webkit-tap-highlight-color:transparent}
+  .rp-sl-main:focus-visible{box-shadow:var(--rp-focus);border-radius:12px}
+  .rp-sl-main .n{font-family:var(--rp-font-mono,ui-monospace,monospace);font-size:11px;color:var(--rp-text-dim)}
+  .rp-sl-main .w{display:grid;gap:1px;min-width:0}
+  .rp-sl-main .w b{font-size:14.5px;font-weight:800;color:var(--rp-text)}
+  .rp-sl-main .w>span{font-size:11.5px;color:var(--rp-text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rp-sl-main .p{display:grid;justify-items:end;line-height:1.02}
+  .rp-sl-main .p>span{font-size:23px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--rp-text)}
+  .rp-sl-main .p small{font-size:10.5px;color:var(--rp-text-dim);font-variant-numeric:tabular-nums}
+  .rp-sl-main .z{width:6px;height:6px;border-radius:50%}
+  .rp-sl .up{color:var(--rp-elev-up)} .rp-sl .dn{color:var(--rp-elev-down)} .rp-sl .tw{color:var(--rp-gold)}
+  .rp-sl-row.sel{border:1.5px solid var(--rp-gold);border-radius:16px;background:var(--rp-gold-wash);
+    box-shadow:0 0 26px rgba(221,255,74,.08);margin:4px -6px;padding:0 6px}
+  .rp-sl-row.sel .p>span{color:var(--rp-gold);text-shadow:0 0 16px var(--rp-lime-glow)}
+  .rp-sl-x{display:grid;gap:9px;padding:0 0 12px;animation:rp-sl-open .22s ease-out}
+  @keyframes rp-sl-open{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  .rp-sl-steps{display:grid;grid-template-columns:1fr 1fr 1.6fr 1fr 1fr;gap:6px}
+  .rp-sl-steps button{appearance:none;font:inherit;font-weight:800;font-size:14px;min-height:42px;border-radius:12px;cursor:pointer;
+    border:1px solid var(--rp-line);background:var(--rp-surface);color:var(--rp-text);font-variant-numeric:tabular-nums}
+  .rp-sl-steps button:active{transform:scale(.95)}
+  .rp-sl-steps .go{background:var(--rp-gold);border-color:var(--rp-gold);color:var(--rp-on-gold);font-size:17px;font-weight:900}
+  .rp-sl-meta{display:flex;flex-wrap:wrap;gap:6px}
+  .rp-sl-meta .chip{appearance:none;font:inherit;font-size:12px;font-weight:700;border-radius:999px;padding:6px 11px;min-height:32px;
+    border:1px solid var(--rp-gold-line);background:transparent;color:var(--rp-gold);cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+  .rp-sl-meta .chip.fixed{border-color:var(--rp-line);color:var(--rp-text-dim);cursor:default}
+  .rp-sl-meta .chip.del{border-color:var(--rp-danger-line);color:var(--rp-danger-text);margin-inline-start:auto}
+  .rp-sl-total{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:12px;padding:12px 14px;border-radius:14px;
+    background:var(--rp-gold);color:var(--rp-on-gold);font-variant-numeric:tabular-nums;box-shadow:0 8px 26px rgba(221,255,74,.14)}
+  .rp-sl-total span{font-size:12px;font-weight:700;opacity:.85}
+  .rp-sl-total b{font-size:16px;font-weight:900;display:inline-flex;align-items:center;gap:4px}
   .rp-segbar i{height:4px;border-radius:2px;background:var(--rp-surface-3)}
   .rp-segbar i.on{background:var(--rp-gold);box-shadow:0 0 8px var(--rp-lime-glow)}
   .rp-segbar i.cur{background:var(--rp-text)}
@@ -135,13 +192,98 @@ if (LIME_ON && !document.getElementById('rp-lime-styles')) {
 
 // N little bars, one per segment — the same strip on the Hub, the plan and
 // race-day mode. `upto`: bars before it are lit, `cur` is the one in progress.
-function SegBar({ n, upto, cur, style }) {
+function SegBar({ n, upto, cur, style, fill = true }) {
   const bars = [];
   for (let i = 0; i < n; i++) {
     const cls = cur === i ? 'cur' : ((upto == null || i < upto) ? 'on' : '');
-    bars.push(<i key={i} className={cls} />);
+    bars.push(<i key={i} className={cls} style={fill ? { animationDelay: (i * 45) + 'ms' } : undefined} />);
   }
-  return <div className="rp-segbar" style={style} aria-hidden="true">{bars}</div>;
+  const rtl = !window.I18N || window.I18N.dir === 'rtl';
+  return <div className={'rp-segbar' + (fill ? ' rp-fill' : '')}
+    style={{ '--rp-bar-origin': rtl ? 'right' : 'left', ...style }} aria-hidden="true">{bars}</div>;
+}
+
+// ── the plan's segments as a list (lime) ───────────────────────────────
+// Same data and the same actions as core.jsx's SegmentsTable: edit a pace or a
+// distance (ValueEditor), step a pace, delete, the locked remainder, elevation,
+// wind, segment and cumulative time, the zone, the totals. A row is a line to
+// read; tapping it opens its controls.
+const WIND_KEY_L = { head: 'view3d.windHead', tail: 'view3d.windTail', cross: 'view3d.windCross' };
+function SegmentsList({ plan, colors, onEditValue, onStepPace, onRemove, elevations, windRel, totalLocked,
+  selected, onSelect, distLock }) {
+  const { rows, totalDist, totalTime, avgPace } = plan;
+  const remainderIdx = totalLocked ? rows.length - 1 : -1;
+  const unit = UL ? UL.distUnit() : tL('units.km');
+  const fmtClock = window.formatClock;
+  const dnum = (v) => (UL ? UL.dispDistNum(v) : v);
+  const step = (id, d) => { onStepPace(id, d); try { if (navigator.vibrate) navigator.vibrate(6); } catch (e) {} };
+  return (
+    <div className="rp-sl">
+      <div className="rp-sl-head">
+        <span className="rp-hud">SEGMENTS · {String(rows.length).padStart(2, '0')}</span>
+        <span>{tL('segList.tapHint')}</span>
+      </div>
+      {rows.map((r, i) => {
+        const sel = selected === i;
+        const el = elevations ? elevations[i] : null;
+        const w = windRel ? windRel[i] : null;
+        const elTxt = el == null ? null
+          : (el > 0 ? '▲ ' : el < 0 ? '▼ ' : '') + (UL ? UL.elevInt(Math.abs(el)) + UL.elevUnit() : Math.abs(el) + 'm');
+        return (
+          <div key={r.id} className={'rp-sl-row' + (sel ? ' sel' : '')}>
+            <button type="button" className="rp-sl-main" aria-expanded={sel}
+              onClick={() => onSelect(sel ? null : i)}>
+              <span className="n" dir="ltr">{String(r.index).padStart(2, '0')}</span>
+              <span className="w">
+                <b>{tL('raceday.untilKm', { dist: fmtDistL(r.cumDist) })}</b>
+                <span>
+                  <bdi>{dnum(r.distance)} {unit}</bdi>
+                  {i === remainderIdx && <> · 🔒</>}
+                  {elTxt && <> · <bdi className={el > 0 ? 'up' : el < 0 ? 'dn' : ''}>{elTxt}</bdi></>}
+                  {w && <> · <span className={w.kind === 'head' ? 'up' : w.kind === 'tail' ? 'tw' : ''}>{tL(WIND_KEY_L[w.kind])}</span></>}
+                </span>
+              </span>
+              <span className="p">
+                <span dir="ltr">{fmtPaceL(r.paceSec)}</span>
+                <small dir="ltr">{fmtClock(r.cumTime)}</small>
+              </span>
+              <i className="z" style={{ background: colors.zones[r.zone] }} title={tL(window.ZONES[r.zone].labelKey)} />
+            </button>
+            {sel && (
+              <div className="rp-sl-x">
+                <div className="rp-sl-steps" dir="ltr">
+                  {[-5, -1].map((d) => (
+                    <button key={d} type="button" onClick={() => step(r.id, d)}
+                      aria-label={tL('common.decrease') + ' ' + Math.abs(d)}>−{Math.abs(d)}</button>))}
+                  <button type="button" className="go" onClick={() => onEditValue && onEditValue(r.id, 'pace', r.paceSec)}>
+                    {fmtPaceL(r.paceSec)}</button>
+                  {[1, 5].map((d) => (
+                    <button key={d} type="button" onClick={() => step(r.id, d)}
+                      aria-label={tL('common.add') + ' ' + d}>+{d}</button>))}
+                </div>
+                <div className="rp-sl-meta">
+                  {i === remainderIdx
+                    ? <span className="chip fixed" title={tL('segTable.remainderHint')}>🔒 <bdi>{dnum(r.distance)} {unit}</bdi></span>
+                    : (
+                      <button type="button" className="chip" onClick={() => onEditValue && onEditValue(r.id, 'dist', r.distance)}>
+                        {tL('segTable.distance', { unit })}: <bdi>{dnum(r.distance)}</bdi></button>)}
+                  <span className="chip fixed">{tL('segTable.segTime')}: <bdi>{fmtClock(r.segTime)}</bdi></span>
+                  <button type="button" className="chip del" onClick={() => { onSelect(null); onRemove(r.id); }}
+                    aria-label={tL('segTable.removeSegment') + ' ' + r.index}>✕ {tL('segTable.removeSegment')}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div className="rp-sl-total">
+        <span>{tL('segTable.total')}</span>
+        <b><bdi>{dnum(totalDist)} {unit}</bdi>{distLock}</b>
+        <b dir="ltr">{fmtPaceL(avgPace)}</b>
+        <b dir="ltr">{fmtClock(totalTime)}</b>
+      </div>
+    </div>
+  );
 }
 
 // ── race-day mode ──────────────────────────────────────────────────────
@@ -193,8 +335,14 @@ function RaceDayScreen({ raceName, raceDate, raceTime, rows, totalTime, weather,
         padding: 'max(16px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(22px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left))' }}>
       <div style={{ maxWidth: 460, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16, minHeight: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <span className="rp-pulse" style={{ background: 'var(--rp-gold)', color: 'var(--rp-on-gold)', fontWeight: 900,
-            fontSize: 12, borderRadius: 999, padding: '4px 12px' }}>{tL('raceday.title')}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span className="rp-pulse" style={{ background: 'var(--rp-gold)', color: 'var(--rp-on-gold)', fontWeight: 900,
+              fontSize: 12, borderRadius: 999, padding: '4px 12px' }}>{tL('raceday.title')}</span>
+            {st && phase === 'before' && st.toStartSec < 86400 && (
+              <span className="rp-hud" style={{ fontSize: 10, color: 'var(--rp-text-dim)' }}>
+                T−{fmtClockL(st.toStartSec)}</span>
+            )}
+          </span>
           <button type="button" onClick={onClose} aria-label={tL('common.close')}
             style={{ width: 38, height: 38, borderRadius: 12, border: '1px solid var(--rp-line)', background: 'var(--rp-surface)',
               color: 'var(--rp-text)', fontSize: 16, cursor: 'pointer' }}>✕</button>
@@ -211,7 +359,7 @@ function RaceDayScreen({ raceName, raceDate, raceTime, rows, totalTime, weather,
 
         <div>
           <div style={{ fontSize: 12.5, color: 'var(--rp-text-dim)', textAlign: 'center', marginBottom: 6 }}>{clockLabel}</div>
-          {ClockDisplay && <ClockDisplay totalSec={clockSec} digitH={46} />}
+          {ClockDisplay && <ClockDisplay totalSec={clockSec} digitH={46} live />}
           {phase === 'running' && pos && (
             <SegBar n={rows.length} upto={pos.index} cur={pos.finished ? null : pos.index} style={{ marginTop: 10 }} />
           )}
@@ -304,9 +452,12 @@ function NextRaceCard({ resume, onOpen, onRaceDay }) {
   let dateText = '';
   if (resume.raceDate) {
     const [y, m, d] = resume.raceDate.split('-').map(Number);
-    dateText = window.I18N && window.I18N.fmtDate
-      ? window.I18N.fmtDate(new Date(y, m - 1, d), { weekday: 'long', day: 'numeric', month: 'numeric' })
-      : resume.raceDate;
+    const dt = new Date(y, m - 1, d);
+    const fd = window.I18N && window.I18N.fmtDate;
+    // "שישי 27.2" — the weekday without "יום", then day.month
+    // drop the Hebrew word "day" in front of the weekday name
+    const wd = fd ? fd(dt, { weekday: 'long' }).replace(/^\u05D9\u05D5\u05DD\s+/, '') : '';
+    dateText = fd ? wd + ' ' + d + '.' + m : resume.raceDate;
     if (resume.raceTime) dateText += ' · ' + resume.raceTime;
   }
   return (
@@ -323,9 +474,10 @@ function NextRaceCard({ resume, onOpen, onRaceDay }) {
           <div style={{ fontSize: 21, fontWeight: 900, lineHeight: 1.15, color: 'var(--rp-text)' }}>{resume.raceName}</div>
           <div style={{ fontSize: 12, color: 'var(--rp-text-dim)', marginTop: 2 }}>
             {fmtDistL(resume.dist)} · {tL('hub.segmentsN', { count: resume.segs })}
+            {resume.gain != null && <> · <bdi>{UL ? UL.elevInt(resume.gain) : resume.gain}</bdi> {UL && UL.imperial ? tL('units.climbFt') : tL('units.climb')}</>}
           </div>
         </div>
-        {ClockDisplay && <ClockDisplay totalSec={resume.sec} digitH={30} />}
+        {ClockDisplay && <ClockDisplay totalSec={resume.sec} digitH={38} />}
         <SegBar n={Math.min(resume.segs, 30)} />
       </button>
       {today && onRaceDay && (
@@ -338,5 +490,5 @@ function NextRaceCard({ resume, onOpen, onRaceDay }) {
   );
 }
 
-Object.assign(window, { RP_LIME_UI: { TabBar, RaceDayScreen, NextRaceCard, SegBar, raceDayState, raceDayAutoOpen,
+Object.assign(window, { RP_LIME_UI: { TabBar, RaceDayScreen, NextRaceCard, SegBar, SegmentsList, raceDayState, raceDayAutoOpen,
   planPosition, daysUntil, raceStartMs } });

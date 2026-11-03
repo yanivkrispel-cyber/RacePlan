@@ -158,6 +158,16 @@ if (!document.getElementById('rp-tokens')) {
   @keyframes rp-blink{50%{opacity:.18}}
   @keyframes rp-pulse{0%{box-shadow:0 0 0 0 rgba(221,255,74,.45)}70%{box-shadow:0 0 0 8px rgba(221,255,74,0)}100%{box-shadow:0 0 0 0 rgba(221,255,74,0)}}
   .rp-blink{animation:rp-blink 1s steps(1) infinite}
+  /* a digit arriving: a short neon flicker while it drops into place (on
+     first paint every digit, staggered by --d; afterwards only the one that changed) */
+  @keyframes rp-digit-in{0%{opacity:0;transform:translateY(-30%)}35%{opacity:.85}50%{opacity:.25}
+    70%{opacity:1;transform:translateY(4%)}100%{opacity:1;transform:none}}
+  .rp-digit{display:block;animation:rp-digit-in .42s cubic-bezier(.2,.9,.25,1) both;animation-delay:var(--d,0ms)}
+  @keyframes rp-digit-roll{from{opacity:.25;transform:translateY(-28%)}to{opacity:1;transform:none}}
+  .rp-digit-roll{display:block;animation:rp-digit-roll .24s cubic-bezier(.2,.9,.25,1) both}
+  /* segment bar filling up, bar by bar */
+  @keyframes rp-bar-in{from{transform:scaleX(0);opacity:.2}to{transform:none;opacity:1}}
+  .rp-segbar.rp-fill i{animation:rp-bar-in .38s ease-out both;transform-origin:var(--rp-bar-origin,right)}
   .rp-pulse{animation:rp-pulse 2.4s ease-out infinite}
 
   /* legacy --rp-* contract, remapped onto the tokens above so existing
@@ -425,14 +435,30 @@ function RPWordmark({ size = 20, align = 'center' }) {
 
 // Read-only seven-segment display of a total time (H:MM·SS) — the planner's
 // goal-time hero card, and route3d.jsx's in-run clock at a smaller digitH.
-function ClockDisplay({ totalSec, digitH = 38, onClick, caption }) {
+function ClockDisplay({ totalSec, digitH = 38, onClick, caption, dim, live, children }) {
   const t = Math.max(0, Math.round(totalSec || 0));
   const h = Math.floor(t / 3600);
   const m = Math.floor((t % 3600) / 60);
   const s = t % 60;
-  const seg = (v, k) => <SevenSeg key={k} value={v} h={digitH} />;
+  // lime: on the first paint the digits flicker on one after another; after
+  // that a digit that changes rolls in (keyed by value, so only it remounts).
+  // A running clock (`live`: race day, the 3D run) ticks every second, so its
+  // digits keep their place and just change.
+  const first = React.useRef(true);
+  React.useEffect(() => { first.current = false; }, []);
+  let n = 0;
+  const seg = LIME
+    ? (v, k) => (
+      <span key={live ? k : k + ':' + v} className={first.current ? 'rp-digit' : 'rp-digit-roll'}
+        style={{ '--d': first.current ? (n++) * 70 + 'ms' : '0ms' }}>
+        <SevenSeg value={dim ? null : v} h={digitH} /></span>)
+    : (v, k) => <SevenSeg key={k} value={v} h={digitH} />;
   const well = (
-    <div style={{ background: LIME ? '#000' : '#04050a', borderRadius: 12, padding: '9px 10px 7px',
+    <div style={LIME ? {
+      padding: '4px 6px', display: 'flex', direction: 'ltr', alignItems: 'center', justifyContent: 'center',
+      gap: Math.max(3, digitH * 0.1), transform: 'skewX(-6deg)',
+      filter: dim ? 'none' : 'drop-shadow(0 0 6px rgba(221,255,74,.4)) drop-shadow(0 0 18px rgba(221,255,74,.16))',
+    } : { background: '#04050a', borderRadius: 12, padding: '9px 10px 7px',
       display: 'flex', direction: 'ltr', alignItems: 'center', justifyContent: 'center', gap: 4,
       boxShadow: 'inset 0 0 22px rgba(0,0,0,.75)' }}>
       {String(h).split('').map((c, i) => seg(+c, 'h' + i))}
@@ -448,6 +474,7 @@ function ClockDisplay({ totalSec, digitH = 38, onClick, caption }) {
   );
   const root = {
     ...CLOCK_VARS,
+    ...(dim ? { '--rc-on': 'rgba(221,255,74,.14)', '--rc-glow': 'transparent' } : null),
     background: LIME ? 'radial-gradient(120% 90% at 50% 40%, rgba(221,255,74,.07), transparent 65%), #020302' : '#12141d',
     border: LIME ? '1px solid var(--rp-gold-line)' : '1px solid var(--rp-line)', borderRadius: 16,
     padding: LIME ? '13px 15px 11px' : '10px 12px 9px', boxShadow: 'inset 0 2px 12px rgba(0,0,0,.45)',
@@ -461,6 +488,7 @@ function ClockDisplay({ totalSec, digitH = 38, onClick, caption }) {
         <div style={{ textAlign: 'center', fontSize: 9.5, fontWeight: 700, letterSpacing: '.14em',
           color: 'var(--rp-text-dim)', textTransform: 'uppercase', marginTop: 8 }}>{caption}</div>
       )}
+      {children}
     </>
   );
   return onClick

@@ -141,6 +141,15 @@ const extra = [
     lime.__RACEPLAN_SHARE__ = null;
     try { return lime.PlannerB(); } finally { lime.__RACEPLAN_SHARE__ = 'x'; }
   }],
+  ['lime: segments list with an open row, the lock and elevations', () => {
+    const plan = lime.computePlan([{ id: 'a', distance: 5, paceSec: 300 }, { id: 'b', distance: 5, paceSec: 290 }]);
+    const colors = { zones: { fast: '#f00', target: '#0f0', easy: '#00f' } };
+    for (const sel of [0, 1, null]) {
+      lime.RP_LIME_UI.SegmentsList({ plan, colors, onEditValue: () => {}, onStepPace: () => {}, onRemove: () => {},
+        elevations: [12, -4], windRel: [{ kind: 'head' }, null], totalLocked: true, selected: sel,
+        onSelect: () => {}, distLock: null });
+    }
+  }],
   ...['before', 'running', 'nodate'].map((ph) => ['lime: race-day ' + ph, () => {
     const rows = lime.computePlan([{ id: 'a', distance: 5, paceSec: 300 }, { id: 'b', distance: 5, paceSec: 290 }]).rows;
     const d = new Date(Date.now() + (ph === 'before' ? 3600e3 : -600e3));

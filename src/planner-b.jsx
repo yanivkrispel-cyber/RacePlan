@@ -248,8 +248,8 @@ function ConditionsBar({ weather, status, advisory, onApply }) {
     <div style={{
       // An actionable advisory keeps the heat card's gold treatment — it is a
       // suggestion waiting on an answer, not just a readout.
-      background: advisory ? 'var(--rp-gold-wash)' : 'var(--rp-surface)',
-      border: `1px solid ${advisory ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
+      background: advisory ? (LIME ? 'var(--rp-warn-bg)' : 'var(--rp-gold-wash)') : 'var(--rp-surface)',
+      border: `1px solid ${advisory ? (LIME ? 'var(--rp-warn-line)' : 'var(--rp-gold-line)') : 'var(--rp-line)'}`,
       borderRadius: 'var(--rp-r-12)', overflow: 'hidden', marginBottom: 10,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '7px 12px' }}>
@@ -274,7 +274,7 @@ function ConditionsBar({ weather, status, advisory, onApply }) {
           {advisory && (
             <>
               {sep}
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-gold)', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: LIME ? '#FFB13D' : 'var(--rp-gold)', whiteSpace: 'nowrap' }}>
                 🌡️ {t('heat.chipDelta', { sec: deltaDisp, unit: per })}
               </span>
             </>
@@ -287,7 +287,8 @@ function ConditionsBar({ weather, status, advisory, onApply }) {
           </svg>
         </button>
         {advisory && (
-          <button className="rp-btn" style={{ flex: '0 0 auto', padding: '7px 12px', fontSize: 12.5 }}
+          <button className="rp-btn" style={{ flex: '0 0 auto', padding: '7px 12px', fontSize: 12.5,
+            ...(LIME ? { background: '#FFB13D', borderColor: '#FFB13D', color: '#050605', fontWeight: 800 } : null) }}
             onClick={onApply}>{t('heat.applyButton')}</button>
         )}
       </div>
@@ -550,11 +551,13 @@ function HoldButton({ delta, onStep, children, style, ariaLabel, tabIndex }) {
   const timer = React.useRef(null);
   const stop = () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
   React.useEffect(() => stop, []);
+  // lime: a light tick under the finger on every step (where the phone can)
+  const step = LIME ? (d) => { onStep(d); try { if (navigator.vibrate) navigator.vibrate(6); } catch (e) {} } : onStep;
   const start = (e) => {
     e.preventDefault();
-    onStep(delta);
+    step(delta);
     let gap = 300;
-    const tick = () => { onStep(delta); gap = Math.max(45, gap * 0.82); timer.current = setTimeout(tick, gap); };
+    const tick = () => { step(delta); gap = Math.max(45, gap * 0.82); timer.current = setTimeout(tick, gap); };
     timer.current = setTimeout(tick, 380);
   };
   return (
@@ -632,7 +635,9 @@ function ClockGroup({ value, digits, max, onChange, label, digitH, inputRef, onF
         background: editing ? `rgba(${ACC_RGB},.07)` : 'transparent',
         boxShadow: editing ? `0 0 0 1px rgba(${ACC_RGB},.5)` : 'none',
         opacity: draft === '' ? 0.4 : 1 }}>
-        {cells.map((v, i) => <SevenSeg key={i} value={v} h={digitH} />)}
+        {cells.map((v, i) => (LIME
+          ? <span key={i + ':' + v} className="rp-digit-roll"><SevenSeg value={v} h={digitH} /></span>
+          : <SevenSeg key={i} value={v} h={digitH} />))}
         <input
           ref={inputRef} value={draft || ''} inputMode="numeric" aria-label={label}
           onFocus={() => write('')}
@@ -674,9 +679,10 @@ function RaceClock({ h, m, s, onH, onM, onS, subtitle, digitH = 50 }) {
       padding: '9px 10px 7px', boxShadow: 'inset 0 2px 12px rgba(0,0,0,.45)',
     }}>
       {LIME && window.ClockCorners && <window.ClockCorners />}
-      <div style={{ background: LIME ? '#000' : '#04050a', borderRadius: 12, padding: '10px 8px 7px',
+      <div style={{ background: LIME ? 'transparent' : '#04050a', borderRadius: 12, padding: '10px 8px 7px',
         display: 'flex', direction: 'ltr', alignItems: 'flex-start', justifyContent: 'center', gap: 4,
-        boxShadow: 'inset 0 0 22px rgba(0,0,0,.75)' }}>
+        boxShadow: LIME ? 'none' : 'inset 0 0 22px rgba(0,0,0,.75)',
+        filter: LIME ? 'drop-shadow(0 0 6px rgba(221,255,74,.35))' : undefined }}>
         <ClockGroup value={h} digits={1} max={11} onChange={onH} label={t('clock.hours')} digitH={digitH}
           onFilled={() => focus(mRef)} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, alignItems: 'center',
@@ -723,13 +729,14 @@ function GoalSheet({ currentSec, dist, onClose, onApply }) {
   const goalSec = gh * 3600 + gm * 60 + gs;
   const ok = goalSec >= 600 && goalSec <= 12 * 3600;
   return ReactDOM.createPortal((
-    <div className="rp-cq-scope" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    <div className={'rp-cq-scope' + (LIME ? ' rp-lsheet-wrap' : '')} role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 1100, background: SCRIM,
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 18, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
-      <div style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
+      <div className={LIME ? 'rp-lsheet' : undefined} style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 400,
         boxShadow: 'var(--rp-shadow-modal)', padding: 18 }}>
+        {LIME && <i className="rp-lgrab" aria-hidden="true" />}
         <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 12 }}>{t('setup.goalTime')}</div>
         <RaceClock h={gh} m={gm} s={gs} onH={setGh} onM={setGm} onS={setGs}
           subtitle={t('planner.goalScaleAll')} />
@@ -986,13 +993,19 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
   );
 
   return ReactDOM.createPortal((
-    <div className="rp-cq-scope" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    <div role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className={'rp-cq-scope' + (LIME ? ' rp-lsheet-wrap' : '')}
       style={{ position: 'fixed', inset: 0, zIndex: 1100, background: SCRIM,
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 16, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
-      <div style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
+      <div className={LIME ? 'rp-lsheet' : undefined} style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 440, maxHeight: '92vh',
         overflowY: 'auto', boxShadow: 'var(--rp-shadow-modal)', padding: '18px 18px 16px' }}>
+        {LIME && <i className="rp-lgrab" aria-hidden="true" />}
+        {LIME && (
+          <div className="rp-hud" style={{ fontSize: 10, color: 'var(--rp-gold)', marginBottom: 4 }}>
+            STEP {course ? 2 : 1} / 2</div>
+        )}
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontSize: 17, fontWeight: 800 }}>{t('setup.title')}</div>
@@ -1012,9 +1025,22 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
               <HubCard primary onClick={() => setEntryMode('route')}
                 title={t('setup.hasRoute')} sub={t('setup.hasRouteSub')}
                 icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" /><path d="M9 3v15M15 6v15" /></svg>} />
+              {LIME && (
+                <svg viewBox="0 0 280 34" width="100%" height="34" aria-hidden="true" style={{ display: 'block', margin: '-2px 0 2px' }}>
+                  <path d="M0 29 L28 25 L52 27 L78 17 L104 21 L130 11 L158 19 L186 15 L212 23 L242 9 L280 17 L280 34 L0 34Z" fill="rgba(221,255,74,.08)" />
+                  <path className="rp-ldraw" d="M0 29 L28 25 L52 27 L78 17 L104 21 L130 11 L158 19 L186 15 L212 23 L242 9 L280 17" fill="none" stroke="#DDFF4A" strokeOpacity=".75" strokeWidth="1.6" />
+                </svg>
+              )}
               <HubCard onClick={() => setEntryMode('distance')}
                 title={t('setup.justDistance')} sub={t('setup.justDistanceSub')}
                 icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="4" y1="12" x2="20" y2="12" /><circle cx="4" cy="12" r="2.2" fill="currentColor" stroke="none" /><circle cx="20" cy="12" r="2.2" fill="currentColor" stroke="none" /></svg>} />
+              {LIME && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', marginTop: 2 }}>
+                  {(PRESETS || []).map((pr) => chip(false,
+                    (window.presetLabel ? window.presetLabel(pr) : pr.km),
+                    () => { setEntryMode('distance'); pickPreset(pr.km, presetName(pr)); }, 'q' + pr.km))}
+                </div>
+              )}
             </div>
           </>
         )}
@@ -1284,6 +1310,7 @@ function HubScreen({ isOwner, userName, onEnter }) {
       let dist = 0; let sec = 0;
       for (const [km, pace] of d.s) { dist += +km || 0; sec += (+km || 0) * (+pace || 0); }
       return { raceName: localStorage.getItem('rp-race') || t('hub.resumeDefault'), dist, sec, segs: d.s.length,
+        gain: d.c && d.c.gain != null ? d.c.gain : null,
         raceDate: localStorage.getItem(LS_RACE_DATE) || '', raceTime: localStorage.getItem(LS_RACE_TIME) || '' };
     } catch (e) { return null; }
   }, []);
@@ -1301,6 +1328,24 @@ function HubScreen({ isOwner, userName, onEnter }) {
 
   const Card = HubCard;
   const LUI = LIME ? window.RP_LIME_UI : null;
+  // lime: live counts for the hub tiles (the stores sync in the background)
+  const [counts, setCounts] = React.useState({ ath: null, plans: null });
+  React.useEffect(() => {
+    if (!LUI) return undefined;
+    const read = () => setCounts({
+      ath: AthleteDB ? (AthleteDB.getAll() || []).length : null,
+      plans: MyPlansDB ? (MyPlansDB.getAll() || []).length : null,
+    });
+    read();
+    const offs = [AthleteDB && AthleteDB.subscribe && AthleteDB.subscribe(read),
+      MyPlansDB && MyPlansDB.subscribe && MyPlansDB.subscribe(read)].filter(Boolean);
+    return () => offs.forEach((f) => { try { f(); } catch (e) {} });
+  }, []);
+  const greet = (() => {
+    const h = new Date().getHours();
+    const part = h < 5 ? 'night' : h < 12 ? 'morning' : h < 17 ? 'noon' : h < 22 ? 'evening' : 'night';
+    return userName ? t('lime.greet.' + part, { name: userName }) : t('hub.tagline');
+  })();
   // lime: enter the planner on a given tab (the planner reads and clears these)
   const enterTo = (what) => { window.__rpEnterTo = what; onEnter(null); };
 
@@ -1327,8 +1372,7 @@ function HubScreen({ isOwner, userName, onEnter }) {
             </button>
           </div>
           <div style={{ width: '100%', maxWidth: 420 }}>
-            <div style={{ fontSize: 13, color: 'var(--rp-text-dim)' }}>
-              {userName ? t('hub.hello', { name: userName }) : t('hub.tagline')}</div>
+            <div style={{ fontSize: 13, color: 'var(--rp-text-dim)' }}>{greet}</div>
             <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.1 }}>
               {resume ? t('hub.nextRace') : t('hub.tagline')}</div>
           </div>
@@ -1358,7 +1402,7 @@ function HubScreen({ isOwner, userName, onEnter }) {
       <div style={{ width: '100%', maxWidth: LUI ? 420 : 380, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* a new plan overwrites the one in progress — say so before it happens */}
         <Card primary onClick={() => (resume ? setReplaceConfirm(true) : setSetupOpen(true))} title={t('hub.newPlan')}
-          sub={t('hub.newPlanSub')}
+          sub={LUI ? t('lime.newPlanSub') : t('hub.newPlanSub')}
           icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>} />
 
         {resume && !LUI && (
@@ -1367,14 +1411,29 @@ function HubScreen({ isOwner, userName, onEnter }) {
             icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8" /><path d="M3 3v5h5" /></svg>} />
         )}
 
+        {LUI && (
+          <div className="rp-ltiles">
+            <button type="button" className="rp-ltile" onClick={() => setSavedOpen(true)}>
+              <b>{isOwner ? t('lime.athletes') : t('hub.myPlans')}</b>
+              <span>{isOwner
+                ? (counts.ath != null ? t('lime.athletesN', { count: counts.ath }) : t('hub.myPlansOwnerSub'))
+                : (counts.plans != null ? t('lime.plansN', { count: counts.plans }) : t('hub.myPlansSub'))}</span>
+            </button>
+            {isOwner && RaceAdminPanel && RP_FB && (
+              <button type="button" className="rp-ltile" onClick={() => setRaceAdminOpen(true)}>
+                <b>{t('hub.raceAdmin')}</b><span>{t('lime.raceAdminSub')}</span>
+              </button>
+            )}
+          </div>
+        )}
         {/* the owner's card opens the athlete roster, so it's named after it */}
-        <Card onClick={() => setSavedOpen(true)} title={isOwner ? t('athletes.title') : t('hub.myPlans')}
+        {!LUI && <Card onClick={() => setSavedOpen(true)} title={isOwner ? t('athletes.title') : t('hub.myPlans')}
           sub={isOwner ? t('hub.myPlansOwnerSub') : t('hub.myPlansSub')}
           icon={isOwner
             ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
-            : <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>} />
+            : <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>} />}
 
-        {isOwner && RaceAdminPanel && RP_FB && (
+        {!LUI && isOwner && RaceAdminPanel && RP_FB && (
           <Card onClick={() => setRaceAdminOpen(true)} title={t('hub.raceAdmin')}
             sub={t('hub.raceAdminSub')}
             icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3Z" /><path d="M9 3v15M15 6v15" /></svg>} />
@@ -1478,11 +1537,28 @@ function SignInScreenLime() {
           <window.RPIcon size={112} radius={30} /></span>
         <window.RPWordmark size={30} />
       </div>
-      {ClockDisplay && <div style={{ width: '100%', maxWidth: 300 }}><ClockDisplay totalSec={0} digitH={34} /></div>}
-      <div style={{ color: 'var(--rp-text-soft)', fontSize: 16, maxWidth: 300 }}>{t('signin.tagline')}</div>
-      <button className="rp-btn rp-btn-primary" style={{ minHeight: 52, fontSize: 16, padding: '12px 30px',
-        width: '100%', maxWidth: 320, justifyContent: 'center', fontWeight: 900, borderRadius: 16 }}
+      {ClockDisplay && (
+        <div style={{ width: '100%', maxWidth: 320 }}>
+          <ClockDisplay totalSec={0} digitH={36} dim>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4,
+              padding: '0 4px', fontSize: 11, color: 'var(--rp-text-dim)' }}>
+              <span>{t('lime.ready')}</span>
+              <span className="rp-hud rp-blink" style={{ fontSize: 9.5, color: '#FF5A36' }}>● REC</span>
+            </div>
+          </ClockDisplay>
+        </div>
+      )}
+      <div style={{ display: 'grid', gap: 6, maxWidth: 320 }}>
+        <div style={{ fontSize: 23, fontWeight: 900, lineHeight: 1.2, whiteSpace: 'pre-line' }}>{t('lime.signinTitle')}</div>
+        <div style={{ color: 'var(--rp-text-dim)', fontSize: 13.5 }}>{t('lime.signinSub')}</div>
+      </div>
+      <button className="rp-btn rp-btn-primary" style={{ minHeight: 54, fontSize: 16, padding: '12px 30px',
+        width: '100%', maxWidth: 320, justifyContent: 'center', fontWeight: 900, borderRadius: 16, gap: 10 }}
         onClick={() => RP_FB && RP_FB.signIn()}>
+        <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="23" fill="#050605" />
+          <path fill="#DDFF4A" d="M24.5 21.6v5.2h7.2c-.3 1.9-2.3 5.5-7.2 5.5-4.3 0-7.9-3.6-7.9-8s3.5-8 7.9-8c2.5 0 4.1 1 5 1.9l3.4-3.3C30.7 12.9 27.9 11.6 24.5 11.6c-7 0-12.6 5.6-12.6 12.6s5.6 12.6 12.6 12.6c7.3 0 12.1-5.1 12.1-12.3 0-.8-.1-1.5-.2-2.1H24.5z" />
+        </svg>
         {t('signin.google')}
       </button>
     </div>
@@ -2165,6 +2241,8 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
   // ── lime skin: tab bar + race-day mode ───────────────────────────────────
   const LUI = LIME ? window.RP_LIME_UI : null;
   const [raceDayOpen, setRaceDayOpen] = React.useState(false);
+  const [selSeg, setSelSeg] = React.useState(null); // lime: the open segment row, banded on the chart
+  React.useEffect(() => { if (selSeg != null && selSeg >= plan.rows.length) setSelSeg(null); }, [plan.rows.length]);
   // Entry from the Hub's tabs / race-day button, or race morning itself.
   React.useEffect(() => {
     if (!LUI) return;
@@ -2237,6 +2315,7 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
         interactive={canEditBoundaries}
         segments={p.segments}
         extrema={courseExtrema}
+        highlight={LUI ? selSeg : null}
         onSegmentsChange={p.replaceSegments} />
     </div>
   );
@@ -2385,6 +2464,31 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
         @container (max-width: 640px) {
           :root[data-ui="lime"] .rp-toolbar { bottom: calc(var(--rp-tabbar-h) + env(safe-area-inset-bottom) + 8px); }
         }
+        /* lime: the app bar carries save / more and the tab bar carries share,
+           so the floating action bar is only for wide screens (no tab bar) */
+        @container (max-width: 1023px) {
+          :root[data-ui="lime"] .rp-toolbar { display: none !important; }
+          :root[data-ui="lime"] .rp-wide-only { display: none !important; }
+        }
+        :root[data-ui="lime"] .rp-racecard { background: linear-gradient(170deg, #11150b, #070807 55%) !important;
+          border-color: rgba(221,255,74,.18) !important; }
+        .rp-lkpis { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+          border-top: 1px solid var(--rp-gold-line); border-bottom: 1px solid var(--rp-gold-line); }
+        .rp-lkpis > div { display: grid; padding: 9px 0; text-align: center; }
+        .rp-lkpis > div + div { border-inline-start: 1px solid var(--rp-line); }
+        .rp-lkpis b { font-size: 21px; font-weight: 900; font-variant-numeric: tabular-nums; display: inline-flex;
+          align-items: center; justify-content: center; gap: 4px; }
+        .rp-lkpis > div > span { font-size: 10.5px; color: var(--rp-text-dim); }
+        .rp-lpill { appearance: none; font: inherit; font-size: 12.5px; font-weight: 800; border-radius: 999px;
+          padding: 7px 13px; min-height: 36px; cursor: pointer; border: 1px solid var(--rp-gold-line);
+          background: transparent; color: var(--rp-gold); }
+        .rp-lpill:active { background: var(--rp-gold-wash); }
+        .rp-lic { width: 36px; height: 36px; border-radius: 11px; cursor: pointer; flex: 0 0 auto;
+          background: var(--rp-surface); border: 1px solid var(--rp-line); color: var(--rp-text-dim);
+          display: flex; align-items: center; justify-content: center; }
+        .rp-lbadge { position: absolute; top: -5px; inset-inline-start: -5px; min-width: 15px; height: 15px; padding: 0 4px;
+          border-radius: 999px; background: var(--rp-gold); color: var(--rp-on-gold); font-size: 9.5px; font-weight: 800;
+          display: flex; align-items: center; justify-content: center; }
       `}</style>
 
       <div className={'rp-planner-wrap'
@@ -2398,7 +2502,33 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
 
         {/* app bar — the way back to the Hub and to language/units used to be
             buried in the ⋯ menu (Home) or missing from the planner (Settings) */}
-        <div className="rp-appbar" style={{ display: 'flex', alignItems: 'center',
+        {LUI && (
+          <div className="rp-appbar" style={{ display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+              {onGoHome && (
+                <button className="rp-btn rp-wide-only" onClick={onGoHome}
+                  style={{ padding: '7px 12px', fontSize: 13, minHeight: 36 }}>{t('planner.home')}</button>
+              )}
+              <window.RPIcon size={32} radius={9} />
+              <window.RPWordmark size={12} align="start" />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              {(isOwner ? AthleteDB : (MyPlansDB && RP_FB)) && (
+                <button type="button" className="rp-lpill" onClick={isOwner ? saveToAthlete : saveMyPlan}>
+                  {isOwner ? t('planner.saveToAthlete') : t('planner.savePlan')}</button>
+              )}
+              <button type="button" className="rp-lic" aria-label={t('planner.more')} onClick={() => setMoreOpen(true)}
+                style={{ position: 'relative' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
+                {pendingSubs > 0 && <span className="rp-lbadge">{pendingSubs}</span>}
+              </button>
+              <button type="button" className="rp-lic" aria-label={t('settings.title')} onClick={() => setSettingsOpen(true)}>
+                <GearIcon /></button>
+            </div>
+          </div>
+        )}
+        {!LUI && <div className="rp-appbar" style={{ display: 'flex', alignItems: 'center',
           justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
           {onGoHome ? (
             <button className="rp-btn" onClick={onGoHome}
@@ -2414,7 +2544,7 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
               display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <GearIcon />
           </button>
-        </div>
+        </div>}
         {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
 
         {/* Narrow widths: one control for the whole app — which of the two
@@ -2512,7 +2642,7 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
                 </button>
               </div>
             </div>
-            {LIME && window.RPIcon ? <window.RPIcon size={36} radius={10} /> : (
+            {LIME ? null : (
             <div style={{ flex: '0 0 auto', width: 36, height: 36, borderRadius: 10, overflow: 'hidden' }}>
               <img src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'LogoV2.png'}
                 alt="RACE PLAN" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
@@ -2522,6 +2652,31 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
           {/* hero: the goal clock (tap to set a goal — rescales) and the core
               stats now sit side by side instead of stacked as two separate
               full-width blocks — same information, roughly half the height. */}
+          {LUI ? (
+            <div style={{ marginTop: 14, display: 'grid', gap: 12 }}>
+              <ClockDisplay totalSec={plan.totalTime} digitH={46} onClick={() => setGoalOpen(true)}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 6,
+                  padding: '0 4px', fontSize: 11, color: 'var(--rp-text-dim)' }}>
+                  <span>{t('planner.computedTapForGoal')}</span>
+                  {(() => {
+                    const st = LUI.raceStartMs(raceDate, raceTime);
+                    return st ? <span>{t('lime.finishAt')} <b dir="ltr" style={{ color: 'var(--rp-gold)' }}>
+                      {new Date(st + plan.totalTime * 1000).toTimeString().slice(0, 5)}</b></span> : null;
+                  })()}
+                </div>
+              </ClockDisplay>
+              <div className="rp-lkpis">
+                <div><b><span dir="ltr">{U ? U.dispDistNum(plan.totalDist) : formatKm(plan.totalDist)}</span>{distLock}</b>
+                  <span>{U ? U.distUnit() : t('units.km')}</span></div>
+                <div><b dir="ltr">{U ? U.fmtPace(plan.avgPace) : formatPace(plan.avgPace)}</b>
+                  <span>{t('planner.pacePerUnit', { unit: U ? U.distUnit() : t('units.km') })}</span></div>
+                {p.course && p.course.gain != null && (
+                  <div><b dir="ltr">{U ? U.elevInt(p.course.gain) : p.course.gain}</b>
+                    <span>{U && U.imperial ? t('units.climbFt') : t('units.climb')}</span></div>
+                )}
+              </div>
+            </div>
+          ) : (
           <div style={{ display: 'flex', alignItems: 'stretch', gap: 10, marginTop: 12 }}>
             <div style={{ flex: '0 0 42%', minWidth: 0 }}>
               <ClockDisplay totalSec={plan.totalTime} digitH={28} onClick={() => setGoalOpen(true)}
@@ -2548,6 +2703,7 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
               ))}
             </div>
           </div>
+          )}
 
           {LUI && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
@@ -2566,6 +2722,16 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
 
           <div style={{ borderTop: '1px solid var(--rp-line)', margin: '12px -15px 12px' }} />
 
+          {LUI ? (
+            <LUI.SegmentsList plan={plan} colors={themeB}
+              onEditValue={ValueEditor ? (id, ty, v) => setValueEditor({
+                id, type: ty,
+                value: U ? (ty === 'pace' ? U.dispPaceSec(v) : U.dispDist(v)) : v,
+              }) : null}
+              onStepPace={p.stepPace} onRemove={removeSegmentWithUndo}
+              elevations={segElevs} windRel={segWind} totalLocked={p.totalLocked}
+              selected={selSeg} onSelect={setSelSeg} distLock={distLock} />
+          ) : (
           <SegmentsTable plan={plan} colors={themeB} stepperKind="pill"
             paceStep={1} distStep={0.01}
             onStepDist={p.stepDistance} onSetDist={p.setSegmentDistance}
@@ -2575,6 +2741,7 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
               value: U ? (ty === 'pace' ? U.dispPaceSec(v) : U.dispDist(v)) : v,
             }) : null}
             elevations={segElevs} windRel={segWind} totalLocked={p.totalLocked} />
+          )}
 
           <button className="rp-btn" onClick={p.addSegment}
             style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}>

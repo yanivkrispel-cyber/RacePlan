@@ -55,6 +55,7 @@ function PaceChart({
   segments = null,           // [{distance, paceSec}] — required for interactive
   extrema = null,            // [{d, ele, kind}] — snap targets while dragging
   onSegmentsChange = null,   // (newSegments) => void, fired live during a drag
+  highlight = null,          // row index to mark with a band (lime skin: the segment being edited)
 }) {
   const [ref, W] = useMeasure();
   const svgRef = React.useRef(null);
@@ -280,6 +281,12 @@ function PaceChart({
         <line x1={padL} y1={y(avgPace)} x2={W - padR} y2={y(avgPace)}
           stroke={c.avg} strokeWidth="1.5" strokeDasharray="5 4" opacity="0.85" />
 
+        {highlight != null && rows[highlight] && (() => {
+          const a = highlight === 0 ? 0 : rows[highlight - 1].cumDist;
+          return <rect x={x(a)} y={padT} width={Math.max(2, x(rows[highlight].cumDist) - x(a))} height={plotH}
+            fill={c.line} opacity="0.09" rx="3" style={{ transition: 'x .25s, width .25s' }} />;
+        })()}
+
         {/* ── pace variants ── */}
         {variant === 'bars' && rows.map((r, i) => {
           let prev = i === 0 ? 0 : rows[i - 1].cumDist;
@@ -293,7 +300,8 @@ function PaceChart({
           <>
             {variant === 'area' && <path d={areaPath} fill={`url(#fill${gid})`} />}
             <path d={stepLine} fill="none" stroke={c.line} strokeWidth={compact ? 2 : 2.4}
-              strokeLinejoin="round" strokeLinecap="round" />
+              strokeLinejoin="round" strokeLinecap="round"
+              style={window.RP_LIME ? { filter: 'drop-shadow(0 0 4px rgba(221,255,74,.55))' } : undefined} />
             {rows.map((r) => (
               <circle key={r.id} cx={x(r.cumDist)} cy={y(r.paceSec)} r={compact ? 3 : 3.6}
                 fill={c.dotFill} stroke={zoneColor(r.zone)} strokeWidth="2.4" />
