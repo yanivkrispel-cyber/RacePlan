@@ -59,7 +59,8 @@ eq(W.blocksFor(0), 1, 'nothing: 1');
 
 console.log('\n── condense ──');
 {
-  const bl = W.condense(marathon, profile);
+  const M = { merge: true }; // the council's merging, kept as an option
+  const bl = W.condense(marathon, profile, M);
   assert(bl.length >= 3 && bl.length <= 7, `marathon condenses to 3..7 blocks (got ${bl.length})`);
   near(bl.reduce((t, b) => t + b.time, 0), timeOf(marathon), 'total time is kept exactly', 1e-6);
   near(bl[bl.length - 1].endKm, 42.2, 'the blocks end at the finish');
@@ -72,22 +73,35 @@ console.log('\n── condense ──');
 
   // an even plan on a flat course collapses to one block
   const flat = Array.from({ length: 10 }, () => ({ distance: 1, paceSec: 300 }));
-  eq(W.condense(flat, null).length, 1, 'an even flat 10K is one block');
+  eq(W.condense(flat, null, M).length, 1, 'an even flat 10K is one block');
   // a negative split keeps its shape within the cap
   const neg = Array.from({ length: 10 }, (_, i) => ({ distance: 1, paceSec: 310 - i * 2 }));
-  const nb = W.condense(neg, null);
+  const nb = W.condense(neg, null, M);
   assert(nb.length >= 2 && nb.length <= 3, `a negative-split 10K: 2..3 blocks (got ${nb.length})`);
   assert(nb[0].paceSec > nb[nb.length - 1].paceSec, 'the first block is slower than the last');
   // a tiny tail never survives as its own block
   const tail = [{ distance: 5, paceSec: 300 }, { distance: 4.95, paceSec: 290 }, { distance: 0.05, paceSec: 250 }];
-  assert(W.condense(tail, null).every((b) => b.distance >= 1), 'a 50 m tail is merged into its neighbour');
+  assert(W.condense(tail, null, M).every((b) => b.distance >= 1), 'a 50 m tail is merged into its neighbour');
   eq(W.condense([], null).length, 0, 'no segments: no blocks');
-  eq(W.condense(marathon, profile, { maxBlocks: 3 }).length <= 3, true, 'maxBlocks caps the count');
+  eq(W.condense(marathon, profile, { merge: true, maxBlocks: 3 }).length <= 3, true, 'maxBlocks caps the count');
+}
+
+console.log("\n── default: the runner's segments as they are ──");
+{
+  const one = W.condense(marathon, profile);
+  eq(one.length, marathon.length, 'one block per plan segment (43), nothing merged');
+  one.forEach((b, i) => { near(b.distance, marathon[i].distance, `block ${i} keeps its distance`); near(b.paceSec, marathon[i].paceSec, `block ${i} keeps its pace`, 1e-9); });
+  const same = Array.from({ length: 4 }, () => ({ distance: 5, paceSec: 300 }));
+  eq(W.condense(same, null).length, 4, 'four segments at the same pace stay four');
+  const tiny = [{ distance: 5, paceSec: 300 }, { distance: 0.05, paceSec: 280 }];
+  eq(W.condense(tiny, null).length, 2, 'a 50 m segment the runner made stays');
+  near(W.condense(marathon, profile).reduce((t, b) => t + b.time, 0), timeOf(marathon), "the time is the plan's", 1e-6);
 }
 
 console.log('\n── watchBlocks: bands, drift, cues ──');
 {
-  const wb = W.watchBlocks(W.condense(marathon, profile));
+  const M = { merge: true };
+  const wb = W.watchBlocks(W.condense(marathon, profile, M));
   const first = wb[0], last = wb[wb.length - 1];
   eq(first.fastSec, Math.round(first.paceSec), 'block 1 is "not faster than" its pace');
   eq(first.slowSec, Math.round(first.paceSec + 60), 'slow end opened by 60 s/km (only "too fast" alerts)');
@@ -102,9 +116,9 @@ console.log('\n── watchBlocks: bands, drift, cues ──');
   eq(last.cue, 'Finish: all in', 'last block cue');
   eq(climb.cue, 'Climb: hold effort', 'climb cue');
   assert(wb.every((b) => b.cue.length <= 24), 'cues fit 24 characters');
-  const own = W.watchBlocks(W.condense(marathon, profile), { cues: { 1: 'Bridge: easy' } });
+  const own = W.watchBlocks(W.condense(marathon, profile, M), { cues: { 1: 'Bridge: easy' } });
   eq(own[1].cue, 'Bridge: easy', 'a runner-written cue replaces the automatic one');
-  const strict = W.watchBlocks(W.condense(marathon, profile), { fastOnly: false, firstNotFaster: false, driftPct: 0 });
+  const strict = W.watchBlocks(W.condense(marathon, profile, M), { fastOnly: false, firstNotFaster: false, driftPct: 0 });
   eq(strict[0].slowSec, Math.round(strict[0].paceSec + 5), 'fastOnly off: a symmetric ±5 band');
   eq(strict[0].watchMeters, Math.round(strict[0].distance * 1000), 'driftPct 0: the plan distance');
 }
@@ -163,7 +177,12 @@ console.log('\n── toGarminWorkout ──');
   eq(W.toGarminWorkout({ ...plan, name: '' }).workout.workoutName, 'RacePlan', 'no name: RacePlan');
   eq(W.toGarminWorkout({ ...plan, name: 'x'.repeat(200) }).workout.workoutName.length, 80, 'name cut to 80');
   const tenK = W.toGarminWorkout({ name: '10K', date: '2027-01-01', segments: Array.from({ length: 10 }, (_, i) => ({ distance: 1, paceSec: 300 - i })) });
-  assert(tenK.workout.segments[0].steps.length <= 3, '10K: at most 3 steps');
+  eq(tenK.workout.segments[0].steps.length, 10, '10K in 10 planned segments: 10 steps');
+  const many = W.toGarminWorkout({ ...plan, segments: Array.from({ length: 101 }, () => ({ distance: 0.4, paceSec: 300 })) });
+  eq(many.workout, null, '101 segments: refused (Garmin takes 100)');
+  assert(many.problems.some((x) => /100/.test(x)), 'and says why');
+  const merged = W.toGarminWorkout(plan, { merge: true });
+  assert(merged.workout.segments[0].steps.length <= 7, "merge: true still gives the council's few blocks");
   // the same plan, the same JSON: the server rebuilds exactly what the app previewed
   eq(JSON.stringify(W.toGarminWorkout(plan)), JSON.stringify(mod.exports.toGarminWorkout(plan)), 'browser and functions build the same workout');
 }

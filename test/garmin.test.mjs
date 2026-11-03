@@ -198,7 +198,7 @@ console.log('\n── send ──');
   eq(r.ok, true, 'sent');
   const w = s.garmin.workouts.get(r.workoutId);
   eq(w.sport, 'RUNNING', 'Garmin got a running workout');
-  assert(w.segments[0].steps.length >= 2 && w.segments[0].steps.length <= 7, `a marathon in 2..7 steps (${w.segments[0].steps.length})`);
+  eq(w.segments[0].steps.length, plan().segments.length, 'one step per planned segment (43)');
   eq(s.garmin.schedules.get(r.scheduleId).date, '2027-02-26', 'scheduled on race day');
   eq(s.garmin.schedules.get(r.scheduleId).workoutId, r.workoutId, 'the schedule is that workout');
   eq(s.db.store.get('garminLinks/u1/sent/race-p1-2027-02-26').workoutId, r.workoutId, 'the send is recorded');

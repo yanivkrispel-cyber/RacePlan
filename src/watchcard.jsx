@@ -316,6 +316,8 @@ const PaceBandImage = React.forwardRef(function PaceBandImage({ raceName, raceDa
           </div>
         ))}
       </div>
+      {/* the step list only while it fits the lock screen; a 43-segment plan keeps the 5 km marks */}
+      {n <= 8 && (
       <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
         {blocks.map((b, i) => (
           <div key={i} style={{ fontSize: 13, color: BAND.dim, fontVariantNumeric: 'tabular-nums' }}>
@@ -325,6 +327,7 @@ const PaceBandImage = React.forwardRef(function PaceBandImage({ raceName, raceDa
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 });

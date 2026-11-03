@@ -5,9 +5,11 @@
 // (functions/watchplan.js is a byte copy, written by build/sync-functions.mjs and checked by
 // test/watch.test.mjs), so what the runner previews is exactly what the server sends to Garmin.
 //
-// The council's safety rules (artifact "תוכנית מרוץ לשעון", 26.10.2026) are the defaults here:
-//   1. few long blocks, cut where the plan (and so the terrain) really changes, not every kilometre:
-//      2 for a 5K, 3 up to 12 km, 5 up to a half, 7 for a marathon;
+// The segments are the runner's own (Kris 3.11.2026: "as planned in the app, not different, whatever the
+// runner chose, even the same pace"): one watch step per plan segment, never merged (`merge: false`). The
+// council's merging into a few long blocks (2 for a 5K up to 7 for a marathon) stays as `merge: true`.
+// The council's other safety rules (artifact "תוכנית מרוץ לשעון", 26.10.2026) are the defaults here:
+//   1. (merging, off: see above);
 //   2. a range, not one number: ±5 s/km, wider on a climb; the first block is "not faster than";
 //   3. alert only on "too fast": the slow end of every band is opened far past the pace (+60 s/km),
 //      so a slow water-station kilometre never beeps the runner into a surge;
@@ -25,7 +27,8 @@
   const clampN = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
   const DEFAULTS = {
-    maxBlocks: null,      // null = by distance (blocksFor)
+    merge: false,         // false = one step per plan segment (Kris 3.11.2026); true = the council's few blocks
+    maxBlocks: null,      // merge only: null = by distance (blocksFor)
     mergeBelowSec: 3,     // neighbours closer than this in pace always merge
     minBlockKm: null,     // null = max(1, total / 20): shorter blocks always merge into a neighbour
     tolSec: 5,            // ± s/km around the block's pace
@@ -95,6 +98,7 @@
       return b;
     });
     const total = at;
+    if (!o.merge) return blocks.map((b, i) => blockOf(b, i, total, profile));
     const max = o.maxBlocks > 0 ? o.maxBlocks : blocksFor(total);
     const minKm = o.minBlockKm > 0 ? o.minBlockKm : Math.max(1, total / 20);
     const paceOf = (b) => b.time / (b.b - b.a);
@@ -116,17 +120,17 @@
       blocks = [...blocks.slice(0, best), { a: x.a, b: y.b, time: x.time + y.time }, ...blocks.slice(best + 2)];
     }
 
-    return blocks.map((b, i) => {
-      const distance = r2(b.b - b.a);
-      const ter = terrainOf(profile, b.a, b.b);
-      const kind = kindOf(ter);
-      return {
-        index: i, startKm: r2(b.a), endKm: r2(b.b), distance, time: b.time,
-        paceSec: b.time / (b.b - b.a), kind,
-        gain: ter ? ter.gain : null, loss: ter ? ter.loss : null, grade: ter ? r2(ter.grade) : null,
-        total: r2(total),
-      };
-    });
+    return blocks.map((b, i) => blockOf(b, i, total, profile));
+  }
+
+  function blockOf(b, i, total, profile) {
+    const ter = terrainOf(profile, b.a, b.b);
+    return {
+      index: i, startKm: r2(b.a), endKm: r2(b.b), distance: r2(b.b - b.a), time: b.time,
+      paceSec: b.time / (b.b - b.a), kind: kindOf(ter),
+      gain: ter ? ter.gain : null, loss: ter ? ter.loss : null, grade: ter ? r2(ter.grade) : null,
+      total: r2(total),
+    };
   }
 
   const CUES = {
