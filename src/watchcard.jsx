@@ -728,17 +728,21 @@ function WatchSheet({ g, model, segments, raceName, raceDate, onClose, onSaveBan
           <div className="rp-wcard-in" style={{ paddingTop: 2 }}>
             <div className="rp-wchips" role="group" aria-label={tw('watch.g.rehearsalDate')}>
               {days.map((d) => (
-                <button type="button" key={d.iso} className="rp-wchip" aria-pressed={!rehOther && rehDay === d.iso}
+                <button type="button" key={d.iso} className="rp-wchip" aria-pressed={rehDay === d.iso}
                   onClick={() => { setRehOther(false); setRehDay(d.iso); }}>
                   {d.label}<small><bdi>{fmtShortDay(d.iso)}</bdi></small></button>
               ))}
-              <button type="button" className="rp-wchip" aria-pressed={rehOther} onClick={() => setRehOther(true)}>{tw('watch.reh.other')}</button>
+              <button type="button" className="rp-wchip" aria-pressed={!days.some((d) => d.iso === rehDay)}
+                onClick={() => setRehOther(true)}>
+                {days.some((d) => d.iso === rehDay) || !rehDay ? tw('watch.reh.other') : <bdi>{fmtShortDay(rehDay)}</bdi>}
+              </button>
             </div>
-            {rehOther && (
-              <input id="rp-watch-reh-date" type="date" value={rehDay} min={isoDay(new Date())} max={raceDate || undefined}
-                onChange={(e) => setRehDay(e.target.value)} aria-label={tw('watch.g.rehearsalDate')}
-                style={{ font: 'inherit', fontSize: 15, padding: '9px 12px', borderRadius: 12, border: '1px solid var(--rp-line-input)',
-                  background: 'transparent', color: 'var(--rp-text)', colorScheme: 'dark' }} />
+            {rehOther && window.RPDatePicker && (
+              <window.RPDatePicker value={rehDay} title={tw('watch.g.rehearsalDate')}
+                min={isoDay(new Date(Date.now() + 864e5))}
+                max={raceDate ? isoDay(new Date(new Date(raceDate + 'T12:00:00').getTime() - 864e5)) : undefined}
+                marks={raceDate ? { [raceDate]: 'race' } : undefined}
+                onChange={(iso) => { if (iso) setRehDay(iso); }} onClose={() => setRehOther(false)} />
             )}
             <div className="rp-wchips" role="group" aria-label={tw('watch.g.rehearsalKm')}>
               {kms.map((k) => (

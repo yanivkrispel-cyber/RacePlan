@@ -470,7 +470,11 @@ function CopyToast({ show, text, action }) {
 // supply the native picker.
 function MetaPicker({ type, value, onChange, label }) {
   const ref = React.useRef(null);
+  // the app's own date / time sheet (src/datepicker.jsx, Kris 4.11.2026); the browser picker only as a fallback
+  const [sheet, setSheet] = React.useState(false);
+  const Own = type === 'date' ? window.RPDatePicker : window.RPTimePicker;
   const open = () => {
+    if (Own) { setSheet(true); return; }
     const el = ref.current;
     if (!el) return;
     try { el.showPicker(); } catch (e) { el.focus(); }
@@ -504,6 +508,10 @@ function MetaPicker({ type, value, onChange, label }) {
         tabIndex={-1} aria-hidden="true"
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0,
           pointerEvents: 'none', border: 0, padding: 0, colorScheme: 'dark' }} />
+      {sheet && Own && (
+        <Own value={value} onChange={onChange} onClose={() => setSheet(false)} title={label} clearable
+          marks={type === 'date' && value ? { [value]: 'race' } : undefined} />
+      )}
     </span>
   );
 }

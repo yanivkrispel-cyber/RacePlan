@@ -37,6 +37,7 @@ const JSX_FILES = [
   'src/heat.jsx',
   'src/chart.jsx',
   'src/shared.jsx',
+  'src/datepicker.jsx',
   'src/core.jsx',
   'src/gpx.jsx',
   'src/elevation.jsx',
