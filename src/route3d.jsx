@@ -1590,7 +1590,7 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
             style={{ width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'var(--rp-gold)',
               color: '#161200', fontSize: 15, cursor: 'pointer', flex: '0 0 auto',
               display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {playing ? '⏸' : '▶'}
+            {window.RPGlyph ? (playing ? <window.RPGlyph.pause size={16} /> : <window.RPGlyph.play size={16} style={{ marginInlineStart: 2 }} />) : (playing ? 'II' : '>')}
           </button>
           <input ref={scrubRef} type="range" min={0} max={1000} defaultValue={0} onChange={onScrub}
             style={{ flex: 1, accentColor: LIME3 ? '#DDFF4A' : '#C9A24B' }} />

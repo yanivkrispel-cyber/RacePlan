@@ -252,7 +252,7 @@ function SegmentsTable({ plan, colors, stepperKind, onStepDist, onSetDist, onSte
               {i === remainderIdx ? (
                 <span className="rpt-val rpt-val-fixed" title={t('segTable.remainderHint')}>
                   <span>{U ? U.dispDistNum(r.distance) : formatKm(r.distance)}
-                    <span className="rpt-val-c" aria-label={t('segTable.remainder')}>🔒</span></span>
+                    <span className="rpt-val-c" role="img" aria-label={t('segTable.remainder')}>{((window.RPGlyph && window.RPGlyph.lock) ? <window.RPGlyph.lock size={13} sw={2.2} style={{ color: 'var(--rp-gold)' }} /> : null)}</span></span>
                   {hasElev && (
                     <span className="rpt-elevtag">
                       <ElevCell value={elevations[i]} />

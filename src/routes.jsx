@@ -38,9 +38,18 @@ function rl_downsample(arr, max) {
   return out;
 }
 
+// The country as its two-letter code in a small tag (Kris, 3.11.2026: no emoji; flags were emoji).
 function flagFor(cc) {
-  if (!cc || cc.length !== 2) return '🏳️';
-  return cc.toUpperCase().replace(/./g, (c) => String.fromCodePoint(127397 + c.charCodeAt(0)));
+  const tag = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 28, height: 20,
+    padding: '0 5px', borderRadius: 6, border: '1px solid var(--rp-line)', color: 'var(--rp-text-dim)',
+    fontFamily: 'var(--rp-font-mono, ui-monospace, monospace)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em',
+    lineHeight: 1, boxSizing: 'border-box', direction: 'ltr' };
+  if (!cc || cc.length !== 2) {
+    const P = window.RPGlyph && window.RPGlyph.pin;
+    return React.createElement('span', { style: tag, 'aria-hidden': 'true' }, P ? React.createElement(P, { size: 12 }) : null);
+  }
+  // createElement, not JSX: this sits in the pure-helper region test/routes.test.mjs evaluates as plain JS
+  return React.createElement('span', { style: tag, title: cc.toUpperCase() }, cc.toUpperCase());
 }
 
 // values are i18n keys — resolve with t() at render time
