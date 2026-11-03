@@ -146,7 +146,7 @@ function ValueEditor({ type, value, title, onApply, onClose, unitMajor, unitMino
   return ReactDOM.createPortal((
     <div className="rp-sheet-wrap rp-cq-scope" role="dialog" aria-modal="true" aria-label={title || undefined}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(9,11,22,.78)',
+      style={{ position: 'fixed', inset: 0, zIndex: 1200, background: (window.RP_LIME ? 'rgba(0,0,0,.78)' : 'rgba(9,11,22,.78)'),
         backdropFilter: 'blur(5px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 18, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
       <style>{`

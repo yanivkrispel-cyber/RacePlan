@@ -6,6 +6,24 @@ const I18N = window.I18N;
 const t = (I18N && I18N.t) || ((k) => k);
 const U = window.UNITS;
 
+// ── skin switch: classic (navy + gold) or lime (black + lime) ─────────────
+// Per device, opt-in: ?ui=lime once turns it on (remembered), ?ui=classic turns
+// it off. The page head sets window.RP_LIME and <html data-ui> before any
+// script runs (no flash); this repeats it for hosts whose head doesn't.
+const LIME = (function () {
+  if (typeof window === 'undefined') return false;
+  if (typeof window.RP_LIME === 'boolean') return window.RP_LIME;
+  let v = null;
+  try {
+    const q = new URLSearchParams(location.search).get('ui');
+    if (q === 'lime' || q === 'classic') localStorage.setItem('rp-ui', q);
+    v = localStorage.getItem('rp-ui');
+  } catch (e) {}
+  window.RP_LIME = v === 'lime';
+  if (window.RP_LIME) document.documentElement.setAttribute('data-ui', 'lime');
+  return window.RP_LIME;
+})();
+
 // ── design tokens ──────────────────────────────────────────────────────
 // Dark adaptation of DESIGN_TOKENS.md: the navy/gold/sand roles kept, mapped
 // onto a dark navy ground. Everything downstream reads these vars, so the
@@ -88,6 +106,59 @@ if (!document.getElementById('rp-tokens')) {
     --rp-pad:16px;
   }
   @media (min-width:760px){ :root{ --rp-pad:24px; } }
+
+  /* ── lime skin: the same roles, black + lime. "gold" is the accent role, so
+     every --rp-gold* reader turns lime without a per-component edit. ── */
+  :root[data-ui="lime"]{
+    --rp-bg:#050605;
+    --rp-surface:#0c0e0b;
+    --rp-surface-2:#13160f;
+    --rp-surface-3:#1b1f16;
+    --rp-line:rgba(244,246,238,.10);
+    --rp-line-soft:rgba(244,246,238,.06);
+    --rp-line-input:rgba(244,246,238,.24);
+    --rp-text:#F4F6EE;
+    --rp-text-soft:#cdd2c3;
+    --rp-text-dim:#8f9686;
+    --rp-placeholder:#7d8475;
+    --rp-gold:#DDFF4A;
+    --rp-gold-soft:#e8ff8c;
+    --rp-gold-deep:#c4e83a;
+    --rp-gold-deep-hover:#e8ff8c;
+    --rp-on-gold:#050605;
+    --rp-gold-wash:rgba(221,255,74,.10);
+    --rp-gold-line:rgba(221,255,74,.36);
+    --rp-danger:#FF5A36;
+    --rp-danger-text:#ff8466;
+    --rp-danger-wash:rgba(255,90,54,.12);
+    --rp-danger-line:rgba(255,90,54,.45);
+    --rp-warn-bg:rgba(255,177,61,.10);
+    --rp-warn-line:rgba(255,177,61,.40);
+    --rp-zone-fast:#FF5A36;
+    --rp-zone-target:#DDFF4A;
+    --rp-zone-easy:#7fd3ff;
+    --rp-elev:#8f9686;
+    --rp-elev-up:#ff7a59;
+    --rp-elev-down:#7fd3ff;
+    --rp-grid:rgba(221,255,74,.07);
+    --rp-avg:rgba(244,246,238,.36);
+    --rp-shadow:0 2px 14px rgba(0,0,0,.6);
+    --rp-shadow-modal:0 18px 60px rgba(0,0,0,.75);
+    --rp-font-display:"Heebo",system-ui,-apple-system,sans-serif;
+    --rp-font-accent:"Heebo",system-ui,sans-serif;
+    --rp-font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+    --rp-lime-glow:rgba(221,255,74,.35);
+    --rp-tabbar-h:64px;
+  }
+  :root[data-ui="lime"] body{background:#050605}
+  :root[data-ui="lime"] .rp-btn-primary{box-shadow:0 8px 26px rgba(221,255,74,.16)}
+  /* the HUD voice: small Latin labels in mono, widely spaced */
+  .rp-hud{font-family:var(--rp-font-mono,inherit);font-weight:700;letter-spacing:.16em;
+    text-transform:uppercase;direction:ltr;unicode-bidi:isolate}
+  @keyframes rp-blink{50%{opacity:.18}}
+  @keyframes rp-pulse{0%{box-shadow:0 0 0 0 rgba(221,255,74,.45)}70%{box-shadow:0 0 0 8px rgba(221,255,74,0)}100%{box-shadow:0 0 0 0 rgba(221,255,74,0)}}
+  .rp-blink{animation:rp-blink 1s steps(1) infinite}
+  .rp-pulse{animation:rp-pulse 2.4s ease-out infinite}
 
   /* legacy --rp-* contract, remapped onto the tokens above so existing
      components reskin without per-value edits */
@@ -284,8 +355,72 @@ function SevenSeg({ value, h = 44 }) {
   );
 }
 function ClockDot() {
-  return <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--rc-on)',
+  return <span className={LIME ? 'rp-blink' : undefined} style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--rc-on)',
     filter: 'drop-shadow(0 0 3px var(--rc-glow))', display: 'block' }} />;
+}
+
+// The LED colours, per skin. Spread onto any element that holds SevenSeg /
+// ClockDot (the planner's goal picker and route3d's run clock use it too).
+const CLOCK_VARS = LIME
+  ? { '--rc-on': '#DDFF4A', '--rc-off': 'rgba(221,255,74,.07)', '--rc-glow': 'rgba(221,255,74,.85)' }
+  : { '--rc-on': '#F5C24A', '--rc-off': 'rgba(245,194,74,.11)', '--rc-glow': 'rgba(245,194,74,.7)' };
+
+// Lime only: the four reticle corners around a clock (the HUD frame).
+function ClockCorners({ inset = 5, size = 10, color = 'var(--rp-gold)' }) {
+  const b = '1.5px solid ' + color;
+  const c = { position: 'absolute', width: size, height: size, opacity: .85, pointerEvents: 'none' };
+  return (
+    <>
+      <i aria-hidden="true" style={{ ...c, top: inset, left: inset, borderTop: b, borderLeft: b }} />
+      <i aria-hidden="true" style={{ ...c, top: inset, right: inset, borderTop: b, borderRight: b }} />
+      <i aria-hidden="true" style={{ ...c, bottom: inset, left: inset, borderBottom: b, borderLeft: b }} />
+      <i aria-hidden="true" style={{ ...c, bottom: inset, right: inset, borderBottom: b, borderRight: b }} />
+    </>
+  );
+}
+
+// ── RacePlan mark (lime skin): RP drawn as three running-track lanes ────
+// One path, stroked three times (wide fg, mid bg, thin fg) so every letter
+// stroke reads as three parallel lanes; `solid` is the one-stroke version for
+// sizes where the lanes would blur together (< ~32px).
+const RP_MARK_D = 'M12 92 V10 H44 C64 10 70 22 70 33 C70 46 62 56 44 56 H12 M42 56 L66 92 '
+  + 'M86 92 V10 H118 C138 10 144 22 144 33 C144 46 136 56 118 56 H86';
+let _rpMarkId = 0;
+function RPMark({ width = 120, fg = '#DDFF4A', bg = '#050605', solid, title = 'RACE PLAN' }) {
+  const id = React.useMemo(() => 'rpm' + (++_rpMarkId), []);
+  const widths = (solid != null ? solid : width < 32) ? [22] : [26, 15, 6];
+  return (
+    <svg width={width} height={width * 102 / 178} viewBox="-12 -6 178 102" role="img" aria-label={title}
+      style={{ display: 'block', overflow: 'visible' }}>
+      <defs><clipPath id={id}><rect x="-40" y="-20" width="260" height="112" /></clipPath></defs>
+      <g clipPath={`url(#${id})`}>
+        <g transform="skewX(-14) translate(14 0)" fill="none" strokeLinejoin="miter" strokeMiterlimit="3">
+          {widths.map((w, i) => <path key={i} d={RP_MARK_D} stroke={i % 2 ? bg : fg} strokeWidth={w} />)}
+        </g>
+      </g>
+    </svg>
+  );
+}
+// The app icon: the mark on a rounded black tile.
+function RPIcon({ size = 40, radius }) {
+  return (
+    <span style={{ width: size, height: size, borderRadius: radius != null ? radius : size * 0.24,
+      background: '#050605', border: '1px solid rgba(221,255,74,.22)', display: 'inline-flex',
+      alignItems: 'center', justifyContent: 'center', flex: '0 0 auto', overflow: 'hidden' }}>
+      <RPMark width={size * 0.78} />
+    </span>
+  );
+}
+// Wordmark: RACE PLAN in heavy slanted caps, BY KRISPEL small and wide in lime.
+function RPWordmark({ size = 20, align = 'center' }) {
+  return (
+    <div dir="ltr" style={{ textAlign: align, lineHeight: 1 }}>
+      <div style={{ fontWeight: 900, fontSize: size, letterSpacing: '.02em', color: 'var(--rp-text)',
+        transform: 'skewX(-12deg)', display: 'inline-block', whiteSpace: 'nowrap' }}>RACE PLAN</div>
+      <div style={{ fontWeight: 700, fontSize: Math.max(7, size * 0.3), letterSpacing: '.42em', color: 'var(--rp-gold)',
+        marginTop: size * 0.22, whiteSpace: 'nowrap', paddingInlineStart: '.42em' }}>BY KRISPEL</div>
+    </div>
+  );
 }
 
 // Read-only seven-segment display of a total time (H:MM·SS) — the planner's
@@ -297,7 +432,7 @@ function ClockDisplay({ totalSec, digitH = 38, onClick, caption }) {
   const s = t % 60;
   const seg = (v, k) => <SevenSeg key={k} value={v} h={digitH} />;
   const well = (
-    <div style={{ background: '#04050a', borderRadius: 12, padding: '9px 10px 7px',
+    <div style={{ background: LIME ? '#000' : '#04050a', borderRadius: 12, padding: '9px 10px 7px',
       display: 'flex', direction: 'ltr', alignItems: 'center', justifyContent: 'center', gap: 4,
       boxShadow: 'inset 0 0 22px rgba(0,0,0,.75)' }}>
       {String(h).split('').map((c, i) => seg(+c, 'h' + i))}
@@ -312,13 +447,15 @@ function ClockDisplay({ totalSec, digitH = 38, onClick, caption }) {
     </div>
   );
   const root = {
-    '--rc-on': '#F5C24A', '--rc-off': 'rgba(245,194,74,.11)', '--rc-glow': 'rgba(245,194,74,.7)',
-    background: '#12141d', border: '1px solid var(--rp-line)', borderRadius: 16,
-    padding: '10px 12px 9px', boxShadow: 'inset 0 2px 12px rgba(0,0,0,.45)',
-    width: '100%', display: 'block', fontFamily: 'inherit',
+    ...CLOCK_VARS,
+    background: LIME ? 'radial-gradient(120% 90% at 50% 40%, rgba(221,255,74,.07), transparent 65%), #020302' : '#12141d',
+    border: LIME ? '1px solid var(--rp-gold-line)' : '1px solid var(--rp-line)', borderRadius: 16,
+    padding: LIME ? '13px 15px 11px' : '10px 12px 9px', boxShadow: 'inset 0 2px 12px rgba(0,0,0,.45)',
+    width: '100%', display: 'block', fontFamily: 'inherit', position: 'relative',
   };
   const body = (
     <>
+      {LIME && <ClockCorners />}
       {well}
       {caption && (
         <div style={{ textAlign: 'center', fontSize: 9.5, fontWeight: 700, letterSpacing: '.14em',
@@ -365,4 +502,5 @@ function useEscape(onEscape, active = true) {
   }, [active]);
 }
 
-Object.assign(window, { Stepper, LogoSlot, ZoneLegend, SevenSeg, ClockDot, ClockDisplay, useEscape });
+Object.assign(window, { Stepper, LogoSlot, ZoneLegend, SevenSeg, ClockDot, ClockDisplay, useEscape,
+  CLOCK_VARS, ClockCorners, RPMark, RPIcon, RPWordmark });

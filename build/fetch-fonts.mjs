@@ -7,7 +7,7 @@
 // Served from our own origin they share the page's connection, get a long
 // immutable cache, and the service worker keeps them for offline use.
 //
-// Only what the UI actually uses: Heebo 400–800 (variable — one file per
+// Only what the UI actually uses: Heebo 400–900 (900: the lime skin's headings) (variable — one file per
 // subset covers every weight) and Frank Ruhl Libre 800 (the display face).
 // The browser downloads a subset only when the page uses a glyph in its
 // unicode-range, exactly as with Google's CSS.
@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'web', 'fonts');
-const CSS_URL = 'https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800'
+const CSS_URL = 'https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900'
   + '&family=Frank+Ruhl+Libre:wght@800&display=swap';
 // A modern UA, or Google serves legacy formats instead of woff2.
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';

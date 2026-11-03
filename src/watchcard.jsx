@@ -140,33 +140,41 @@ function WatchCard({ segments, profile, raceName, raceDate, onToast }) {
 }
 
 // A phone lock screen: 390 css px wide (1170 px at scale 3), dark so it reads in sunlight and at night.
+// Colours per skin: classic navy + gold, or lime (black, lime, off-white).
+const BAND = window.RP_LIME
+  ? { bg: '#050605', text: '#F4F6EE', accent: '#DDFF4A', dim: '#8f9686', soft: '#cdd2c3', line: 'rgba(221,255,74,.16)' }
+  : { bg: '#0d1626', text: '#f2ead6', accent: '#e3b75a', dim: '#a3abc0', soft: '#c9d5ef', line: '#25324d' };
 const PaceBandImage = React.forwardRef(function PaceBandImage({ raceName, raceDate, total, splits, blocks }, ref) {
   const fmtClock = WP.formatClock;
   const n = blocks.length;
   return (
-    <div ref={ref} style={{ width: 390, minHeight: 844, boxSizing: 'border-box', background: '#0d1626', color: '#f2ead6',
+    <div ref={ref} style={{ width: 390, minHeight: 844, boxSizing: 'border-box', background: BAND.bg, color: BAND.text,
       padding: '170px 26px 40px', fontFamily: '"Heebo", system-ui, sans-serif', direction: I18N_W ? I18N_W.dir : 'rtl' }}>
-      <div style={{ fontSize: 13, letterSpacing: '.14em', fontWeight: 800, color: '#e3b75a' }}>RACE PLAN</div>
+      {window.RP_LIME && window.RPMark
+        ? <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><window.RPMark width={54} />
+            <div dir="ltr" style={{ lineHeight: 1 }}><div style={{ fontSize: 15, fontWeight: 900, letterSpacing: '.02em' }}>RACE PLAN</div>
+            <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: '.42em', color: BAND.accent, marginTop: 4 }}>BY KRISPEL</div></div></div>
+        : <div style={{ fontSize: 13, letterSpacing: '.14em', fontWeight: 800, color: BAND.accent }}>RACE PLAN</div>}
       <div style={{ fontSize: 24, fontWeight: 800, marginTop: 4, lineHeight: 1.2 }}>{raceName || tw('watch.band.title')}</div>
-      <div style={{ fontSize: 14, color: '#a3abc0', marginTop: 4 }}>
+      <div style={{ fontSize: 14, color: BAND.dim, marginTop: 4 }}>
         {[raceDate, tw('watch.band.goal', { time: fmtClock(total) })].filter(Boolean).join(' · ')}
       </div>
       <div style={{ marginTop: 22, display: 'flex', flexDirection: 'column' }}>
         {splits.map((s, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '9px 2px',
-            borderBottom: '1px solid #25324d', fontVariantNumeric: 'tabular-nums' }}>
-            <span style={{ fontSize: 17, color: s.finish ? '#e3b75a' : '#c9d5ef', fontWeight: s.finish ? 800 : 500 }}>
+            borderBottom: '1px solid ' + BAND.line, fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ fontSize: 17, color: s.finish ? BAND.accent : BAND.soft, fontWeight: s.finish ? 800 : 500 }}>
               {s.finish ? tw('watch.band.finish') : (UW ? UW.fmtDist(s.km) : s.km)}
             </span>
-            <span style={{ fontSize: 26, fontWeight: 800, color: s.finish ? '#e3b75a' : '#f2ead6' }}>{fmtClock(s.sec)}</span>
+            <span style={{ fontSize: 26, fontWeight: 800, color: s.finish ? BAND.accent : BAND.text }}>{fmtClock(s.sec)}</span>
           </div>
         ))}
       </div>
       <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
         {blocks.map((b, i) => (
-          <div key={i} style={{ fontSize: 13, color: '#a3abc0', fontVariantNumeric: 'tabular-nums' }}>
+          <div key={i} style={{ fontSize: 13, color: BAND.dim, fontVariantNumeric: 'tabular-nums' }}>
             {tw('watch.span', { a: UW ? UW.dispDistNum(b.startKm) : b.startKm, b: UW ? UW.dispDistNum(b.endKm) : b.endKm })}
-            {' · '}<b style={{ color: '#f2ead6' }}>{UW ? UW.fmtPace(b.paceSec) : WP.formatPace(b.paceSec)}</b>
+            {' · '}<b style={{ color: BAND.text }}>{UW ? UW.fmtPace(b.paceSec) : WP.formatPace(b.paceSec)}</b>
             {' · '}{tw('watch.cue.' + cueKey(b, i, n))}
           </div>
         ))}

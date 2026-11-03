@@ -206,7 +206,7 @@ function MyPlansPanel({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
         position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(9,11,22,.78)', backdropFilter: 'blur(6px)',
+        background: (window.RP_LIME ? 'rgba(0,0,0,.78)' : 'rgba(9,11,22,.78)'), backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 20, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: TEXT,
       }}

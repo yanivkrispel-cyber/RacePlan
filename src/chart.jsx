@@ -22,9 +22,10 @@ function useMeasure() {
 
 // Elevation overlay — cool slate, distinct from the gold pace line and from
 // every pace-zone color (DESIGN_TOKENS: --rp-elev).
-const EL_LINE  = '#7C88B0';
-const EL_FILL  = 'rgba(124,136,176,0.16)';
-const EL_AXIS  = 'rgba(124,136,176,0.75)';
+// lime skin: elevation is plain grey under the lime pace line
+const EL_LINE  = window.RP_LIME ? '#8f9686' : '#7C88B0';
+const EL_FILL  = window.RP_LIME ? 'rgba(244,246,238,0.07)' : 'rgba(124,136,176,0.16)';
+const EL_AXIS  = window.RP_LIME ? 'rgba(143,150,134,0.8)' : 'rgba(124,136,176,0.75)';
 
 const SNAP_PX = 12;
 
@@ -328,7 +329,7 @@ function PaceChart({
           return (
             <g key={`bnd${k}`}>
               <line x1={hx} y1={padT} x2={hx} y2={padT + plotH}
-                stroke={on ? c.line : 'rgba(201,162,75,0.4)'}
+                stroke={on ? c.line : (window.RP_LIME ? 'rgba(221,255,74,0.4)' : 'rgba(201,162,75,0.4)')}
                 strokeWidth={on ? 1.6 : 1} strokeDasharray={on ? '0' : '3 3'} />
               <rect x={hx - 6} y={padT + plotH / 2 - 13} width="12" height="26" rx="3"
                 fill={c.line} opacity={on ? 1 : 0.72} pointerEvents="none" />

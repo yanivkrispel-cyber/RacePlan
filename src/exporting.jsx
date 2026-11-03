@@ -179,6 +179,7 @@ const PrintableSummary = React.forwardRef(function PrintableSummary(
 // ── ActionSheet ──────────────────────────────────────────────────────────
 // Bottom sheet on phones, centred card on wider screens. items:
 //   [{ label, hint?, icon?, danger?, disabled?, onClick }]
+const LIME_SHEET = !!window.RP_LIME;
 function ActionSheet({ title, items, onClose }) {
   useEscape(onClose);
   return ReactDOM.createPortal((
@@ -186,7 +187,7 @@ function ActionSheet({ title, items, onClose }) {
       className="rp-sheet-wrap rp-cq-scope"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(9,11,22,.72)',
+        position: 'fixed', inset: 0, zIndex: 1000, background: LIME_SHEET ? 'rgba(0,0,0,.72)' : 'rgba(9,11,22,.72)',
         backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
         justifyContent: 'center', padding: 20, direction: I18N.dir,
         fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)',
@@ -198,13 +199,19 @@ function ActionSheet({ title, items, onClose }) {
           .as-sheet{ width: 100% !important; max-width: none !important;
             border-radius: 18px 18px 0 0 !important; }
           .as-sheet button{ font-size: 15px !important; min-height: 50px; }
+          .as-sheet{ padding-bottom: env(safe-area-inset-bottom) !important; }
         }
+        :root[data-ui="lime"] .as-sheet{ border-radius: 24px 24px 0 0; background: linear-gradient(180deg,#13160f,#070807) !important;
+          border-color: rgba(221,255,74,.16) !important; }
+        :root[data-ui="lime"] .as-grab{ display:block !important }
       `}</style>
       <div className="as-sheet" role="dialog" aria-modal="true" aria-label={title || undefined} style={{
         background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 380,
         boxShadow: 'var(--rp-shadow-modal)', overflow: 'hidden',
       }}>
+        <i className="as-grab" aria-hidden="true" style={{ display: 'none', width: 38, height: 4, borderRadius: 2,
+          background: 'rgba(244,246,238,.25)', margin: '9px auto 0' }} />
         {title && (
           <div style={{ padding: '13px 18px', borderBottom: '1px solid var(--rp-line)',
             fontSize: 13, fontWeight: 800, color: 'var(--rp-text-dim)',
@@ -222,7 +229,12 @@ function ActionSheet({ title, items, onClose }) {
               color: it.danger ? 'var(--rp-danger-text)' : 'var(--rp-text)',
             }}>
             {it.icon && (
-              <span style={{ flex: '0 0 auto', display: 'inline-flex',
+              <span style={LIME_SHEET ? {
+                flex: '0 0 auto', width: 36, height: 36, borderRadius: 11, display: 'inline-flex',
+                alignItems: 'center', justifyContent: 'center',
+                background: it.danger ? 'var(--rp-danger-wash)' : 'var(--rp-surface-2)',
+                border: '1px solid ' + (it.danger ? 'var(--rp-danger-line)' : 'var(--rp-gold-line)'),
+                color: it.danger ? 'var(--rp-danger-text)' : 'var(--rp-gold)' } : { flex: '0 0 auto', display: 'inline-flex',
                 color: it.danger ? 'var(--rp-danger-text)' : 'var(--rp-gold)' }}>{it.icon}</span>
             )}
             <span style={{ flex: 1, fontWeight: 600 }}>{it.label}</span>

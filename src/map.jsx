@@ -17,7 +17,11 @@ const U = window.UNITS;
 // Same three zone colors as themeB.zones in planner-b.jsx (kept local so this
 // file has no cross-module dependency — see valueeditor.jsx for the same
 // convention).
-const ZONE_COLOR = { fast: '#C15A2E', target: '#C9A24B', easy: '#8091BE' };
+const LIME = !!window.RP_LIME;
+const ZONE_COLOR = LIME
+  ? { fast: '#FF5A36', target: '#DDFF4A', easy: '#7fd3ff' }
+  : { fast: '#C15A2E', target: '#C9A24B', easy: '#8091BE' };
+const MAP_INK = LIME ? '#050605' : '#111528'; // the ring around a map dot
 
 // Leaflet's stock chrome (white zoom buttons, white attribution bar and popups)
 // glares on the dark map — restyle it with the app's tokens, once.
@@ -30,7 +34,7 @@ if (typeof document !== 'undefined' && !document.getElementById('rp-map-styles')
     width:32px;height:32px;line-height:32px;font-size:17px}
   .leaflet-bar a:hover{color:var(--rp-gold)}
   .leaflet-bar a.leaflet-disabled{background:var(--rp-surface);color:var(--rp-placeholder)}
-  .leaflet-container .leaflet-control-attribution{background:rgba(17,21,40,.72);color:var(--rp-text-dim)}
+  .leaflet-container .leaflet-control-attribution{background:${LIME ? 'rgba(5,6,5,.75)' : 'rgba(17,21,40,.72)'};color:var(--rp-text-dim)}
   .leaflet-container .leaflet-control-attribution a{color:var(--rp-text-soft)}
   .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--rp-surface-2);color:var(--rp-text);
     box-shadow:var(--rp-shadow-modal)}
@@ -109,9 +113,10 @@ function _latLngAtKm(track, cum, dKm) {
 // Grade % (clamped to ±12) -> a color on a descent(blue) -> flat(gray) ->
 // climb(wine) scale. Same hues as --rp-elev-down / --rp-elev-up.
 function _gradeColor(gradePct) {
-  const DESC = [124, 155, 214];   // #7C9BD6
-  const NEUTRAL = [155, 160, 183]; // #9BA0B7
-  const CLIMB = [195, 96, 121];   // #C36079
+  // lime skin: descent ice-blue, flat lime, climb red-orange
+  const DESC = LIME ? [127, 211, 255] : [124, 155, 214];   // #7fd3ff | #7C9BD6
+  const NEUTRAL = LIME ? [221, 255, 74] : [155, 160, 183]; // #DDFF4A | #9BA0B7
+  const CLIMB = LIME ? [255, 90, 54] : [195, 96, 121];     // #FF5A36 | #C36079
   const g = Math.max(-12, Math.min(12, gradePct));
   const [c0, c1, f] = g <= 0 ? [DESC, NEUTRAL, (g + 12) / 12] : [NEUTRAL, CLIMB, g / 12];
   const mix = (i) => Math.round(c0[i] + (c1[i] - c0[i]) * f);
@@ -176,7 +181,7 @@ function RouteMap({ track, profile, splits, height = 340 }) {
       map.invalidateSize();
 
       const dot = (latlng, fill, radius) => L.circleMarker(latlng, {
-        radius: radius || 6, color: '#111528', weight: 2, fillColor: fill, fillOpacity: 1,
+        radius: radius || 6, color: MAP_INK, weight: 2, fillColor: fill, fillOpacity: 1,
       }).addTo(map);
 
       // The grade-colored track and split markers are a decorative
@@ -209,12 +214,12 @@ function RouteMap({ track, profile, splits, height = 340 }) {
       }
 
       if (!bounds) {
-        const poly = L.polyline(track, { color: '#C9A24B', weight: 4, opacity: 0.95, lineJoin: 'round' }).addTo(map);
+        const poly = L.polyline(track, { color: LIME ? '#DDFF4A' : '#C9A24B', weight: 4, opacity: 0.95, lineJoin: 'round' }).addTo(map);
         bounds = poly.getBounds();
       }
 
-      dot(track[0], '#8091BE');                 // start  (navy-muted)
-      dot(track[track.length - 1], '#C15A2E');  // finish (danger)
+      dot(track[0], LIME ? '#DDFF4A' : '#8091BE');                 // start  (navy-muted)
+      dot(track[track.length - 1], LIME ? '#F4F6EE' : '#C15A2E');  // finish (danger)
       try { map.fitBounds(bounds, { padding: [26, 26] }); } catch (e) {}
     }
 
@@ -274,7 +279,7 @@ function RouteMap({ track, profile, splits, height = 340 }) {
           if (!isFinite(latlng[0]) || !isFinite(latlng[1])) return;
           const label = `${U ? U.fmtDist(s.cumDist) : s.cumDist + ' km'} · ${U ? U.fmtPace(s.paceSec) + ' ' + U.paceUnit() : s.paceSec}`;
           L.circleMarker(latlng, {
-            radius: 5, color: '#111528', weight: 2,
+            radius: 5, color: MAP_INK, weight: 2,
             fillColor: ZONE_COLOR[s.zone] || ZONE_COLOR.target, fillOpacity: 1,
           }).bindPopup(label).addTo(group);
         });

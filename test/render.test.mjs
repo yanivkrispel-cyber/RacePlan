@@ -75,8 +75,15 @@ const ctx = {
 };
 ctx.window = ctx;
 ctx.globalThis = ctx;
+// A second, identical sandbox with the lime skin switched on (the skin is
+// read once, when the bundle loads, so it needs its own context).
+const lime = Object.assign({}, ctx, { RP_LIME: true });
+lime.window = lime; lime.globalThis = lime;
+const BUNDLE = readFileSync(process.argv[2] || 'web/app.js', 'utf8');
 vm.createContext(ctx);
-vm.runInContext(readFileSync(process.argv[2] || 'web/app.js', 'utf8'), ctx, { filename: 'app.js' });
+vm.runInContext(BUNDLE, ctx, { filename: 'app.js' });
+vm.createContext(lime);
+vm.runInContext(BUNDLE, lime, { filename: 'app.js' });
 
 const COURSE = { name: 'R', dist: 10, gain: 120, loss: 110, lat: 32, lon: 34, source: 'r.gpx',
   track: [[32, 34], [32.01, 34.01], [32.02, 34.02]],
@@ -85,6 +92,7 @@ const COURSE = { name: 'R', dist: 10, gain: 120, loss: 110, lat: 32, lon: 34, so
 // PlannerBApp is module-private; window.PlannerB is the only export, and its
 // router only reaches the planner when it sees a shared plan.
 ctx.__RACEPLAN_SHARE__ = 'x';
+lime.__RACEPLAN_SHARE__ = 'x';
 
 const flat = (node, out = []) => {
   if (node == null || typeof node !== 'object') return out;
@@ -101,23 +109,67 @@ const cases = [
 ];
 
 let failed = 0;
+let total = 0;
+for (const [skin, w] of [['classic', ctx], ['lime', lime]])
 for (const [name, saved, expectVisual] of cases) {
+  total++;
   store.clear();
   store.set('rp-plan-v1', JSON.stringify(saved));
   try {
-    const out = ctx.PlannerB();
+    const out = w.PlannerB();
     const classes = flat(out).join(' ');
     if (!classes.includes('rp-planner-wrap')) throw new Error('planner did not render at all');
     const hasCol = classes.includes('rp-visual-col');
     if (expectVisual && !hasCol) throw new Error('visual column missing with a route loaded');
     if (!expectVisual && hasCol) throw new Error('visual column rendered without a route');
-    console.log('  ok   ' + name);
+    console.log('  ok   ' + skin + ': ' + name);
   } catch (e) {
     failed++;
-    console.log('  FAIL ' + name + ': ' + e.name + ': ' + e.message);
+    console.log('  FAIL ' + skin + ': ' + name + ': ' + e.name + ': ' + e.message);
     if (process.env.SMOKE_TRACE) console.log(e.stack);
   }
 }
 console.log('\n' + '='.repeat(60));
-console.log('render: ' + (cases.length - failed) + ' passed, ' + failed + ' failed');
+// lime-only screens: the Hub (no shared plan → the router lands there) with a
+// plan in progress on race day, and race-day mode in each of its phases.
+const dayOf = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const extra = [
+  ['lime: hub with a plan on race day', () => {
+    store.clear();
+    store.set('rp-plan-v1', JSON.stringify({ s: [[5, 300], [5, 290]], p: 10 }));
+    store.set('rp-race-date', dayOf(new Date())); store.set('rp-race-time', '07:00');
+    lime.__RACEPLAN_SHARE__ = null;
+    try { return lime.PlannerB(); } finally { lime.__RACEPLAN_SHARE__ = 'x'; }
+  }],
+  ...['before', 'running', 'nodate'].map((ph) => ['lime: race-day ' + ph, () => {
+    const rows = lime.computePlan([{ id: 'a', distance: 5, paceSec: 300 }, { id: 'b', distance: 5, paceSec: 290 }]).rows;
+    const d = new Date(Date.now() + (ph === 'before' ? 3600e3 : -600e3));
+    const time = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    return lime.RP_LIME_UI.RaceDayScreen({ raceName: 'R', raceDate: ph === 'nodate' ? '' : dayOf(d), raceTime: time,
+      rows, totalTime: 2950, weather: { temp: 20, humidityPct: 60, windSpeed: 10 }, onClose: () => {} });
+  }]),
+];
+for (const [name, fn] of extra) {
+  total++;
+  try { fn(); console.log('  ok   ' + name); }
+  catch (e) { failed++; console.log('  FAIL ' + name + ': ' + e.name + ': ' + e.message); if (process.env.SMOKE_TRACE) console.log(e.stack); }
+}
+// the pure race-day timing
+{
+  const U = lime.RP_LIME_UI;
+  const start = U.raceStartMs('2027-02-27', '05:30');
+  const st = U.raceDayState('2027-02-27', '05:30', 3600, start - 60e3);
+  const pos = U.planPosition(lime.computePlan([{ id: 'a', distance: 5, paceSec: 300 }, { id: 'b', distance: 5, paceSec: 290 }]).rows, 1600);
+  const checks = [
+    [st.phase === 'before' && st.toStartSec === 60, 'one minute before the gun'],
+    [U.raceDayState('2027-02-27', '05:30', 3600, start + 1800e3).phase === 'running', 'running half way'],
+    [U.raceDayState('2027-02-27', '05:30', 3600, start + 7300e3).phase === 'after', 'after finish + 1h'],
+    [U.raceDayState('', '05:30', 3600) === null, 'no date gives null'],
+    [pos.index === 1 && Math.abs(pos.dist - (5 + 100 / 290)) < 1e-9, 'plan position 1600s in'],
+    [!U.raceDayAutoOpen('2027-02-27', '05:30', 3600, start - 86400e3), 'no auto-open the day before'],
+    [U.raceDayAutoOpen('2027-02-27', '05:30', 3600, start - 3 * 3600e3), 'auto-open at 02:30 on the day'],
+  ];
+  for (const [ok, name] of checks) { total++; if (ok) console.log('  ok   lime timing: ' + name); else { failed++; console.log('  FAIL lime timing: ' + name); } }
+}
+console.log('render: ' + (total - failed) + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

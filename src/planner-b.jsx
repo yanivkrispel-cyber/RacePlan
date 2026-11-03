@@ -168,7 +168,7 @@ function EditableText({ value, onChange, placeholder, style, editRef }) {
       spellCheck={false}
       onBlur={(e) => onChange((e.currentTarget.textContent || '').trim() || placeholder)}
       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
-      onFocus={(e) => { e.currentTarget.style.background = 'rgba(124,140,255,.14)'; }}
+      onFocus={(e) => { e.currentTarget.style.background = (LIME ? 'rgba(221,255,74,.10)' : 'rgba(124,140,255,.14)'); }}
       onMouseLeave={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.style.background = 'transparent'; }}
       style={{ outline: 'none', cursor: 'text', borderRadius: 6, padding: '0 4px', margin: '0 -4px',
         transition: 'background .12s', ...style }}
@@ -179,7 +179,14 @@ function EditableText({ value, onChange, placeholder, style, editRef }) {
 // Chart palette — pulled from the design tokens. SVG can't read CSS vars for
 // every attribute reliably across the chart code, so the resolved hexes live
 // here and mirror :root in shared.jsx.
-const themeB = {
+const LIME = !!window.RP_LIME;
+const SCRIM = LIME ? 'rgba(0,0,0,.78)' : 'rgba(9,11,22,.80)'; // behind a sheet
+const ACC_RGB = LIME ? '221,255,74' : '245,194,74'; // the LED accent, as r,g,b for rgba()
+const themeB = LIME ? {
+  line: '#DDFF4A', avg: 'rgba(244,246,238,.36)', grid: 'rgba(221,255,74,.07)',
+  textDim: '#8f9686', dotFill: '#050605',
+  zones: { fast: '#FF5A36', target: '#DDFF4A', easy: '#7fd3ff' },
+} : {
   line: '#C9A24B', avg: 'rgba(246,239,227,.38)', grid: 'rgba(246,239,227,.07)',
   textDim: '#9BA0B7', dotFill: '#1a2140',
   zones: { fast: '#C15A2E', target: '#C9A24B', easy: '#8091BE' },
@@ -429,7 +436,7 @@ function CopyToast({ show, text, action }) {
   else { text = last.current.text; action = last.current.action; }
   return ReactDOM.createPortal((
     <div role="status" aria-live="polite" style={{
-      position: 'fixed', bottom: 'calc(24px + env(safe-area-inset-bottom))',
+      position: 'fixed', bottom: LIME ? 'calc(var(--rp-tabbar-h) + 16px + env(safe-area-inset-bottom))' : 'calc(24px + env(safe-area-inset-bottom))',
       insetInline: 0, marginInline: 'auto', width: 'max-content', maxWidth: '90vw', zIndex: 9999,
       background: 'var(--rp-surface)', border: '1px solid var(--rp-line)', borderRadius: 'var(--rp-r-12)',
       padding: '12px 20px', fontSize: 14, fontWeight: 600, color: 'var(--rp-text)',
@@ -574,8 +581,8 @@ function ClockGroup({ value, digits, max, onChange, label, digitH, inputRef, onF
   const bump = (d) => onChange((v) => ((v + d) % (max + 1) + (max + 1)) % (max + 1));
   const chevStyle = {
     width: '100%', height: 22, borderRadius: 6, fontSize: 12,
-    border: '1px solid rgba(245,194,74,.16)', background: 'rgba(245,194,74,.06)',
-    color: 'rgba(245,194,74,.8)',
+    border: `1px solid rgba(${ACC_RGB},.16)`, background: `rgba(${ACC_RGB},.06)`,
+    color: `rgba(${ACC_RGB},.8)`,
   };
 
   // Digits typed since the field took focus; null = not editing, '' = focused
@@ -622,8 +629,8 @@ function ClockGroup({ value, digits, max, onChange, label, digitH, inputRef, onF
       <HoldButton delta={1} onStep={bump} style={chevStyle} tabIndex={-1} ariaLabel={`${label} +`}>▲</HoldButton>
       <div style={{ position: 'relative', display: 'flex', gap: 3, cursor: 'text',
         padding: '2px 3px', margin: '-2px -3px', borderRadius: 7,
-        background: editing ? 'rgba(245,194,74,.07)' : 'transparent',
-        boxShadow: editing ? '0 0 0 1px rgba(245,194,74,.5)' : 'none',
+        background: editing ? `rgba(${ACC_RGB},.07)` : 'transparent',
+        boxShadow: editing ? `0 0 0 1px rgba(${ACC_RGB},.5)` : 'none',
         opacity: draft === '' ? 0.4 : 1 }}>
         {cells.map((v, i) => <SevenSeg key={i} value={v} h={digitH} />)}
         <input
@@ -650,7 +657,7 @@ function ClockGroup({ value, digits, max, onChange, label, digitH, inputRef, onF
             fontSize: 16 /* keeps iOS from zooming on focus */ }} />
       </div>
       <HoldButton delta={-1} onStep={bump} style={chevStyle} tabIndex={-1} ariaLabel={`${label} −`}>▼</HoldButton>
-      <span style={{ fontSize: 8.5, letterSpacing: '.12em', color: 'rgba(245,194,74,.45)',
+      <span style={{ fontSize: 8.5, letterSpacing: '.12em', color: `rgba(${ACC_RGB},.45)`,
         textTransform: 'uppercase' }}>{label}</span>
     </div>
   );
@@ -661,11 +668,13 @@ function RaceClock({ h, m, s, onH, onM, onS, subtitle, digitH = 50 }) {
   const focus = (ref) => { if (ref.current) ref.current.focus(); };
   return (
     <div style={{
-      '--rc-on': '#F5C24A', '--rc-off': 'rgba(245,194,74,.11)', '--rc-glow': 'rgba(245,194,74,.7)',
-      background: '#12141d', border: '1px solid var(--rp-line)', borderRadius: 16,
+      ...window.CLOCK_VARS, position: 'relative',
+      background: LIME ? 'radial-gradient(120% 90% at 50% 40%, rgba(221,255,74,.07), transparent 65%), #020302' : '#12141d',
+      border: LIME ? '1px solid var(--rp-gold-line)' : '1px solid var(--rp-line)', borderRadius: 16,
       padding: '9px 10px 7px', boxShadow: 'inset 0 2px 12px rgba(0,0,0,.45)',
     }}>
-      <div style={{ background: '#04050a', borderRadius: 12, padding: '10px 8px 7px',
+      {LIME && window.ClockCorners && <window.ClockCorners />}
+      <div style={{ background: LIME ? '#000' : '#04050a', borderRadius: 12, padding: '10px 8px 7px',
         display: 'flex', direction: 'ltr', alignItems: 'flex-start', justifyContent: 'center', gap: 4,
         boxShadow: 'inset 0 0 22px rgba(0,0,0,.75)' }}>
         <ClockGroup value={h} digits={1} max={11} onChange={onH} label={t('clock.hours')} digitH={digitH}
@@ -684,7 +693,7 @@ function RaceClock({ h, m, s, onH, onM, onS, subtitle, digitH = 50 }) {
           inputRef={sRef} />
       </div>
       <div style={{ textAlign: 'center', fontSize: 9.5, marginTop: 7, letterSpacing: '.03em',
-        color: 'rgba(245,194,74,.45)' }}>{t('clock.tapToType')}</div>
+        color: `rgba(${ACC_RGB},.45)` }}>{t('clock.tapToType')}</div>
       {subtitle && (
         <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--rp-text-dim)',
           marginTop: 5, letterSpacing: '.03em', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -715,7 +724,7 @@ function GoalSheet({ currentSec, dist, onClose, onApply }) {
   const ok = goalSec >= 600 && goalSec <= 12 * 3600;
   return ReactDOM.createPortal((
     <div className="rp-cq-scope" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(9,11,22,.80)',
+      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: SCRIM,
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 18, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
       <div style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
@@ -774,7 +783,7 @@ function GpxPlanDialog({ course, defaultGoalSec, onCancel, onBuild }) {
 
   return ReactDOM.createPortal((
     <div className="rp-cq-scope" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(9,11,22,.78)',
+      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: SCRIM,
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 18, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
       <div style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
@@ -978,7 +987,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
 
   return ReactDOM.createPortal((
     <div className="rp-cq-scope" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(9,11,22,.80)',
+      style={{ position: 'fixed', inset: 0, zIndex: 1100, background: SCRIM,
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 16, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
       <div style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
@@ -1187,7 +1196,7 @@ function SettingsSheet({ onClose }) {
 
   return ReactDOM.createPortal((
     <div className="rp-cq-scope" role="dialog" aria-modal="true" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 1300, background: 'rgba(9,11,22,.80)',
+      style={{ position: 'fixed', inset: 0, zIndex: 1300, background: SCRIM,
         backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 18, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
       <div style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
@@ -1274,7 +1283,8 @@ function HubScreen({ isOwner, userName, onEnter }) {
       if (!Array.isArray(d.s) || !d.s.length) return null;
       let dist = 0; let sec = 0;
       for (const [km, pace] of d.s) { dist += +km || 0; sec += (+km || 0) * (+pace || 0); }
-      return { raceName: localStorage.getItem('rp-race') || t('hub.resumeDefault'), dist, sec };
+      return { raceName: localStorage.getItem('rp-race') || t('hub.resumeDefault'), dist, sec, segs: d.s.length,
+        raceDate: localStorage.getItem(LS_RACE_DATE) || '', raceTime: localStorage.getItem(LS_RACE_TIME) || '' };
     } catch (e) { return null; }
   }, []);
 
@@ -1290,15 +1300,52 @@ function HubScreen({ isOwner, userName, onEnter }) {
   };
 
   const Card = HubCard;
+  const LUI = LIME ? window.RP_LIME_UI : null;
+  // lime: enter the planner on a given tab (the planner reads and clears these)
+  const enterTo = (what) => { window.__rpEnterTo = what; onEnter(null); };
 
   return (
-    <div className="rp-cq" style={{
+    <div className={'rp-cq' + (LUI ? ' rp-has-tabbar' : '')} style={{
       minHeight: '100vh', background: 'var(--rp-bg)', color: 'var(--rp-text)',
       fontFamily: 'var(--rp-font-ui)', direction: I18N.dir,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      padding: 'max(28px, env(safe-area-inset-top)) 22px 40px', gap: 26,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: LUI ? 'flex-start' : 'center',
+      padding: LUI ? 'max(14px, env(safe-area-inset-top)) 18px 40px' : 'max(28px, env(safe-area-inset-top)) 22px 40px',
+      gap: LUI ? 16 : 26,
     }}>
-      <div style={{ textAlign: 'center' }}>
+      {LUI && (
+        <>
+          <div style={{ width: '100%', maxWidth: 420, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+              <window.RPIcon size={34} radius={10} />
+              <window.RPWordmark size={13} align="start" />
+            </div>
+            <button onClick={() => setSettingsOpen(true)} aria-label={t('settings.title')}
+              style={{ width: 38, height: 38, borderRadius: 12, cursor: 'pointer', flex: '0 0 auto',
+                background: 'var(--rp-surface)', border: '1px solid var(--rp-line)', color: 'var(--rp-text-dim)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <GearIcon />
+            </button>
+          </div>
+          <div style={{ width: '100%', maxWidth: 420 }}>
+            <div style={{ fontSize: 13, color: 'var(--rp-text-dim)' }}>
+              {userName ? t('hub.hello', { name: userName }) : t('hub.tagline')}</div>
+            <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.1 }}>
+              {resume ? t('hub.nextRace') : t('hub.tagline')}</div>
+          </div>
+          {resume && (
+            <div style={{ width: '100%', maxWidth: 420 }}>
+              <LUI.NextRaceCard resume={resume} onOpen={() => onEnter(null)} onRaceDay={() => enterTo('raceday')} />
+            </div>
+          )}
+          <LUI.TabBar active="home" items={[
+            { id: 'home', icon: 'home', label: t('tabs.home'), onClick: () => window.scrollTo({ top: 0, behavior: 'smooth' }) },
+            { id: 'plan', icon: 'plan', label: t('tabs.plan'), onClick: () => (resume ? onEnter(null) : setSetupOpen(true)) },
+            { id: 'route', icon: 'route', label: t('tabs.route'), disabled: !resume, onClick: () => enterTo('route') },
+            { id: 'share', icon: 'share', label: t('tabs.share'), disabled: !resume, onClick: () => enterTo('share') },
+          ]} />
+        </>
+      )}
+      {!LUI && <div style={{ textAlign: 'center' }}>
         <img src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'LogoV2.png'}
           alt="RACE PLAN" style={{ width: 96, height: 96, borderRadius: 22 }} />
         <div style={{ fontFamily: 'var(--rp-font-display)', fontSize: 26, fontWeight: 800,
@@ -1306,15 +1353,15 @@ function HubScreen({ isOwner, userName, onEnter }) {
         <div style={{ color: 'var(--rp-text-dim)', fontSize: 14, marginTop: 4 }}>
           {userName ? t('hub.hello', { name: userName }) : t('hub.tagline')}
         </div>
-      </div>
+      </div>}
 
-      <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ width: '100%', maxWidth: LUI ? 420 : 380, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* a new plan overwrites the one in progress — say so before it happens */}
         <Card primary onClick={() => (resume ? setReplaceConfirm(true) : setSetupOpen(true))} title={t('hub.newPlan')}
           sub={t('hub.newPlanSub')}
           icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>} />
 
-        {resume && (
+        {resume && !LUI && (
           <Card onClick={() => onEnter(null)} title={t('hub.resume')}
             sub={`${resume.raceName} · ${U ? U.fmtDist(resume.dist) : formatKm(resume.dist)} · ${formatClock(resume.sec)}`}
             icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8" /><path d="M3 3v5h5" /></svg>} />
@@ -1366,13 +1413,13 @@ function HubScreen({ isOwner, userName, onEnter }) {
         <RaceAdminPanel onClose={() => setRaceAdminOpen(false)} />
       )}
 
-      <button onClick={() => setSettingsOpen(true)} aria-label={t('settings.title')}
+      {!LUI && <button onClick={() => setSettingsOpen(true)} aria-label={t('settings.title')}
         style={{ position: 'fixed', top: 'calc(12px + env(safe-area-inset-top))', insetInlineEnd: 14,
           width: 38, height: 38, borderRadius: 999, cursor: 'pointer',
           background: 'var(--rp-surface)', border: '1px solid var(--rp-line)', color: 'var(--rp-text-dim)',
           display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <GearIcon />
-      </button>
+      </button>}
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
       {replaceConfirm && resume && (
         <ConfirmDialog
@@ -1392,6 +1439,7 @@ function HubScreen({ isOwner, userName, onEnter }) {
 
 // Branded sign-in screen (Firebase targets, when nobody is signed in).
 function SignInScreen() {
+  if (LIME) return <SignInScreenLime />;
   return (
     <div className="rp-cq" style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -1415,6 +1463,32 @@ function SignInScreen() {
   );
 }
 
+// Lime sign-in: the mark, the wordmark, and the LED clock waiting at 0:00:00.
+function SignInScreenLime() {
+  const ClockDisplay = window.ClockDisplay;
+  return (
+    <div className="rp-cq" style={{
+      minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', gap: 26, padding: 28, textAlign: 'center',
+      background: 'radial-gradient(80% 50% at 50% 36%, rgba(221,255,74,.10), transparent 70%), var(--rp-bg)',
+      color: 'var(--rp-text)', fontFamily: 'var(--rp-font-ui)', direction: I18N.dir,
+    }}>
+      <div style={{ display: 'grid', justifyItems: 'center', gap: 16 }}>
+        <span style={{ boxShadow: '0 0 60px rgba(221,255,74,.18)', borderRadius: 30 }}>
+          <window.RPIcon size={112} radius={30} /></span>
+        <window.RPWordmark size={30} />
+      </div>
+      {ClockDisplay && <div style={{ width: '100%', maxWidth: 300 }}><ClockDisplay totalSec={0} digitH={34} /></div>}
+      <div style={{ color: 'var(--rp-text-soft)', fontSize: 16, maxWidth: 300 }}>{t('signin.tagline')}</div>
+      <button className="rp-btn rp-btn-primary" style={{ minHeight: 52, fontSize: 16, padding: '12px 30px',
+        width: '100%', maxWidth: 320, justifyContent: 'center', fontWeight: 900, borderRadius: 16 }}
+        onClick={() => RP_FB && RP_FB.signIn()}>
+        {t('signin.google')}
+      </button>
+    </div>
+  );
+}
+
 // Auth gate + entry router. After sign-in the app ALWAYS opens on the Hub
 // screen — the only exception is a shared-plan link (#s=…), which goes straight
 // into the planner with that plan. A plan in progress is offered on the Hub as
@@ -1431,8 +1505,9 @@ function ShareLoadingScreen({ failed, onContinue }) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', gap: 18, background: 'var(--rp-bg, #111528)', color: 'var(--rp-text, #F6EFE3)' }}>
+      {LIME && window.RPIcon ? <window.RPIcon size={96} /> : (
       <img src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'LogoV2.png'}
-        width="96" height="96" alt="RACE PLAN" style={{ borderRadius: 20 }} />
+        width="96" height="96" alt="RACE PLAN" style={{ borderRadius: 20 }} />)}
       <div style={{ fontSize: 15, opacity: 0.8 }}>{failed ? t('share.notFound') : t('share.loading')}</div>
       {failed && (
         <button className="rp-btn rp-btn-primary" onClick={onContinue}>{t('common.continue')}</button>
@@ -2087,6 +2162,37 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
 
   const hasRoute = !!(p.course && p.course.track && p.course.track.length > 1);
 
+  // ── lime skin: tab bar + race-day mode ───────────────────────────────────
+  const LUI = LIME ? window.RP_LIME_UI : null;
+  const [raceDayOpen, setRaceDayOpen] = React.useState(false);
+  // Entry from the Hub's tabs / race-day button, or race morning itself.
+  React.useEffect(() => {
+    if (!LUI) return;
+    const to = window.__rpEnterTo; window.__rpEnterTo = null;
+    if (to === 'raceday') setRaceDayOpen(true);
+    else if (to === 'route') { if (hasRoute) setPane('visual'); }
+    else if (to === 'share') setShareOpen(true);
+    else if (LUI.raceDayAutoOpen(raceDate, raceTime, plan.totalTime)) setRaceDayOpen(true);
+  }, []);
+  const closeRaceDay = () => {
+    setRaceDayOpen(false);
+    // closing it on the day itself means "not again today"
+    try {
+      const st = LUI && LUI.raceDayState(raceDate, raceTime, plan.totalTime);
+      if (st && st.phase !== 'after') localStorage.setItem('rp-raceday-closed', raceDate);
+    } catch (e) {}
+  };
+  const tabItems = LUI ? [
+    { id: 'home', icon: 'home', label: t('tabs.home'), onClick: () => onGoHome && onGoHome() },
+    { id: 'plan', icon: 'plan', label: t('tabs.plan'),
+      onClick: () => { setPane('plan'); window.scrollTo({ top: 0, behavior: 'smooth' }); } },
+    // no route yet → the sheet that loads one (GPX import, and the library for the owner)
+    { id: 'route', icon: 'route', label: t('tabs.route'),
+      onClick: () => { if (hasRoute) { setPane('visual'); window.scrollTo({ top: 0 }); } else setMoreOpen(true); } },
+    { id: 'share', icon: 'share', label: t('tabs.share'), onClick: () => setShareOpen(true) },
+  ] : null;
+  const activeTab = shareOpen ? 'share' : (hasRoute && pane === 'visual' ? 'route' : 'plan');
+
   // The pace chart is the live feedback for editing splits, so it never sits
   // behind a tab: pinned under the visual column where there's room for two,
   // at the foot of the plan column otherwise.
@@ -2271,9 +2377,18 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
           .rp-stat-sub { margin-top: 0 !important; font-size: 11px !important; }
           .rp-stats .rp-stat:first-child { grid-column: 1 / -1; }
         }
+        /* lime: the tab bar takes the bottom edge on phones — lift the sticky
+           action bar above it, and let the visual column keep its map/3D tabs */
+        @container (max-width: 1023px) {
+          :root[data-ui="lime"] .rp-has-route .rp-visual-col .rp-tabs { display: flex; }
+        }
+        @container (max-width: 640px) {
+          :root[data-ui="lime"] .rp-toolbar { bottom: calc(var(--rp-tabbar-h) + env(safe-area-inset-bottom) + 8px); }
+        }
       `}</style>
 
       <div className={'rp-planner-wrap'
+        + (LUI ? ' rp-has-tabbar' : '')
         + (hasRoute ? ' rp-has-route' : '')
         // Only meaningful narrow (the stylesheet scopes it), where it makes
         // the wrap a full-height column so the map/3D pane ends at the
@@ -2304,7 +2419,7 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
 
         {/* Narrow widths: one control for the whole app — which of the two
             columns is on screen. Wide widths show both, so it's hidden. */}
-        {hasRoute && (
+        {hasRoute && !LUI && (
           <div className="rp-viewswitch" role="tablist"
             style={{
               position: 'sticky', top: 0, zIndex: 45, gap: 4, marginBottom: 10,
@@ -2397,10 +2512,11 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
                 </button>
               </div>
             </div>
+            {LIME && window.RPIcon ? <window.RPIcon size={36} radius={10} /> : (
             <div style={{ flex: '0 0 auto', width: 36, height: 36, borderRadius: 10, overflow: 'hidden' }}>
               <img src={(typeof window !== 'undefined' && window.__RACEPLAN_LOGO__) || 'LogoV2.png'}
                 alt="RACE PLAN" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
-            </div>
+            </div>)}
           </div>
 
           {/* hero: the goal clock (tap to set a goal — rescales) and the core
@@ -2432,6 +2548,21 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
               ))}
             </div>
           </div>
+
+          {LUI && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
+              <LUI.SegBar n={Math.min(plan.rows.length, 40)} style={{ flex: 1 }} />
+              <button type="button" onClick={() => setRaceDayOpen(true)}
+                style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                  fontFamily: 'inherit', fontSize: 12, fontWeight: 800, borderRadius: 999, padding: '6px 12px',
+                  minHeight: 32, background: 'var(--rp-gold-wash)', color: 'var(--rp-gold)',
+                  border: '1px solid var(--rp-gold-line)' }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 21V4" /><path d="M5 4h11l-2 4 2 4H5" /></svg>
+                {t('raceday.title')}
+              </button>
+            </div>
+          )}
 
           <div style={{ borderTop: '1px solid var(--rp-line)', margin: '12px -15px 12px' }} />
 
@@ -2503,7 +2634,7 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
               <span aria-label={t('planner.pendingSubs', { n: pendingSubs })} style={{
                 position: 'absolute', top: -5, insetInlineStart: -5,
                 minWidth: 15, height: 15, padding: '0 4px', borderRadius: 999,
-                background: 'var(--rp-gold)', color: '#12172b', fontSize: 9.5, fontWeight: 800,
+                background: 'var(--rp-gold)', color: 'var(--rp-on-gold)', fontSize: 9.5, fontWeight: 800,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
               }}>{pendingSubs}</span>
             )}
@@ -2527,7 +2658,7 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11,
                   color: 'var(--rp-text-dim)', flex: '0 0 auto' }}>
                   <span style={{ width: 24, height: 5, borderRadius: 3,
-                    background: 'linear-gradient(90deg,#7C9BD6,#9BA0B7,#C36079)' }} />
+                    background: LIME ? 'linear-gradient(90deg,#7fd3ff,#DDFF4A,#FF5A36)' : 'linear-gradient(90deg,#7C9BD6,#9BA0B7,#C36079)' }} />
                   <span>{t('chart.mapGradeDescent')}</span>
                   <span>·</span>
                   <span>{t('chart.mapGradeClimb')}</span>
@@ -2774,6 +2905,12 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
             plan={plan}
           />
         </div>
+      )}
+
+      {LUI && <LUI.TabBar items={tabItems} active={activeTab} />}
+      {LUI && raceDayOpen && (
+        <LUI.RaceDayScreen raceName={raceName} raceDate={raceDate} raceTime={raceTime}
+          rows={plan.rows} totalTime={plan.totalTime} weather={weather} onClose={closeRaceDay} />
       )}
 
       <CopyToast show={!!toastMsg} text={toastMsg} action={toastAction} />

@@ -177,7 +177,7 @@ async function ensureRaceFromSubmission(s, taken) {
 function StatusBadge({ status }) {
   const map = {
     available: [t('routes.statusAvailable'), 'var(--rp-gold)', 'var(--rp-gold-wash)', 'var(--rp-gold-line)'],
-    candidate: [t('routes.statusCandidate'), '#C9A24B', 'transparent', 'var(--rp-line)'],
+    candidate: [t('routes.statusCandidate'), 'var(--rp-gold)', 'transparent', 'var(--rp-line)'],
     none: [t('routes.statusNone'), 'var(--rp-text-dim)', 'transparent', 'var(--rp-line)'],
   };
   const [txt, fg, bg, bd] = map[status] || map.none;
@@ -494,7 +494,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
       onClick={(e) => { if (e.target === e.currentTarget) onClose(submitted); }}
       style={{
         position: 'fixed', inset: 0, zIndex,
-        background: 'rgba(9,11,22,.78)', backdropFilter: 'blur(6px)',
+        background: (window.RP_LIME ? 'rgba(0,0,0,.78)' : 'rgba(9,11,22,.78)'), backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 20, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: TEXT,
       }}
@@ -800,7 +800,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                       <div style={{ fontSize: 13.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
                         {s.raceName || s.raceId}
                         {s.isNewRace && (
-                          <span style={{ fontSize: 10, fontWeight: 700, color: '#C9A24B',
+                          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--rp-gold)',
                             border: '1px solid var(--rp-line)', borderRadius: 999, padding: '1px 6px' }}>
                             {t('routes.newRaceBadge')}
                           </span>
@@ -1238,7 +1238,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
         position: 'fixed', inset: 0, zIndex,
-        background: 'rgba(9,11,22,.78)', backdropFilter: 'blur(6px)',
+        background: (window.RP_LIME ? 'rgba(0,0,0,.78)' : 'rgba(9,11,22,.78)'), backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 20, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: TEXT,
       }}

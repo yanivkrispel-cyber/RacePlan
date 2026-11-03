@@ -6,6 +6,18 @@
 <title>RACE PLAN</title>
 <base target="_top" />
 <script>
+/* skin switch (src/shared.jsx): ?ui=lime once turns the lime look on for this
+   device, ?ui=classic turns it off. Set before anything paints. */
+(function () {
+  try {
+    var q = new URLSearchParams(location.search).get('ui');
+    if (q === 'lime' || q === 'classic') localStorage.setItem('rp-ui', q);
+    window.RP_LIME = localStorage.getItem('rp-ui') === 'lime';
+    if (window.RP_LIME) document.documentElement.setAttribute('data-ui', 'lime');
+  } catch (e) { window.RP_LIME = false; }
+})();
+</script>
+<script>
 /* set <html lang/dir> from the resolved locale before the app mounts (no RTL flash) */
 (function () {
   try {
@@ -27,7 +39,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 <style>
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #111528; color-scheme: dark; }
+  html, body { margin: 0; padding: 0; background: #111528;
+  }
+  html[data-ui="lime"], html[data-ui="lime"] body { background: #050605; color-scheme: dark; }
   body { font-family: "Heebo", system-ui, sans-serif; text-wrap: pretty;
     -webkit-text-size-adjust: 100%; }
   #root { min-height: 100vh; }

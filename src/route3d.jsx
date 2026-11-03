@@ -19,7 +19,8 @@ const ClockDisplay = window.ClockDisplay;
 // Local dark-chrome palette for the side elevation chart — kept local
 // (no cross-module dependency, see map.jsx for the same habit) rather than
 // pulling in planner-b.jsx's themeB.
-const ELEV_COLORS = { line: '#F5C24A', grid: 'rgba(255,255,255,.1)', textDim: 'rgba(255,255,255,.5)' };
+const LIME3 = !!window.RP_LIME; // lime skin: the course line, curtain, runner and signs turn lime
+const ELEV_COLORS = { line: LIME3 ? '#DDFF4A' : '#F5C24A', grid: 'rgba(255,255,255,.1)', textDim: 'rgba(255,255,255,.5)' };
 
 const THREE_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
 let _threePromise = null;
@@ -91,7 +92,7 @@ function makeRoadTexture(THREE) {
   }
 
   const lineH = h * 0.15;
-  ctx.fillStyle = '#1E6FEB';
+  ctx.fillStyle = LIME3 ? '#DDFF4A' : '#1E6FEB';
   ctx.fillRect(0, h / 2 - lineH / 2, w, lineH);
   ctx.fillStyle = 'rgba(255,255,255,.22)';
   ctx.fillRect(0, h / 2 - lineH / 2, w, lineH * 0.26);
@@ -154,12 +155,12 @@ function makeBannerTexture(THREE, label, checkered, subLabel) {
     ctx.fillStyle = 'rgba(10,12,18,.74)';
     ctx.fillRect(0, subLabel ? h * 0.16 : h * 0.3, w, subLabel ? h * 0.74 : h * 0.4);
   } else {
-    ctx.fillStyle = '#1E6FEB';
+    ctx.fillStyle = LIME3 ? '#DDFF4A' : '#1E6FEB';
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = 'rgba(255,255,255,.08)';
     ctx.fillRect(0, 0, w, h * 0.5);
   }
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = LIME3 && !checkered ? '#050605' : '#ffffff';
   ctx.textAlign = 'center';
   if (subLabel) {
     ctx.textBaseline = 'alphabetic';
@@ -228,12 +229,12 @@ function makeSignTexture(THREE, line1, line2) {
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#f7f4ea';
+  ctx.fillStyle = LIME3 ? '#050605' : '#f7f4ea';
   ctx.fillRect(0, 0, w, h);
   ctx.lineWidth = 10;
-  ctx.strokeStyle = '#12315c';
+  ctx.strokeStyle = LIME3 ? '#DDFF4A' : '#12315c';
   ctx.strokeRect(5, 5, w - 10, h - 10);
-  ctx.fillStyle = '#12315c';
+  ctx.fillStyle = LIME3 ? '#DDFF4A' : '#12315c';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = '700 46px Heebo, system-ui, sans-serif';
@@ -421,7 +422,7 @@ function buildConfetti(THREE, count, spread, floorY) {
   const colors = new Float32Array(count * 3);
   const velocities = new Float32Array(count * 3);
   const life = new Float32Array(count); // seconds remaining; <=0 = parked/inactive
-  const PALETTE = [0xF5C24A, 0x1E6FEB, 0xC15A2E, 0xffffff];
+  const PALETTE = LIME3 ? [0xDDFF4A, 0xF4F6EE, 0xFF5A36, 0xffffff] : [0xF5C24A, 0x1E6FEB, 0xC15A2E, 0xffffff];
   for (let i = 0; i < count; i++) positions[i * 3 + 1] = floorY - 999;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -527,7 +528,7 @@ function buildRoadStrips(THREE, points, width, thickness, uMax) {
 // reads the same under every time-of-day/weather lighting.
 function buildHeightCurtain(THREE, points, width, thickness, floorY) {
   const n = points.length;
-  const gold = new THREE.Color(0.96, 0.76, 0.29);
+  const gold = LIME3 ? new THREE.Color(0.867, 1.0, 0.29) : new THREE.Color(0.96, 0.76, 0.29);
   const group = new THREE.Group();
 
   const wallMat = new THREE.ShaderMaterial({
@@ -901,13 +902,13 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   // view angle onto a near-mirror surface (the old wide overview angle's
   // values) turns a directional light's specular lobe into a huge white
   // blob. Still glossy enough to read as wet pavement from any angle.
-  const floorMat = new THREE.MeshStandardMaterial({ color: 0x0a0c14, roughness: 0.5, metalness: 0.15 });
+  const floorMat = new THREE.MeshStandardMaterial({ color: LIME3 ? 0x080907 : 0x0a0c14, roughness: 0.5, metalness: 0.15 });
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(TARGET_SIZE * 9, TARGET_SIZE * 9), floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = FLOOR_Y;
   scene.add(floor);
 
-  const grid = new THREE.GridHelper(TARGET_SIZE * 2.2, 22, 0x2a3346, 0x1a2030);
+  const grid = new THREE.GridHelper(TARGET_SIZE * 2.2, 22, LIME3 ? 0x2a3318 : 0x2a3346, LIME3 ? 0x161a10 : 0x1a2030);
   grid.position.y = FLOOR_Y + 0.01;
   grid.material.transparent = true;
   grid.material.opacity = 0.35;
@@ -946,7 +947,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   const revealGeo = topGeo.clone();
   revealGeo.setDrawRange(0, 0);
   const revealMesh = new THREE.Mesh(revealGeo, new THREE.MeshStandardMaterial({
-    map: roadTexture, emissive: 0x2a2010, emissiveIntensity: 0.55, roughness: 0.7, side: THREE.DoubleSide,
+    map: roadTexture, emissive: LIME3 ? 0x1a200a : 0x2a2010, emissiveIntensity: 0.55, roughness: 0.7, side: THREE.DoubleSide,
   }));
   scene.add(revealMesh);
   const revealIndexCount = revealGeo.index.count;
@@ -962,15 +963,15 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
 
   // ── Start / finish markers + gates ──
   const markerGeo = new THREE.SphereGeometry(tubeRadius * 1.8, 16, 16);
-  const startMesh = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({ color: 0x8091BE, emissive: 0x1a1f33 }));
+  const startMesh = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({ color: LIME3 ? 0xDDFF4A : 0x8091BE, emissive: LIME3 ? 0x2a3305 : 0x1a1f33 }));
   startMesh.position.copy(points[0]); startMesh.position.y += SURFACE_Y;
   scene.add(startMesh);
-  const finishMesh = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({ color: 0xC15A2E, emissive: 0x2a0f05 }));
+  const finishMesh = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({ color: LIME3 ? 0xF4F6EE : 0xC15A2E, emissive: LIME3 ? 0x222222 : 0x2a0f05 }));
   finishMesh.position.copy(points[points.length - 1]); finishMesh.position.y += SURFACE_Y;
   scene.add(finishMesh);
 
-  scene.add(buildGate(THREE, curve, 0, roadWidth, roadThickness, t('view3d.startGate'), false, 0x8091BE));
-  scene.add(buildGate(THREE, curve, 1, roadWidth, roadThickness, t('view3d.finishGate'), true, 0xC15A2E, raceName || ''));
+  scene.add(buildGate(THREE, curve, 0, roadWidth, roadThickness, t('view3d.startGate'), false, LIME3 ? 0xDDFF4A : 0x8091BE));
+  scene.add(buildGate(THREE, curve, 1, roadWidth, roadThickness, t('view3d.finishGate'), true, LIME3 ? 0xF4F6EE : 0xC15A2E, raceName || ''));
 
   // ── Split signs — one per interior plan-segment boundary, showing the
   // checkpoint's cumulative distance and cumulative planned time, like a
@@ -984,9 +985,9 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   // ── The runner ──
   const runner = new THREE.Mesh(
     new THREE.SphereGeometry(tubeRadius * 2.2, 20, 20),
-    new THREE.MeshStandardMaterial({ color: 0xF5C24A, emissive: 0x6b4a10, emissiveIntensity: 1.1 }),
+    new THREE.MeshStandardMaterial({ color: LIME3 ? 0xDDFF4A : 0xF5C24A, emissive: LIME3 ? 0x4a5a10 : 0x6b4a10, emissiveIntensity: 1.1 }),
   );
-  runner.add(new THREE.PointLight(0xF5C24A, 1.1, TARGET_SIZE * 0.4));
+  runner.add(new THREE.PointLight(LIME3 ? 0xDDFF4A : 0xF5C24A, 1.1, TARGET_SIZE * 0.4));
   scene.add(runner);
 
   // ── Rain, only when the real forecast for race day calls for it ──
@@ -1592,7 +1593,7 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
             {playing ? '⏸' : '▶'}
           </button>
           <input ref={scrubRef} type="range" min={0} max={1000} defaultValue={0} onChange={onScrub}
-            style={{ flex: 1, accentColor: '#C9A24B' }} />
+            style={{ flex: 1, accentColor: LIME3 ? '#DDFF4A' : '#C9A24B' }} />
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,.7)', minWidth: 46, textAlign: 'end' }}>
             <span ref={distRef}>0</span>
           </div>
