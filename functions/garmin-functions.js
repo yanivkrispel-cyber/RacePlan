@@ -72,6 +72,9 @@ exports.garminCallback = onRequest({ secrets }, async (req, res) => {
 
 exports.garminPush = onRequest({ secrets }, async (req, res) => {
   if (req.method !== 'POST') { res.status(405).send(''); return; }
-  try { res.status(await garmin.push(req.query || {}, req.body)).send(''); }
+  // The key as ?k=… or as the last path segment (…/garminPush/<key>): Garmin's endpoint form drops the query
+  // string on save (3.11.2026), as the coach app's webhook already found.
+  const k = (req.query && req.query.k) || String(req.path || '').split('/').filter(Boolean).pop() || '';
+  try { res.status(await garmin.push({ k }, req.body)).send(''); }
   catch (e) { console.error('garmin push', e); res.status(500).send(''); } // Garmin pushes again later
 });
