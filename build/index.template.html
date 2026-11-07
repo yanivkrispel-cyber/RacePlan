@@ -6,15 +6,15 @@
 <title>RACE PLAN</title>
 <base target="_top" />
 <script>
-/* skin switch (src/shared.jsx): ?ui=lime once turns the lime look on for this
-   device, ?ui=classic turns it off. Set before anything paints. */
+/* skin switch (src/shared.jsx): lime is the default for everyone since 2026-11-07;
+   ?ui=classic once turns the old look on for this device, ?ui=lime turns it back. Set before anything paints. */
 (function () {
   try {
     var q = new URLSearchParams(location.search).get('ui');
     if (q === 'lime' || q === 'classic') localStorage.setItem('rp-ui', q);
-    window.RP_LIME = localStorage.getItem('rp-ui') === 'lime';
+    window.RP_LIME = localStorage.getItem('rp-ui') !== 'classic';
     if (window.RP_LIME) document.documentElement.setAttribute('data-ui', 'lime');
-  } catch (e) { window.RP_LIME = false; }
+  } catch (e) { window.RP_LIME = true; document.documentElement.setAttribute('data-ui', 'lime'); }
 })();
 </script>
 <script>

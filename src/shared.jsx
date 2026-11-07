@@ -7,8 +7,8 @@ const t = (I18N && I18N.t) || ((k) => k);
 const U = window.UNITS;
 
 // ── skin switch: classic (navy + gold) or lime (black + lime) ─────────────
-// Per device, opt-in: ?ui=lime once turns it on (remembered), ?ui=classic turns
-// it off. The page head sets window.RP_LIME and <html data-ui> before any
+// Lime for everyone since 2026-11-07; ?ui=classic once turns the old look on for
+// this device (remembered), ?ui=lime turns it back. The page head sets window.RP_LIME and <html data-ui> before any
 // script runs (no flash); this repeats it for hosts whose head doesn't.
 const LIME = (function () {
   if (typeof window === 'undefined') return false;
@@ -19,7 +19,7 @@ const LIME = (function () {
     if (q === 'lime' || q === 'classic') localStorage.setItem('rp-ui', q);
     v = localStorage.getItem('rp-ui');
   } catch (e) {}
-  window.RP_LIME = v === 'lime';
+  window.RP_LIME = v !== 'classic';
   if (window.RP_LIME) document.documentElement.setAttribute('data-ui', 'lime');
   return window.RP_LIME;
 })();

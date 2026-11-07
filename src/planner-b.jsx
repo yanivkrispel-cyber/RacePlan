@@ -1504,9 +1504,68 @@ function HubScreen({ isOwner, userName, onEnter }) {
   );
 }
 
+// Instagram / Facebook / TikTok open links in their own in-app browser, and Google
+// refuses to sign in there (403 disallowed_useragent). Detect it and send the runner
+// to the phone's real browser instead of a Google button that cannot work.
+// ?inapp=1 forces the screen (testing).
+function inAppBrowser() {
+  try {
+    if (new URLSearchParams(location.search).get('inapp') === '1') return 'Instagram';
+    const ua = navigator.userAgent || '';
+    if (/Instagram/i.test(ua)) return 'Instagram';
+    if (/FBAN|FBAV|FB_IAB|FBIOS|FB4A|Messenger/i.test(ua)) return 'Facebook';
+    if (/musical_ly|BytedanceWebview|TikTok/i.test(ua)) return 'TikTok';
+    if (/Snapchat/i.test(ua)) return 'Snapchat';
+    if (/\bLine\//.test(ua)) return 'LINE';
+    if (/Android/.test(ua) && /; wv\)/.test(ua)) return 'app';
+  } catch (e) {}
+  return null;
+}
+// The address to reopen: this page, with the language kept (the real browser
+// has its own storage) and without the test switch.
+function inAppTargetUrl() {
+  const u = new URL(location.href);
+  u.searchParams.delete('inapp');
+  try { if (I18N && I18N.locale) u.searchParams.set('lang', I18N.locale); } catch (e) {}
+  return u;
+}
+function InAppNotice({ app }) {
+  const [copied, setCopied] = React.useState(false);
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  const ios = /iPhone|iPad|iPod/.test(ua);
+  const u = inAppTargetUrl();
+  const href = u.toString();
+  // Android: an intent opens Chrome (falls back to the page itself).
+  // iOS 17+: x-safari-https:// opens Safari from an in-app browser.
+  const open = ios
+    ? 'x-safari-' + href
+    : 'intent://' + u.host + u.pathname + u.search + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='
+      + encodeURIComponent(href) + ';end';
+  const copy = () => {
+    const done = () => { setCopied(true); setTimeout(() => setCopied(false), 4000); };
+    const fallback = () => { try { window.prompt('', href); } catch (e) {} };
+    try { navigator.clipboard.writeText(href).then(done, fallback); } catch (e) { fallback(); }
+  };
+  return (
+    <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: 320, textAlign: 'center' }}>
+      <div style={{ fontSize: 17, fontWeight: 900 }}>{t('inapp.title')}</div>
+      <div style={{ color: 'var(--rp-text-dim)', fontSize: 13.5, lineHeight: 1.5 }}>
+        {t('inapp.body', { app: app === 'app' ? t('inapp.thisApp') : app })}</div>
+      <a className="rp-btn rp-btn-primary" href={open} style={{ minHeight: 54, fontSize: 16, padding: '12px 30px',
+        justifyContent: 'center', fontWeight: 900, borderRadius: 16, textDecoration: 'none' }}>
+        {ios ? t('inapp.openSafari') : t('inapp.openChrome')}</a>
+      <button className="rp-btn" onClick={copy} style={{ minHeight: 46, justifyContent: 'center', borderRadius: 14 }}>
+        {copied ? t('inapp.copied') : t('inapp.copy')}</button>
+      <div style={{ color: 'var(--rp-text-dim)', fontSize: 12.5, lineHeight: 1.5 }}>
+        {ios ? t('inapp.stepsIos') : t('inapp.stepsAndroid')}</div>
+    </div>
+  );
+}
+
 // Branded sign-in screen (Firebase targets, when nobody is signed in).
 function SignInScreen() {
-  if (LIME) return <SignInScreenLime />;
+  const inApp = React.useMemo(inAppBrowser, []);
+  if (LIME) return <SignInScreenLime inApp={inApp} />;
   return (
     <div className="rp-cq" style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -1522,16 +1581,18 @@ function SignInScreen() {
       <div style={{ color: 'var(--rp-text-dim)', fontSize: 15, maxWidth: 300 }}>
         {t('signin.tagline')}
       </div>
+      {inApp ? <InAppNotice app={inApp} /> : (
       <button className="rp-btn rp-btn-primary" style={{ minHeight: 48, fontSize: 16, padding: '12px 26px' }}
         onClick={() => RP_FB && RP_FB.signIn()}>
         {t('signin.google')}
       </button>
+      )}
     </div>
   );
 }
 
 // Lime sign-in: the mark, the wordmark, and the LED clock waiting at 0:00:00.
-function SignInScreenLime() {
+function SignInScreenLime({ inApp }) {
   const ClockDisplay = window.ClockDisplay;
   return (
     <div className="rp-cq" style={{
@@ -1560,6 +1621,7 @@ function SignInScreenLime() {
         <div style={{ fontSize: 23, fontWeight: 900, lineHeight: 1.2, whiteSpace: 'pre-line' }}>{t('lime.signinTitle')}</div>
         <div style={{ color: 'var(--rp-text-dim)', fontSize: 13.5 }}>{t('lime.signinSub')}</div>
       </div>
+      {inApp ? <InAppNotice app={inApp} /> : (
       <button className="rp-btn rp-btn-primary" style={{ minHeight: 54, fontSize: 16, padding: '12px 30px',
         width: '100%', maxWidth: 320, justifyContent: 'center', fontWeight: 900, borderRadius: 16, gap: 10 }}
         onClick={() => RP_FB && RP_FB.signIn()}>
@@ -1569,6 +1631,7 @@ function SignInScreenLime() {
         </svg>
         {t('signin.google')}
       </button>
+      )}
     </div>
   );
 }

@@ -456,6 +456,15 @@ const DICTS = {
 
     'signin.tagline': 'תכננו את המרוץ הבא שלכם',
     'signin.google': 'התחברות עם Google',
+    'inapp.title': 'פתחו בדפדפן כדי להתחבר',
+    'inapp.body': 'הדפדפן של {app} לא מאפשר התחברות עם Google. פתחו את RacePlan בדפדפן של הטלפון, וזה עובד.',
+    'inapp.thisApp': 'האפליקציה הזו',
+    'inapp.openSafari': 'פתיחה ב-Safari',
+    'inapp.openChrome': 'פתיחה ב-Chrome',
+    'inapp.copy': 'העתקת הקישור',
+    'inapp.copied': 'הקישור הועתק. הדביקו אותו בדפדפן',
+    'inapp.stepsIos': 'לא נפתח? לחצו על שלוש הנקודות למעלה ובחרו "פתיחה בדפדפן חיצוני".',
+    'inapp.stepsAndroid': 'לא נפתח? לחצו על שלוש הנקודות למעלה ובחרו "פתיחה ב-Chrome" או "פתיחה בדפדפן".',
 
     'hub.hello': 'שלום {name}',
     'hub.tagline': 'תכננו את המרוץ הבא שלכם',
@@ -1069,6 +1078,15 @@ const DICTS = {
 
     'signin.tagline': 'Plan your next race',
     'signin.google': 'Sign in with Google',
+    'inapp.title': 'Open in your browser to sign in',
+    'inapp.body': '{app}\'s browser doesn\'t allow Google sign-in. Open RacePlan in your phone\'s browser and it works.',
+    'inapp.thisApp': 'This app',
+    'inapp.openSafari': 'Open in Safari',
+    'inapp.openChrome': 'Open in Chrome',
+    'inapp.copy': 'Copy the link',
+    'inapp.copied': 'Link copied. Paste it in your browser',
+    'inapp.stepsIos': 'Didn\'t open? Tap the three dots at the top and choose "Open in external browser".',
+    'inapp.stepsAndroid': 'Didn\'t open? Tap the three dots at the top and choose "Open in Chrome" or "Open in browser".',
 
     'hub.hello': 'Hi {name}',
     'hub.tagline': 'Plan your next race',
@@ -1682,6 +1700,15 @@ const DICTS = {
 
     'signin.tagline': 'Planifiez votre prochaine course',
     'signin.google': 'Se connecter avec Google',
+    'inapp.title': 'Ouvrez dans votre navigateur pour vous connecter',
+    'inapp.body': 'Le navigateur de {app} n\'autorise pas la connexion Google. Ouvrez RacePlan dans le navigateur du téléphone, et ça marche.',
+    'inapp.thisApp': 'cette application',
+    'inapp.openSafari': 'Ouvrir dans Safari',
+    'inapp.openChrome': 'Ouvrir dans Chrome',
+    'inapp.copy': 'Copier le lien',
+    'inapp.copied': 'Lien copié. Collez-le dans votre navigateur',
+    'inapp.stepsIos': 'Rien ne s\'ouvre ? Touchez les trois points en haut et choisissez « Ouvrir dans le navigateur externe ».',
+    'inapp.stepsAndroid': 'Rien ne s\'ouvre ? Touchez les trois points en haut et choisissez « Ouvrir dans Chrome » ou « Ouvrir dans le navigateur ».',
 
     'hub.hello': 'Bonjour {name}',
     'hub.tagline': 'Planifiez votre prochaine course',
@@ -2295,6 +2322,15 @@ const DICTS = {
 
     'signin.tagline': 'Planifica tu próxima carrera',
     'signin.google': 'Iniciar sesión con Google',
+    'inapp.title': 'Abre en tu navegador para iniciar sesión',
+    'inapp.body': 'El navegador de {app} no permite iniciar sesión con Google. Abre RacePlan en el navegador del teléfono y funciona.',
+    'inapp.thisApp': 'esta app',
+    'inapp.openSafari': 'Abrir en Safari',
+    'inapp.openChrome': 'Abrir en Chrome',
+    'inapp.copy': 'Copiar el enlace',
+    'inapp.copied': 'Enlace copiado. Pégalo en tu navegador',
+    'inapp.stepsIos': '¿No se abrió? Toca los tres puntos arriba y elige «Abrir en navegador externo».',
+    'inapp.stepsAndroid': '¿No se abrió? Toca los tres puntos arriba y elige «Abrir en Chrome» o «Abrir en el navegador».',
 
     'hub.hello': 'Hola {name}',
     'hub.tagline': 'Planifica tu próxima carrera',
