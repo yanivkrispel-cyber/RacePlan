@@ -17,7 +17,7 @@
 //   apps-script/index.html   — small HTML shell (template scriptlets intact)
 //   apps-script/AppJs.gs      — var RP_APP_JS = "<the whole app>";
 
-import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, statSync, copyFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -131,6 +131,8 @@ const transpiled = JSX_FILES.map((f) => {
 
 const logo = logoDataUri();
 writeLogoWebp();
+// the old name too, with the new logo, for pages opened before 2026-11-07 that still ask for it
+copyFileSync(r(LOGO_WEB), r('web/logo.webp'));
 
 const assemble = (logoSrc, { imageSlot: withImageSlot }) => [
   ...(withImageSlot ? ['// <image-slot> web component', imageSlot, ''] : []),
