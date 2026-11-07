@@ -90,13 +90,14 @@ function transpile(code, filename) {
   }).code;
 }
 
-// LogoV2.png (square navy/gold RACE PLAN badge), downscaled to 320 px. The
+// The app icon (RP track-lanes mark on black, lime for everyone since 2026-11-07;
+// it was LogoV2.png, the navy/gold badge), downscaled to 320 px. The
 // header shows it at most 128 CSS px, object-fit:contain, so that's 2.5x.
 //   - Firebase (web/): a separate ~10 KB WebP at /logo.webp. It's the sign-in /
 //     hub screen's LCP image, and inlined as a data URI it was 137 KB of base64
 //     inside app.js that the mount had to download and parse first.
 //   - legacy Apps Script: keeps the inline PNG data URI (single-script serving).
-const LOGO_SRC = 'LogoV2.png';
+const LOGO_SRC = 'web/icons/icon-512.png';
 const LOGO_WEB = 'web/logo.webp';
 function logoPython(body) {
   const py = [
