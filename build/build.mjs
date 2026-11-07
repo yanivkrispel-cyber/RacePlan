@@ -93,12 +93,12 @@ function transpile(code, filename) {
 // The app icon (RP track-lanes mark on black, lime for everyone since 2026-11-07;
 // it was LogoV2.png, the navy/gold badge), downscaled to 320 px. The
 // header shows it at most 128 CSS px, object-fit:contain, so that's 2.5x.
-//   - Firebase (web/): a separate ~10 KB WebP at /logo.webp. It's the sign-in /
+//   - Firebase (web/): a separate ~10 KB WebP at /rp-logo.webp (renamed 2026-11-07 so no cache keeps the old badge). It's the sign-in /
 //     hub screen's LCP image, and inlined as a data URI it was 137 KB of base64
 //     inside app.js that the mount had to download and parse first.
 //   - legacy Apps Script: keeps the inline PNG data URI (single-script serving).
-const LOGO_SRC = 'web/icons/icon-512.png';
-const LOGO_WEB = 'web/logo.webp';
+const LOGO_SRC = 'web/icons/rp-icon-512.png';
+const LOGO_WEB = 'web/rp-logo.webp';
 function logoPython(body) {
   const py = [
     'import base64, io, sys',
@@ -154,7 +154,7 @@ const appScript = assemble(logo, { imageSlot: true });
 // and the syntax is left as written (no target lowering). charset:'utf8'
 // keeps the Hebrew/French/Spanish strings as-is: the default escapes them to
 // \uXXXX and makes i18n bigger, not smaller.
-const webBody = esbuildTransform(assemble('/logo.webp', { imageSlot: false }), {
+const webBody = esbuildTransform(assemble('/rp-logo.webp', { imageSlot: false }), {
   minify: true, charset: 'utf8', legalComments: 'none', loader: 'js',
 }).code;
 

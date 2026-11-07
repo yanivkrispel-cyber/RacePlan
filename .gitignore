@@ -17,6 +17,7 @@ apps-script/index.html
 # Firebase
 web/app.js
 web/logo.webp
+web/rp-logo.webp
 .firebase/
 firebase-debug.log
 firestore-debug.log

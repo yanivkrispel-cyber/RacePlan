@@ -4,14 +4,14 @@
 // fonts are same-origin now, so they're cached like the rest of the shell).
 // CACHE is stamped with the build hash by build/build.mjs, so every deploy
 // ships a byte-different sw.js → browsers install it and drop the old cache.
-const CACHE = 'raceplan-11450a2a9630';
+const CACHE = 'raceplan-e38a40dbb4db';
 const SHELL = [
   '/', '/index.html', '/app.js', '/firebase-init.js', '/manifest.webmanifest',
-  '/logo.webp', '/icons/boot-192.webp',
+  '/rp-logo.webp', '/icons/rp-boot-192.webp',
   '/fonts/heebo-v28-latin.woff2', '/fonts/heebo-v28-hebrew.woff2',
   '/vendor/react-18.3.1.production.min.js', '/vendor/react-dom-18.3.1.production.min.js',
-  '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png',
-  '/icons/apple-touch-icon.png', '/icons/favicon-64.png',
+  '/icons/rp-icon-192.png', '/icons/rp-icon-512.png', '/icons/rp-icon-maskable-512.png',
+  '/icons/rp-apple-touch-icon.png', '/icons/rp-favicon-64.png',
 ];
 
 self.addEventListener('install', (e) => {
