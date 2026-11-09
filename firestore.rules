@@ -50,6 +50,12 @@ service cloud.firestore {
       allow list, update, delete: if false;
     }
 
+    // Anonymous daily funnel counters: written by functions/tracking.js only, read by the owner's screen.
+    match /stats/{day} {
+      allow read:  if isOwner();
+      allow write: if false;
+    }
+
     // Send to watch (functions/garmin.js). Only the Cloud Functions write here (admin SDK). A runner
     // may read their own connection state and their own sends; the tokens and the OAuth states are
     // never readable from a browser.

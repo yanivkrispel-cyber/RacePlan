@@ -56,6 +56,7 @@ const JSX_FILES = [
   'src/lime.jsx',
   'src/strategy.jsx',
   'src/update.jsx',
+  'src/tracking.jsx',
   'src/planner-b.jsx',
 ];
 

@@ -48,6 +48,13 @@ exports.notifyRouteSubmission = onDocumentCreated(
   }
 );
 
+// Anonymous funnel counters (POST /api/t) and, once its two secrets are set, the morning Telegram message.
+Object.assign(exports, require('./tracking'));
+Object.assign(exports, require('./users-activity'));
+if (process.env.TELEGRAM_REPORT === 'true') {
+  Object.assign(exports, require('./tracking-report'));
+}
+
 // ── Send to watch (Garmin Training API) ─────────────────────────────────
 // OFF until RacePlan has its own Garmin app registration: GARMIN_ENABLED in functions/.env. While it is
 // false these functions are not exported at all, so a functions deploy never asks for the Garmin

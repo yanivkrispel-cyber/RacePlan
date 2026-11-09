@@ -1308,6 +1308,10 @@ function HubScreen({ isOwner, userName, onEnter }) {
   const [setupOpen, setSetupOpen] = React.useState(false);
   const [savedOpen, setSavedOpen] = React.useState(false);
   const [raceAdminOpen, setRaceAdminOpen] = React.useState(false);
+  // the morning Telegram message links straight to this screen (?stats=1)
+  const [trackingOpen, setTrackingOpen] = React.useState(() => {
+    try { return isOwner && new URLSearchParams(location.search).get('stats') === '1'; } catch (e) { return false; }
+  });
   const [athleteName, setAthleteName] = React.useState(null); // planning for a specific athlete
   const [replaceConfirm, setReplaceConfirm] = React.useState(false);
 
@@ -1434,6 +1438,11 @@ function HubScreen({ isOwner, userName, onEnter }) {
                 <b>{t('hub.raceAdmin')}</b><span>{t('lime.raceAdminSub')}</span>
               </button>
             )}
+            {isOwner && window.TrackingPanel && RP_FB && (
+              <button type="button" className="rp-ltile" style={{ gridColumn: '1 / -1' }} onClick={() => setTrackingOpen(true)}>
+                <b>{t('stats.title')}</b><span>{t('stats.tileSub')}</span>
+              </button>
+            )}
           </div>
         )}
         {/* the owner's card opens the athlete roster, so it's named after it */}
@@ -1442,6 +1451,11 @@ function HubScreen({ isOwner, userName, onEnter }) {
           icon={isOwner
             ? <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
             : <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>} />}
+
+        {!LUI && isOwner && window.TrackingPanel && RP_FB && (
+          <Card onClick={() => setTrackingOpen(true)} title={t('stats.title')} sub={t('stats.tileSub')}
+            icon={<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>} />
+        )}
 
         {!LUI && isOwner && RaceAdminPanel && RP_FB && (
           <Card onClick={() => setRaceAdminOpen(true)} title={t('hub.raceAdmin')}
@@ -1480,6 +1494,9 @@ function HubScreen({ isOwner, userName, onEnter }) {
       )}
       {raceAdminOpen && isOwner && RaceAdminPanel && (
         <RaceAdminPanel onClose={() => setRaceAdminOpen(false)} />
+      )}
+      {trackingOpen && isOwner && window.TrackingPanel && RP_FB && (
+        <window.TrackingPanel onClose={() => setTrackingOpen(false)} />
       )}
 
       {!LUI && <button onClick={() => setSettingsOpen(true)} aria-label={t('settings.title')}
@@ -1529,6 +1546,8 @@ function inAppTargetUrl() {
   const u = new URL(location.href);
   u.searchParams.delete('inapp');
   try { if (I18N && I18N.locale) u.searchParams.set('lang', I18N.locale); } catch (e) {}
+  // the tracking marks: the real browser is the same visitor, from the same place
+  try { if (RP_FB && RP_FB.track) { u.searchParams.set('h', '1'); u.searchParams.set('src', RP_FB.trackSource); } } catch (e) {}
   return u;
 }
 function InAppNotice({ app }) {
@@ -1539,11 +1558,14 @@ function InAppNotice({ app }) {
   const href = u.toString();
   // Android: an intent opens Chrome (falls back to the page itself).
   // iOS 17+: x-safari-https:// opens Safari from an in-app browser.
+  const tk = (step) => { try { if (RP_FB && RP_FB.track) RP_FB.track(step); } catch (e) {} };
+  React.useEffect(() => tk('inapp'), []);
   const open = ios
     ? 'x-safari-' + href
     : 'intent://' + u.host + u.pathname + u.search + '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='
       + encodeURIComponent(href) + ';end';
   const copy = () => {
+    tk('inapp_tap');
     const done = () => { setCopied(true); setTimeout(() => setCopied(false), 4000); };
     const fallback = () => { try { window.prompt('', href); } catch (e) {} };
     try { navigator.clipboard.writeText(href).then(done, fallback); } catch (e) { fallback(); }
@@ -1553,7 +1575,7 @@ function InAppNotice({ app }) {
       <div style={{ fontSize: 17, fontWeight: 900 }}>{t('inapp.title')}</div>
       <div style={{ color: 'var(--rp-text-dim)', fontSize: 13.5, lineHeight: 1.5 }}>
         {t('inapp.body', { app: app === 'app' ? t('inapp.thisApp') : app })}</div>
-      <a className="rp-btn rp-btn-primary" href={open} style={{ minHeight: 54, fontSize: 16, padding: '12px 30px',
+      <a className="rp-btn rp-btn-primary" href={open} onClick={() => tk('inapp_tap')} style={{ minHeight: 54, fontSize: 16, padding: '12px 30px',
         justifyContent: 'center', fontWeight: 900, borderRadius: 16, textDecoration: 'none' }}>
         {ios ? t('inapp.openSafari') : t('inapp.openChrome')}</a>
       <button className="rp-btn" onClick={copy} style={{ minHeight: 46, justifyContent: 'center', borderRadius: 14 }}>
@@ -1768,6 +1790,7 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
       }
     } catch (e) { /* sandboxed iframe — ignore */ }
     logUsage();
+    try { if (RP_FB && RP_FB.track) RP_FB.track('planner'); } catch (e) {}
   }, []);
 
   // Initial segments for the hook: a plan handed over from the Hub wins, then a
@@ -2293,6 +2316,7 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
       raceName, raceDate, raceTime, trainer,
       segments: p.segments, preset: p.activePreset, course: p.course,
     });
+    try { if (RP_FB && RP_FB.track) RP_FB.track('plan_saved'); } catch (e) {}
     showToast(t('planner.planSaved'));
   };
 

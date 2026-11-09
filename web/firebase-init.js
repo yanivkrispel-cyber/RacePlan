@@ -123,6 +123,101 @@ let currentProfile = null;   // the users/{uid} doc data (locale, units, …), i
 const authSubs = new Set();
 function emitAuth() { authSubs.forEach((fn) => { try { fn(currentUser); } catch (e) {} }); }
 
+// ── Anonymous funnel counters ───────────────────────────────────────────
+// One device counts once a day per step: a marker in localStorage, no cookie, no identifier, no name. Only the
+// step, where the visit came from and the kind of device reach functions/tracking.js. Live domain only; the
+// owner is never counted (signing in once switches this device off; ?notrack=1 does it by hand).
+const TK_HOST = 'raceplan.coachkrispel.com';
+const TK_STEPS = ['land', 'inapp', 'inapp_tap', 'hop', 'signin_tap', 'signup', 'install', 'active', 'planner', 'plan_saved', 'watch'];
+const TK_SOURCES = ['instagram', 'facebook', 'tiktok', 'whatsapp', 'telegram', 'google', 'share', 'direct', 'other'];
+const tkGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const tkSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const tkDay = (ago = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date(Date.now() - ago * 86400000));
+const tkOff = () => location.hostname !== TK_HOST || navigator.webdriver || tkGet('rp-t-off') === '1';
+const tkDevice = () => { const ua = navigator.userAgent || ''; return /iPhone|iPad|iPod/.test(ua) ? 'ios' : /Android/.test(ua) ? 'android' : 'desktop'; };
+
+function tkDetectSource() {
+  const q = new URLSearchParams(location.search);
+  const asked = (q.get('src') || q.get('utm_source') || '').toLowerCase();
+  if (TK_SOURCES.includes(asked)) return asked;
+  if (/^ig/.test(asked)) return 'instagram';
+  const ua = navigator.userAgent || '';
+  if (/Instagram/i.test(ua)) return 'instagram';
+  if (/FBAN|FBAV|FB_IAB|FBIOS|FB4A|Messenger/i.test(ua)) return 'facebook';
+  if (/musical_ly|BytedanceWebview|TikTok/i.test(ua)) return 'tiktok';
+  let host = '';
+  try { host = new URL(document.referrer).hostname; } catch (e) {}
+  if (host && host !== location.hostname) {
+    if (/instagram\./.test(host)) return 'instagram';
+    if (/facebook\.|(^|\.)fb\./.test(host)) return 'facebook';
+    if (/tiktok\./.test(host)) return 'tiktok';
+    if (/whatsapp\.|^wa\.me$/.test(host)) return 'whatsapp';
+    if (/telegram\.|^t\.me$/.test(host)) return 'telegram';
+    if (/google\./.test(host)) return 'google';
+    return 'other';
+  }
+  if (/^\/p\//.test(location.pathname) || location.hash.startsWith('#s=')) return 'share';
+  return '';
+}
+// The first explicit source sticks to the device, so a sign-up the next day still belongs to the post.
+let tkSrc = '';
+function tkSource() {
+  if (tkSrc) return tkSrc;
+  const found = tkDetectSource();
+  if (found) tkSet('rp-src', found);
+  const kept = tkGet('rp-src');
+  tkSrc = found || (TK_SOURCES.includes(kept) ? kept : 'direct');
+  return tkSrc;
+}
+
+let tkMemDay = '';
+let tkSeen = new Set();
+/** Marks a step as done today on this device. False when it already was. */
+function tkMark(step) {
+  const day = tkDay();
+  if (tkMemDay !== day) {
+    tkMemDay = day;
+    tkSeen = new Set();
+    try { const o = JSON.parse(tkGet('rp-t') || '{}'); if (o.d === day && Array.isArray(o.s)) tkSeen = new Set(o.s); } catch (e) {}
+  }
+  if (tkSeen.has(step)) return false;
+  tkSeen.add(step);
+  tkSet('rp-t', JSON.stringify({ d: day, s: [...tkSeen] }));
+  return true;
+}
+function track(step) {
+  try {
+    if (tkOff() || !TK_STEPS.includes(step) || !tkMark(step)) return;
+    const body = JSON.stringify({ step, src: tkSource(), dev: tkDevice() });
+    const blob = new Blob([body], { type: 'text/plain' });
+    if (!(navigator.sendBeacon && navigator.sendBeacon('/api/t', blob))) {
+      fetch('/api/t', { method: 'POST', body, keepalive: true, headers: { 'Content-Type': 'text/plain' } }).catch(() => {});
+    }
+  } catch (e) {}
+}
+// Arriving from the "open in your browser" screen (?h=1): the same person, already counted in the in-app
+// browser, so this is the "hop" step and not a second visit. The marks leave the address bar.
+try {
+  const u = new URL(location.href);
+  if (u.searchParams.get('notrack') === '1') tkSet('rp-t-off', '1');
+  tkSource();
+  const hopped = u.searchParams.get('h') === '1';
+  if (u.searchParams.has('h') || u.searchParams.has('src')) {
+    u.searchParams.delete('h'); u.searchParams.delete('src');
+    history.replaceState(null, '', u.pathname + u.search + u.hash);
+  }
+  if (hopped) { track('hop'); tkMark('land'); }
+} catch (e) {}
+
+function tkAfterAuth(user) {
+  if (user && user.tier === 'owner') tkSet('rp-t-off', '1');
+  track(user ? 'active' : 'land');
+  try {
+    const standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+    if (standalone && user && !tkOff() && tkGet('rp-t-inst') !== '1') { tkSet('rp-t-inst', '1'); track('install'); }
+  } catch (e) {}
+}
+
 // resolves once the first auth state is known (signed in or not)
 let resolveReady;
 const ready = new Promise((res) => { resolveReady = res; });
@@ -139,6 +234,7 @@ onAuthStateChanged(auth, (u) => {
   } : null;
   emitAuth();
   resolveReady();
+  tkAfterAuth(currentUser);
   if (currentUser) logVisit().catch(() => {});
   // Signed out → the sign-in screen is up; get its popup ready. Deferred a
   // tick so the mount (queued on `ready`) paints first.
@@ -155,6 +251,7 @@ async function signIn() {
   // (blocked, or an installed PWA / in-app webview with no popup support).
   //
   // No explicit resolver argument: the auth instance's own (warmed) one is used.
+  track('signin_tap');
   try {
     await signInWithPopup(auth, provider);
   } catch (e) {
@@ -180,8 +277,42 @@ async function logVisit() {
   if (snap.exists()) {
     await updateDoc(ref, { ...base, visits: increment(1) });
   } else {
-    await setDoc(ref, { ...base, createdAt: serverTimestamp(), visits: 1 });
+    await setDoc(ref, { ...base, createdAt: serverTimestamp(), visits: 1, src: tkSource() });
+    track('signup');
   }
+}
+
+// The owner's tracking screen: the anonymous daily counters, plus the accounts (their own profile fields).
+async function statsLoad() {
+  const f = await fs();
+  const { collection, getDocs } = f;
+  // the whole collection, one small doc a day: a descending order on the id would need its own index
+  const [days, users] = await Promise.all([
+    getDocs(collection(f.db, 'stats')),
+    getDocs(collection(f.db, 'users')),
+  ]);
+  const weekAgo = Date.now() - 7 * 86400000;
+  const after = (ts) => !!ts && typeof ts.toMillis === 'function' && ts.toMillis() >= weekAgo;
+  const ms = (ts) => (ts && typeof ts.toMillis === 'function' ? ts.toMillis() : 0);
+  const accounts = users.docs.map((d) => ({ id: d.id, ...d.data() })).filter((u) => u.tier !== 'owner');
+  return {
+    days: days.docs.filter((d) => d.id !== '_ping').map((d) => ({ id: d.id, ...d.data() })),
+    users: {
+      total: accounts.length,
+      new7: accounts.filter((u) => after(u.createdAt)).length,
+      active7: accounts.filter((u) => after(u.lastSeenAt)).length,
+    },
+    people: accounts.map((u) => ({
+      id: u.id, name: String(u.name || ''), email: String(u.email || ''), joined: ms(u.createdAt), last: ms(u.lastSeenAt),
+      visits: Number(u.visits) || 0, locale: String(u.locale || ''), src: TK_SOURCES.includes(u.src) ? u.src : '',
+    })).sort((a, b) => b.joined - a.joined),
+  };
+}
+
+// users/{uid} activity for the owner's list: { uid: { plans, watch, sent } }, numbers only (functions/users-activity.js).
+async function usersActivity() {
+  const m = await fns();
+  return (await m.httpsCallable(m.functions, 'usersActivity')({})).data;
 }
 
 // Persist a small set of user preferences (locale, units) onto users/{uid}.
@@ -480,6 +611,11 @@ window.RP_FIREBASE = {
   loadPlans,
   savePlans,
   logVisit,
+  track,
+  statsLoad,
+  usersActivity,
+  statsDay: tkDay,
+  get trackSource() { return tkSource(); },
   racesList,
   raceSave,
   raceDelete,

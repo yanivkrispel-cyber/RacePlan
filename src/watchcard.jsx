@@ -127,6 +127,7 @@ function useGarmin({ segments, profile, raceName, raceDate, onToast }) {
   });
   const sendRace = () => run('race', async () => {
     const r = await FB.garminCall('Send', payload({ date: raceDate, kind: 'race' }));
+    if (FB.track) FB.track('watch');
     const rec = { sig: planSig(segments, raceDate), date: r.date || raceDate, at: Date.now() };
     writeSent(planKey, rec); setSent(rec);
     try { if (navigator.vibrate) navigator.vibrate([8, 40, 14]); } catch (e) {}
@@ -134,6 +135,7 @@ function useGarmin({ segments, profile, raceName, raceDate, onToast }) {
   });
   const sendRehearsal = (date, km) => run('rehearsal', async () => {
     const r = await FB.garminCall('Send', payload({ date, kind: 'rehearsal', rehearsalKm: Number(km) }));
+    if (FB.track) FB.track('watch');
     toast(tw('watch.g.sentRehearsal', { date: fmtDay(r.date) }));
   });
   const disconnect = () => {
