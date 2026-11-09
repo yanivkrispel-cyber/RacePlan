@@ -36,13 +36,13 @@ const fakeReact = { useState(){return [null,()=>{}];}, useMemo(){return null;}, 
 let fakeDOMParser = { parseFromString() { return { querySelector(){return null;}, getElementsByTagName:()=>[] }; } };
 
 const fn = new Function('window','document','localStorage','React','DOMParser','fakeLS','fakeReact','fakeDOMParser',
-  `${engineBody}\n${gpxBody}\nreturn { formatPace, formatClock, parsePace, parseClock, formatKm, round2, clamp, generatePlan, computePlan, defaultSegments, _haversine, _interpolateEle, computeSegmentElevations, buildSegmentsFromGpx, buildPlanSegments, findExtrema, adjustSegmentBoundary, roundPacesToGoal };`);
+  `${engineBody}\n${gpxBody}\nreturn { formatPace, formatClock, parsePace, parseClock, formatKm, round2, clamp, generatePlan, computePlan, defaultSegments, _haversine, _interpolateEle, computeSegmentElevations, buildSegmentsFromGpx, buildPlanSegments, findExtrema, adjustSegmentBoundary, roundPacesToGoal, reshapePlanSegments, resolveStrategy };`);
 
 const {
   formatPace, formatClock, parsePace, parseClock, formatKm, round2, clamp,
   generatePlan, computePlan, defaultSegments,
   _haversine, _interpolateEle, computeSegmentElevations, buildSegmentsFromGpx, buildPlanSegments,
-  findExtrema, adjustSegmentBoundary, roundPacesToGoal
+  findExtrema, adjustSegmentBoundary, roundPacesToGoal, reshapePlanSegments, resolveStrategy
 } = fn(win, fakeDoc, fakeLS, fakeReact, {parseFromString(){}}, fakeLS, fakeReact, fakeDOMParser);
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -273,6 +273,53 @@ console.log('── buildPlanSegments ──');
 
   eq(buildPlanSegments(null, 0, { goalSec: 3000 }).length, 0, 'no distance -> []');
   eq(buildPlanSegments(null, 10, { goalSec: 0 }).length, 0, 'no goal -> []');
+}
+
+console.log('── reshapePlanSegments / resolveStrategy ──');
+{
+  const prof = [];
+  for (let i = 0; i <= 420; i++) prof.push({ d: i / 420 * 42.195, ele: 20 + 12 * Math.sin(i / 30) });
+  const built = buildPlanSegments(prof, 42.195, { goalSec: 13926, strategy: 'negative', splitPct: 3, gradeAdjust: true });
+  const segs = built.map((s, i) => ({ id: 'x' + i, ...s }));
+  const goal = segs.reduce((a, s) => a + s.distance * s.paceSec, 0);
+  const total = (l) => l.reduce((a, s) => a + s.distance * s.paceSec, 0);
+
+  for (const strategy of ['negative', 'even', 'positive', 'staged', 'strong']) {
+    for (const splitPct of [0, 3, 5.5, 8]) {
+      for (const gradeAdjust of [true, false]) {
+        const r = reshapePlanSegments(segs, prof, { goalSec: goal, strategy, splitPct, gradeAdjust });
+        assert(Math.abs(total(r) - goal) <= 2.5, `${strategy} ${splitPct}% keeps the finish (${(total(r) - goal).toFixed(1)} s)`);
+        assert(r.every((s, i) => s.id === segs[i].id && s.distance === segs[i].distance), `${strategy}: same segments`);
+        assert(r.every((s) => Number.isInteger(s.paceSec)), `${strategy}: whole seconds`);
+      }
+    }
+  }
+  const pinned = reshapePlanSegments(segs, prof, { goalSec: goal, strategy: 'even', splitPct: 0, gradeAdjust: false, pins: [3] });
+  eq(pinned[3].paceSec, segs[3].paceSec, 'a pinned segment keeps its pace');
+  assert(Math.abs(total(pinned) - goal) <= 2.5, 'pinned: the others absorb the difference');
+  const allPinned = reshapePlanSegments(segs, prof, { goalSec: goal, strategy: 'even', pins: segs.map((_, i) => i) });
+  assert(allPinned.every((s, i) => s.paceSec === segs[i].paceSec), 'everything pinned changes nothing');
+
+  const flatStrong = reshapePlanSegments(segs, null, { goalSec: goal, strategy: 'strong', splitPct: 4 });
+  assert(flatStrong[flatStrong.length - 1].paceSec < flatStrong[0].paceSec, 'strong finish ends faster than it starts');
+
+  const seen = resolveStrategy(segs, prof, null);
+  eq(seen.k, 'negative', 'an old plan is recognised from its paces');
+  eq(seen.pct, 3, 'with its split');
+  eq(seen.grade, true, 'and its gradient setting');
+
+  const st = { k: 'staged', pct: 4, grade: true, pins: [2], n: segs.length };
+  const applied = reshapePlanSegments(segs, prof, { goalSec: goal, strategy: 'staged', splitPct: 4, gradeAdjust: true, pins: [2] });
+  eq(resolveStrategy(applied, prof, st).k, 'staged', 'a saved strategy holds');
+  const f = 1.04;
+  const scaled = applied.map((s) => ({ ...s, paceSec: Math.round(s.paceSec * f) }));
+  eq(resolveStrategy(scaled, prof, st).k, 'staged', 'a new goal time keeps the strategy');
+  const edited = applied.map((s, i) => (i === 0 ? { ...s, paceSec: s.paceSec + 25 } : s));
+  const after = resolveStrategy(edited, prof, st);
+  eq(after.k, null, 'a hand edit makes it custom');
+  assert(after.pins.length === 1 && after.pins[0] === 2, 'pins survive a hand edit');
+  eq(resolveStrategy(applied.slice(0, -1), prof, st).pins.length, 0, 'pins are dropped when segments change');
+  eq(resolveStrategy([{ id: 'a', distance: 3, paceSec: 300 }, { id: 'b', distance: 2, paceSec: 340 }, { id: 'c', distance: 1, paceSec: 270 }], null, null).k, null, 'a free-form plan is custom');
 }
 
 console.log('── roundPacesToGoal ──');

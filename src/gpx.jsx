@@ -196,6 +196,17 @@ function computeSegmentWind(track, rows, windDir, windSpeed) {
   });
 }
 
+// Pace multiplier of a strategy at position f (0..1) of the race, s = split as a
+// fraction. Every strategy is later scaled so the plan still lands on its goal.
+// 'strong' holds until about km 30 of a marathon (71% of the race), then kicks.
+function strategyMult(strategy, s, f) {
+  if (strategy === 'negative') return 1 + s - 2 * s * f;      // slow → fast
+  if (strategy === 'positive') return 1 - s + 2 * s * f;      // fast → slow
+  if (strategy === 'staged') return f < 1 / 3 ? 1 + s : f > 2 / 3 ? 1 - s : 1;
+  if (strategy === 'strong') return f < 0.71 ? 1 + s * 0.42 : 1 - s * 1.05;
+  return 1;
+}
+
 // Build race-plan segments from a loaded course so the plan matches the route.
 // Splits into `blockKm` blocks (+ a remainder; a tail under 1 km folds into the
 // last block), then sets each block's pace from a goal time, a pacing strategy,
@@ -203,7 +214,7 @@ function computeSegmentWind(track, rows, windDir, windSpeed) {
 // set is scaled so Σ(pace·distance) === goalSec exactly.
 //
 //   opts = { goalSec, blockKm = 5,
-//            strategy: 'even' | 'negative' | 'positive' | 'staged',
+//            strategy: 'even' | 'negative' | 'positive' | 'staged' | 'strong',
 //            splitPct = 0,          // 0-8, ignored for 'even'
 //            gradeAdjust = true }
 function buildPlanSegments(profile, totalDist, opts) {
@@ -236,12 +247,7 @@ function buildPlanSegments(profile, totalDist, opts) {
     const distKm = round2(b - a);
     const f = total > blockKm ? ((a + b) / 2) / total : 0.5; // position in the race, 0..1
 
-    let mult = 1;
-    if (strategy === 'negative') mult = 1 + s - 2 * s * f;      // slow → fast
-    else if (strategy === 'positive') mult = 1 - s + 2 * s * f; // fast → slow
-    else if (strategy === 'staged') mult = f < 1 / 3 ? 1 + s : f > 2 / 3 ? 1 - s : 1;
-
-    let pace = base * mult;
+    let pace = base * strategyMult(strategy, s, f);
     if (gradeAdjust && hasProfile) {
       const eA = _interpolateEle(profile, a);
       const eB = _interpolateEle(profile, b);
@@ -269,6 +275,99 @@ function _gradeAdj(profile, aKm, bKm) {
   const distM = (bKm - aKm) * 1000;
   if (!isFinite(eA) || !isFinite(eB) || distM <= 0) return 0;
   return clamp(((eB - eA) / distM) * 100 * 14, -22, 48);
+}
+
+// ── changing the strategy of an existing plan ──────────────────────────
+// Unlike buildPlanSegments this keeps the runner's own segments: only paces move.
+// Exact (unrounded) paces for a strategy over `segments`, scaled so the free
+// segments absorb what the pinned ones don't. Returns null when nothing can move.
+//   opts = { goalSec, strategy, splitPct, gradeAdjust = true, pins: [index, …] }
+function _strategyPaces(segments, profile, opts) {
+  const o = opts || {};
+  const list = Array.isArray(segments) ? segments : [];
+  const total = list.reduce((a, x) => a + x.distance, 0);
+  const goal = o.goalSec > 0 ? o.goalSec : list.reduce((a, x) => a + x.distance * x.paceSec, 0);
+  if (!(total > 0) || !(goal > 0)) return null;
+  const s = o.strategy === 'even' ? 0 : clamp((+o.splitPct || 0) / 100, 0, 0.08);
+  const grade = o.gradeAdjust !== false;
+  const pins = new Set(o.pins || []);
+  let at = 0;
+  const raw = list.map((x) => {
+    const a = at; const b = at + x.distance; at = b;
+    const f = ((a + b) / 2) / total;
+    return (goal / total) * strategyMult(o.strategy, s, f) + (grade ? _gradeAdj(profile, a, b) : 0);
+  });
+  let pinnedT = 0; let freeT = 0;
+  raw.forEach((p, i) => {
+    if (pins.has(i)) pinnedT += list[i].paceSec * list[i].distance;
+    else freeT += p * list[i].distance;
+  });
+  const freeGoal = goal - pinnedT;
+  if (!(freeT > 0) || !(freeGoal > 0)) return null;
+  const scale = freeGoal / freeT;
+  return { goal: freeGoal, pins, paces: raw.map((p, i) => (pins.has(i) ? list[i].paceSec : p * scale)) };
+}
+
+// The plan with a new strategy: same segments and ids, whole-second paces, pinned
+// segments untouched, total time on the goal to within about a second.
+function reshapePlanSegments(segments, profile, opts) {
+  const exact = _strategyPaces(segments, profile, opts);
+  if (!exact) return (segments || []).map((x) => ({ ...x }));
+  const free = [];
+  segments.forEach((x, i) => { if (!exact.pins.has(i)) free.push(i); });
+  const rounded = roundPacesToGoal(
+    free.map((i) => ({ distance: segments[i].distance, paceSec: exact.paces[i] })), exact.goal, 120, 900);
+  // Whole seconds on long segments can leave a few seconds over: one more second
+  // on the shortest free segment, which moves the total least, closes most of it.
+  const r = exact.goal - rounded.reduce((a, x) => a + x.distance * x.paceSec, 0);
+  let short = -1;
+  rounded.forEach((x, k) => { if (short < 0 || x.distance < rounded[short].distance) short = k; });
+  if (short >= 0 && Math.abs(r) > rounded[short].distance / 2) {
+    rounded[short] = { ...rounded[short], paceSec: clamp(rounded[short].paceSec + (r > 0 ? 1 : -1), 120, 900) };
+  }
+  const out = segments.map((x) => ({ ...x }));
+  free.forEach((i, k) => { out[i].paceSec = rounded[k].paceSec; });
+  return out;
+}
+
+// Largest gap (sec/km) between the plan's free segments and a strategy.
+function _strategyGap(segments, profile, opts) {
+  const exact = _strategyPaces(segments, profile, opts);
+  if (!exact) return Infinity;
+  let gap = 0;
+  segments.forEach((x, i) => { if (!exact.pins.has(i)) gap = Math.max(gap, Math.abs(x.paceSec - exact.paces[i])); });
+  return gap;
+}
+
+const STRATEGY_KEYS = ['negative', 'even', 'positive', 'staged', 'strong'];
+
+// Which strategy is this plan following? A choice saved with the plan counts for
+// as long as the paces still fit it (a new goal time or the heat scale keeps the
+// shape; a hand edit doesn't). Plans built before strategies were saved are
+// recognised from their paces. { k: null } = the runner's own shape.
+function resolveStrategy(segments, profile, saved) {
+  const list = segments || [];
+  const hasProfile = Array.isArray(profile) && profile.length > 1;
+  const pins = saved && saved.n === list.length && Array.isArray(saved.pins)
+    ? saved.pins.filter((i) => i >= 0 && i < list.length) : [];
+  if (saved && STRATEGY_KEYS.includes(saved.k)) {
+    const o = { strategy: saved.k, splitPct: saved.pct, gradeAdjust: saved.grade, pins };
+    if (_strategyGap(list, profile, o) <= 3) return { k: saved.k, pct: saved.pct, grade: !!saved.grade, pins };
+  }
+  let best = null;
+  const consider = (k, pct, grade) => {
+    const gap = _strategyGap(list, profile, { strategy: k, splitPct: pct, gradeAdjust: grade, pins });
+    if (gap <= 1.25 && (!best || gap < best.gap - 1e-6)) best = { k, pct, grade, gap };
+  };
+  for (const grade of (hasProfile ? [true, false] : [false])) {
+    consider('even', 0, grade);
+    for (const k of STRATEGY_KEYS) {
+      if (k === 'even') continue;
+      for (let pct = 0.5; pct <= 8; pct += 0.5) consider(k, pct, grade);
+    }
+  }
+  return best ? { k: best.k, pct: best.k === 'even' ? 3 : best.pct, grade: best.grade, pins }
+    : { k: null, pct: 3, grade: hasProfile, pins };
 }
 
 // Prominent peaks / valleys in the elevation profile, for "snap to the top of the
@@ -334,5 +433,5 @@ function adjustSegmentBoundary(segments, profile, i, newCumKm) {
 
 Object.assign(window, {
   parseGpx, buildSegmentsFromGpx, computeSegmentElevations, computeSegmentWind, buildPlanSegments,
-  findExtrema, adjustSegmentBoundary,
+  findExtrema, adjustSegmentBoundary, strategyMult, reshapePlanSegments, resolveStrategy,
 });

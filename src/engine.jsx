@@ -64,16 +64,18 @@ function _loadPlan() {
       })),
       preset: data.p ?? null,
       course: data.c ?? null,
+      strategy: data.st ?? null,
     };
   } catch { return null; }
 }
 
-function _savePlan(segments, activePreset, course) {
+function _savePlan(segments, activePreset, course, strategy) {
   try {
     localStorage.setItem(LS_PLAN, JSON.stringify({
       s: segments.map(s => [round2(s.distance), s.paceSec]),
       p: activePreset,
       c: course || null,
+      ...(strategy ? { st: strategy } : null),
     }));
   } catch {}
 }
@@ -245,15 +247,18 @@ const ZONES = {
 // ── the hook ───────────────────────────────────────────────────────────
 function useRacePlan(initial, initialPreset) {
   // Load saved plan once — both state initializers read from same snapshot
-  const [[initSegs, initPreset, initCourse]] = React.useState(() => {
-    if (initial) return [initial, initialPreset ?? 10, null];
+  const [[initSegs, initPreset, initCourse, initStrategy]] = React.useState(() => {
+    if (initial) return [initial, initialPreset ?? 10, null, null];
     const saved = _loadPlan();
-    return saved ? [saved.segments, saved.preset ?? 10, saved.course] : [defaultSegments(), 10, null];
+    return saved ? [saved.segments, saved.preset ?? 10, saved.course, saved.strategy] : [defaultSegments(), 10, null, null];
   });
 
   const [segments, setSegments] = React.useState(initSegs);
   const [activePreset, setActivePreset] = React.useState(initPreset);
   const [course, setCourse] = React.useState(initCourse);
+  // The strategy chosen on the plan screen: { k, pct, grade, pins, n }. Only that
+  // screen sets it; gpx.jsx resolveStrategy decides whether the paces still follow it.
+  const [strategy, setStrategy] = React.useState(initStrategy);
 
   const plan = React.useMemo(() => computePlan(segments), [segments]);
 
@@ -277,7 +282,7 @@ function useRacePlan(initial, initialPreset) {
   }, [courseKey]);
 
   // Persist whenever plan (or its loaded route) changes
-  React.useEffect(() => { _savePlan(segments, activePreset, course); }, [segments, activePreset, course]);
+  React.useEffect(() => { _savePlan(segments, activePreset, course, strategy); }, [segments, activePreset, course, strategy]);
 
   const setTotalLock = React.useCallback((on) => {
     const target = course && course.dist > 0 ? round2(course.dist) : 0;
@@ -327,10 +332,12 @@ function useRacePlan(initial, initialPreset) {
       setSegments(defaultSegments());
       setActivePreset(10);
       setCourse(null);
+      setStrategy(null);
     },
     applyPreset: (km) => {
       setActivePreset(km);
       setCourse(null);
+      setStrategy(null);
       setSegments(km === 10 ? defaultSegments() : generatePlan(km));
     },
     loadGpx: (segs, meta) => {
@@ -338,8 +345,10 @@ function useRacePlan(initial, initialPreset) {
         setSegments(segs.map((s) => ({ id: uid(), distance: round2(s.distance), paceSec: clamp(Math.round(s.paceSec), 120, 900) })));
         setActivePreset(null);
         setCourse(meta || null);
+        setStrategy(null);
       }
     },
+    setStrategy,
     loadCourse: (meta) => setCourse(meta || null),
     clearCourse: () => setCourse(null),
     // Replace every segment's distance/pace, keeping ids stable by position so
@@ -361,6 +370,7 @@ function useRacePlan(initial, initialPreset) {
           distance: clamp(round2(+d || 1), 0.05, 99),
           paceSec: clamp(Math.round(+p || 300), 120, 900),
         })));
+        setStrategy(null);
       }
       if (data.p !== undefined) setActivePreset(data.p ?? null);
     },
@@ -370,7 +380,7 @@ function useRacePlan(initial, initialPreset) {
   // it's currently holding.
   const lockable = !!(course && course.dist > 0);
   return {
-    segments, plan, activePreset, course, ...api,
+    segments, plan, activePreset, course, strategy, ...api,
     lockable, totalLocked: lockTarget > 0, lockTarget, setTotalLock,
   };
 }

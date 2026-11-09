@@ -794,6 +794,7 @@ function GpxPlanDialog({ course, defaultGoalSec, onCancel, onBuild }) {
     ['even', 'strategy.even', 'strategy.evenSub'],
     ['positive', 'strategy.positive', 'strategy.positiveSub'],
     ['staged', 'strategy.staged', 'strategy.stagedSub'],
+    ['strong', 'strategy.strong', 'strategy.strongSub'],
   ];
 
   return ReactDOM.createPortal((
@@ -824,7 +825,7 @@ function GpxPlanDialog({ course, defaultGoalSec, onCancel, onBuild }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
           {STRATS.map(([v, label, sub]) => (
             <button key={v} onClick={() => setStrategy(v)} style={{
-              textAlign: 'start', padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+              gridColumn: v === 'strong' ? '1 / -1' : undefined, textAlign: 'start', padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
               fontFamily: 'inherit',
               background: strategy === v ? 'var(--rp-gold-wash)' : 'var(--rp-surface-2)',
               border: `1px solid ${strategy === v ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
@@ -964,6 +965,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
     ['even', 'strategy.even', 'strategy.evenSub'],
     ['positive', 'strategy.positive', 'strategy.positiveSub'],
     ['staged', 'strategy.staged', 'strategy.stagedSub'],
+    ['strong', 'strategy.strong', 'strategy.strongSub'],
   ];
 
   // Only a real route (with a profile or track) becomes the planner's "course";
@@ -1124,7 +1126,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
               {STRATS.map(([v, label, sub]) => (
                 <button key={v} onClick={() => setStrategy(v)} style={{
-                  textAlign: 'start', padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
+                  gridColumn: v === 'strong' ? '1 / -1' : undefined, textAlign: 'start', padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
                   fontFamily: 'inherit',
                   background: strategy === v ? 'var(--rp-gold-wash)' : 'var(--rp-surface-2)',
                   border: `1px solid ${strategy === v ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
@@ -1796,6 +1798,11 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
     () => computeSegmentElevations(p.course?.profile ?? null, plan.rows),
     [p.course, plan.rows],
   );
+  // lime: which strategy the plan follows, for the strip and the strategy room
+  const strategyInfo = React.useMemo(
+    () => (LIME && window.StrategyStrip ? window.resolveStrategy(p.segments, p.course?.profile ?? null, p.strategy) : null),
+    [p.segments, p.course, p.strategy],
+  );
   // Peaks/valleys of the loaded route — snap targets for dragging boundaries.
   const courseExtrema = React.useMemo(
     () => (p.course?.profile ? window.findExtrema(p.course.profile) : null),
@@ -1875,6 +1882,7 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
   React.useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const [shareOpen, setShareOpen] = React.useState(false);
   const [moreOpen, setMoreOpen] = React.useState(false);
+  const [strategyOpen, setStrategyOpen] = React.useState(false);
   const [pdfBusy, setPdfBusy] = React.useState(false);
   const [videoBusy, setVideoBusy] = React.useState(false);
   const [videoProgress, setVideoProgress] = React.useState(0);
@@ -2216,6 +2224,20 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
     showToast(t('planner.segmentDeleted', { n: idx + 1, time: formatClock(after.totalTime) }), {
       label: t('common.undo'),
       onClick: () => { p.restoreSegments(before); hideToast(); },
+    });
+  };
+
+  // A new strategy replaces paces across the plan, so it's undoable from the toast.
+  const applyStrategy = (list, chosen) => {
+    const before = p.segments;
+    const chosenBefore = p.strategy;
+    p.replaceSegments(list);
+    p.setStrategy(chosen);
+    setSelSeg(null);
+    setStrategyOpen(false);
+    showToast(t('strategy.applied'), {
+      label: t('common.undo'),
+      onClick: () => { p.restoreSegments(before); p.setStrategy(chosenBefore); hideToast(); },
     });
   };
 
@@ -2815,6 +2837,8 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
             </div>
           )}
 
+          {LUI && strategyInfo && <window.StrategyStrip info={strategyInfo} onOpen={() => setStrategyOpen(true)} />}
+
           <div style={{ borderTop: '1px solid var(--rp-line)', margin: '12px -15px 12px' }} />
 
           {LUI ? (
@@ -3121,6 +3145,12 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
 
       {SHARE_VIDEO_ENABLED && videoBusy && window.ShareVideoProgress && (
         <window.ShareVideoProgress progress={videoProgress} onCancel={() => { videoCancelRef.current = true; }} />
+      )}
+
+      {strategyOpen && strategyInfo && (
+        <window.StrategyRoom segments={p.segments} profile={p.course?.profile ?? null} elevations={segElevs}
+          totalTime={plan.totalTime} avgPace={plan.avgPace} info={strategyInfo}
+          onClose={() => setStrategyOpen(false)} onApply={applyStrategy} />
       )}
 
       {goalOpen && (

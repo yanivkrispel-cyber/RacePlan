@@ -150,6 +150,19 @@ const extra = [
         onSelect: () => {}, distLock: null });
     }
   }],
+  ['lime: strategy strip and room, with and without a route', () => {
+    const segments = [{ id: 'a', distance: 5, paceSec: 300 }, { id: 'b', distance: 5, paceSec: 290 }, { id: 'c', distance: 2, paceSec: 310 }];
+    const plan = lime.computePlan(segments);
+    const profile = [{ d: 0, ele: 10 }, { d: 6, ele: 40 }, { d: 12, ele: 20 }];
+    for (const route of [profile, null]) {
+      for (const saved of [null, { k: 'strong', pct: 4, grade: !!route, pins: [1], n: 3 }]) {
+        const info = lime.resolveStrategy(segments, route, saved);
+        lime.StrategyStrip({ info, onOpen: () => {} });
+        lime.StrategyRoom({ segments, profile: route, elevations: route ? [5, -2, 0] : null, totalTime: plan.totalTime,
+          avgPace: plan.avgPace, info, onClose: () => {}, onApply: () => {} });
+      }
+    }
+  }],
   ...['before', 'running', 'nodate'].map((ph) => ['lime: race-day ' + ph, () => {
     const rows = lime.computePlan([{ id: 'a', distance: 5, paceSec: 300 }, { id: 'b', distance: 5, paceSec: 290 }]).rows;
     const d = new Date(Date.now() + (ph === 'before' ? 3600e3 : -600e3));

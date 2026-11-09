@@ -54,6 +54,7 @@ const JSX_FILES = [
   'src/watchcard.jsx',
   'src/valueeditor.jsx',
   'src/lime.jsx',
+  'src/strategy.jsx',
   'src/update.jsx',
   'src/planner-b.jsx',
 ];
