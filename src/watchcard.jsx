@@ -112,11 +112,19 @@ function useGarmin({ segments, profile, raceName, raceDate, onToast }) {
     if (r && BACK_RESULTS.has(r)) toast(tw('watch.g.back.' + r));
   }, [refresh]);
 
+  // A failure stays on screen in the sheet / card until the next try: the toast alone was gone in 2.6 s and
+  // Kris's race-morning refusals (20.11.2026) left him with no clear message.
+  const [err, setErr] = React.useState('');
   const run = async (what, fn) => {
     if (busy) return false;
-    setBusy(what);
+    setBusy(what); setErr('');
     try { await fn(); return true; }
-    catch (e) { toast(errText(e)); if (e && (e.code === 'reconnect' || e.code === 'not_connected')) refresh(); return false; }
+    catch (e) {
+      const m = errText(e);
+      setErr(m); toast(m);
+      if (e && (e.code === 'reconnect' || e.code === 'not_connected')) refresh();
+      return false;
+    }
     finally { setBusy(''); }
   };
   const connect = () => run('connect', async () => {
@@ -148,15 +156,17 @@ function useGarmin({ segments, profile, raceName, raceDate, onToast }) {
   };
   const ready = usable && st && st.allowed;
   // 'off' (not for this account / signed out / asking), 'connect', 'nodate', 'noperm', 'unsent', 'changed', 'sent'
+  // 'past': the plan's race date is before the runner's own today: said before sending, not after a refusal
+  const isPast = !!raceDate && raceDate < isoDay(new Date());
   const phase = !ready ? 'off' : !st.connected ? 'connect' : !st.canSend ? 'noperm' : !raceDate ? 'nodate'
-    : !sent ? 'unsent' : sent.sig === planSig(segments, raceDate) ? 'sent' : 'changed';
+    : isPast ? 'past' : !sent ? 'unsent' : sent.sig === planSig(segments, raceDate) ? 'sent' : 'changed';
 
   // The server's own check of this plan (garminPreview: the same checks as a send, no call to Garmin), run
   // whenever the plan or its date changes, so a plan the watch would refuse is seen days ahead and not on
   // race morning (Kris, 20.11.2026). null = fine or not checked; otherwise the reason, as a send would say it.
   const [check, setCheck] = React.useState(null);
   const sig = planSig(segments, raceDate);
-  const canCheck = !!(ready && st.connected && st.canSend && raceDate);
+  const canCheck = !!(ready && st.connected && st.canSend && raceDate && !isPast);
   React.useEffect(() => {
     if (!canCheck) { setCheck(null); return undefined; }
     let live = true;
@@ -168,7 +178,7 @@ function useGarmin({ segments, profile, raceName, raceDate, onToast }) {
     }, 1200);
     return () => { live = false; clearTimeout(t); };
   }, [canCheck, sig]);
-  return { usable, st, busy, sure, sent, phase, check, connect, sendRace, sendRehearsal, disconnect };
+  return { usable, st, busy, sure, sent, phase, check, err, connect, sendRace, sendRehearsal, disconnect };
 }
 
 function GarminSection({ segments, profile, raceName, raceDate, totalKm, onToast }) {
@@ -207,9 +217,10 @@ function GarminSection({ segments, profile, raceName, raceDate, totalKm, onToast
         <span style={{ fontSize: 12, color: 'var(--rp-text-dim)' }}>{tw('watch.g.connected')}</span>
       </div>
       {!st.canSend && <p style={{ margin: 0, fontSize: 12.5 }}>{tw('watch.g.err.noperm')}</p>}
-      {g.check && <p role="alert" style={{ margin: 0, fontSize: 12.5, color: 'var(--rp-warn, #E8A33D)' }}>{g.check}</p>}
+      {[g.phase === 'past' && tw('watch.g.pastDate'), g.check, g.err].filter(Boolean).map((m, i) => (
+        <p key={i} role="alert" style={{ margin: 0, fontSize: 12.5, color: 'var(--rp-warn, #E8A33D)' }}>{m}</p>))}
       {raceDate ? (
-        <button className="rp-btn" onClick={sendRace} disabled={!!busy || !st.canSend} style={{ ...small, alignSelf: 'flex-start' }}>
+        <button className="rp-btn" onClick={sendRace} disabled={!!busy || !st.canSend || g.phase === 'past'} style={{ ...small, alignSelf: 'flex-start' }}>
           {busy === 'race' ? tw('watch.g.sending') : tw('watch.g.send', { date: fmtDay(raceDate) })}
         </button>
       ) : (
@@ -707,9 +718,10 @@ function WatchSheet({ g, model, segments, raceName, raceDate, onClose, onSaveBan
   } else {
     primary = (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {phase === 'past' && <div className="rp-wst warn" role="alert" style={{ justifyContent: 'center', whiteSpace: 'normal' }}><i />{tw('watch.g.pastDate')}</div>}
         {g.check && <div className="rp-wst warn" role="alert" style={{ justifyContent: 'center', whiteSpace: 'normal' }}><i />{g.check}</div>}
         {phase === 'changed' && <div className="rp-wst warn" style={{ justifyContent: 'center' }}><i />{tw('watch.strip.changed')}</div>}
-        <button type="button" className="rp-wbtn" onClick={g.sendRace} disabled={!!busy || phase === 'nodate'}>
+        <button type="button" className="rp-wbtn" onClick={g.sendRace} disabled={!!busy || phase === 'nodate' || phase === 'past'}>
           {busy === 'race'
             ? <b style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{spinner}{tw('watch.g.sending')}</b>
             : <><b>{tw(phase === 'changed' ? 'watch.g.ctaUpdate' : 'watch.g.cta')}</b>
@@ -746,6 +758,7 @@ function WatchSheet({ g, model, segments, raceName, raceDate, onClose, onSaveBan
         <WatchFace blocks={blocks} total={total} />
 
         {primary}
+        {g.err && <div className="rp-wst warn" role="alert" style={{ justifyContent: 'center', whiteSpace: 'normal', marginTop: 8 }}><i />{g.err}</div>}
 
         {connected && (
           <div className="rp-wcard">
@@ -886,11 +899,13 @@ function WatchStrip({ segments, profile, raceName, raceDate, onToast }) {
     connect: [null, tw('watch.strip.connect')],
     noperm: ['warn', tw('watch.g.err.noperm')],
     nodate: [null, tw('watch.strip.needDate')],
+    past: ['warn', tw('watch.g.pastDate')],
     unsent: [null, tw('watch.strip.notSent')],
     changed: ['warn', tw('watch.strip.changed')],
     sent: ['ok', g.sent ? tIso('watch.strip.sent', { date: fmtShortDay(g.sent.date) }, 'date') : ''],
   }[phase];
-  if (g.check && (phase === 'unsent' || phase === 'changed' || phase === 'sent')) { status[0] = 'warn'; status[1] = g.check; }
+  if (g.err && phase !== 'off') { status[0] = 'warn'; status[1] = g.err; }
+  else if (g.check && (phase === 'unsent' || phase === 'changed' || phase === 'sent')) { status[0] = 'warn'; status[1] = g.check; }
   const go = phase === 'unsent' ? ['', tw('watch.strip.send')]
     : phase === 'changed' ? ['', tw('watch.strip.update')]
     : phase === 'connect' ? ['', tw('watch.g.connect')]
