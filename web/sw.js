@@ -4,7 +4,7 @@
 // fonts are same-origin now, so they're cached like the rest of the shell).
 // CACHE is stamped with the build hash by build/build.mjs, so every deploy
 // ships a byte-different sw.js → browsers install it and drop the old cache.
-const CACHE = 'raceplan-82d060d0317c';
+const CACHE = 'raceplan-475ec1333f79';
 const SHELL = [
   '/', '/index.html', '/app.js', '/firebase-init.js', '/manifest.webmanifest',
   '/rp-logo.webp', '/icons/rp-boot-192.webp',

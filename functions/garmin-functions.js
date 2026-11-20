@@ -3,7 +3,7 @@ const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https')
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const { createGarmin, GarminError } = require('./garmin');
-const { readAllowList, isAllowed } = require('./garmin-core');
+const { readAllowList, isAllowed, failureRecord, errorMailDue } = require('./garmin-core');
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -43,25 +43,40 @@ const CODES = {
   reconnect: 'failed-precondition', noperm: 'permission-denied', rate_limited: 'resource-exhausted',
   bad_request: 'invalid-argument', bad_plan: 'invalid-argument', not_allowed: 'permission-denied',
 };
+// Every refused Send / Connect / Preview is written to garminErrors (the reason, the plan's shape) and logged
+// with its reason: 20.11.2026 four race-morning sends were refused and the logs held only "400" (Kris: "this
+// must not happen to more users"). A refused Send also mails Kris (garminErrorMail below).
+const RECORDED = new Set(['Send', 'Connect', 'Preview']);
+async function recordFailure(name, req, code, detail) {
+  if (!RECORDED.has(name)) return;
+  const rec = failureRecord({ fn: name, code, detail, uid: req.auth && req.auth.uid, data: req.data, at: new Date().toISOString() });
+  console.warn('garmin refused call', JSON.stringify(rec));
+  try { await admin.firestore().collection('garminErrors').add(rec); } catch (e) { console.error('garmin failure record', e); }
+}
+
 // `open`: callable by anyone signed in (status, disconnect); otherwise only the closed list
-const callable = (fn, open = false) => onCall({ secrets, enforceAppCheck: false }, async (req) => {
+const callable = (name, fn, open = false) => onCall({ secrets, enforceAppCheck: false }, async (req) => {
   try {
     const allowed = isAllowed(ALLOW, req.auth && req.auth.token);
     if (!open && !allowed) throw new GarminError(req.auth ? 'not_allowed' : 'unauthenticated');
     return await fn(req.auth && req.auth.uid, req.data || {}, allowed);
   }
   catch (e) {
-    if (e instanceof GarminError) throw new HttpsError(CODES[e.code] || 'unavailable', e.code, { code: e.code, detail: e.detail });
-    console.error('garmin', e);
-    throw new HttpsError('internal', 'failed');
+    if (e instanceof GarminError) {
+      await recordFailure(name, req, e.code, e.detail);
+      throw new HttpsError(CODES[e.code] || 'unavailable', e.code, { code: e.code, detail: e.detail });
+    }
+    console.error('garmin', name, e);
+    await recordFailure(name, req, 'internal', e && e.message);
+    throw new HttpsError('internal', 'failed', { code: 'internal' });
   }
 });
 
-exports.garminConnect = callable((uid) => garmin.connect(uid));
-exports.garminStatus = callable(async (uid, _d, allowed) => ({ ...(await garmin.status(uid)), allowed }), true);
-exports.garminPreview = callable((uid, data) => { if (!uid) throw new GarminError('unauthenticated'); return garmin.preview(data); });
-exports.garminSend = callable((uid, data) => garmin.send(uid, data));
-exports.garminDisconnect = callable((uid) => garmin.disconnect(uid), true);
+exports.garminConnect = callable('Connect', (uid) => garmin.connect(uid));
+exports.garminStatus = callable('Status', async (uid, _d, allowed) => ({ ...(await garmin.status(uid)), allowed }), true);
+exports.garminPreview = callable('Preview', (uid, data) => { if (!uid) throw new GarminError('unauthenticated'); return garmin.preview(data); });
+exports.garminSend = callable('Send', (uid, data) => garmin.send(uid, data));
+exports.garminDisconnect = callable('Disconnect', (uid) => garmin.disconnect(uid), true);
 
 // Kris 3.11.2026: "at 900 I want to know" (Starter tier: 1,000 connected users). Runs when a link becomes
 // "linked", counts the linked ones, and mails each threshold once (garminMeta/capacity keeps which were sent).
@@ -103,6 +118,41 @@ exports.garminCapacityWatch = onDocumentWritten(
       ].join('\n'),
     });
     await metaRef.set({ sent: [...new Set([...(meta.sent || []).map(Number), ...due])], lastCount: count, updatedAt: new Date().toISOString() }, { merge: true });
+  }
+);
+
+// A refused Send mails Kris the reason within a minute, so a runner's failure on race morning is seen the same
+// day (at most ERROR_MAILS_PER_DAY a day). Preview / Connect refusals are only recorded.
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+exports.garminErrorMail = onDocumentCreated(
+  { document: 'garminErrors/{id}', secrets: [GMAIL_USER, GMAIL_APP_PASSWORD] },
+  async (event) => {
+    const r = event.data && event.data.data();
+    if (!r || r.fn !== 'Send') return;
+    const db = admin.firestore();
+    const metaRef = db.collection('garminMeta').doc('errorMail');
+    const gate = await db.runTransaction(async (tx) => {
+      const g = errorMailDue((await tx.get(metaRef)).data(), r.serverDay);
+      if (g.due) tx.set(metaRef, g.next);
+      return g;
+    });
+    if (!gate.due) return;
+    const nodemailer = require('nodemailer');
+    const mail = nodemailer.createTransport({ service: 'gmail', auth: { user: GMAIL_USER.value(), pass: GMAIL_APP_PASSWORD.value() } });
+    await mail.sendMail({
+      from: `RacePlan <${GMAIL_USER.value()}>`,
+      to: NOTIFY_TO,
+      subject: `⚠️ RacePlan Garmin: שליחה לשעון נכשלה (${r.code})`,
+      text: [
+        `שליחה לשעון נכשלה. הסיבה: ${r.code}${r.detail && r.detail.length ? ' · ' + r.detail.join(', ') : ''}`,
+        `משתמש: ${r.uid || '-'}`,
+        `תוכנית: ${r.name || '-'} · ${r.kind || '-'} · תאריך ${r.date || '-'} (יום השרת ${r.serverDay})`,
+        `מקטעים: ${r.segments} · ק"מ: ${r.km ?? '-'} · קצבים: ${r.paceRange ? r.paceRange.join(' עד ') : '-'} · נקודות גובה: ${r.profile ?? '-'}`,
+        `זמן: ${r.at}`,
+        '',
+        `Firestore: garminErrors/${event.params.id}`,
+      ].join('\n'),
+    });
   }
 );
 

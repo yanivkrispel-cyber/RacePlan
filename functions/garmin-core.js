@@ -176,7 +176,40 @@ function capacityAlerts(count, alreadySent) {
   return CAPACITY_ALERTS.filter((t) => count >= t && !sent.has(t));
 }
 
+/**
+ * What a refused call leaves behind (garminErrors/{id}), so a failed send can be explained afterwards. On
+ * 20.11.2026 Kris's race-morning send was refused four times and nothing said why (Cloud Run keeps only
+ * "400"). Only the shape of the plan: date, kind, counts, the server's day; never tokens or the profile.
+ */
+function failureRecord({ fn, code, detail, uid, data, at }) {
+  const d = data && typeof data === 'object' ? data : {};
+  const list = (v) => (Array.isArray(v) ? v.slice(0, 12).map((x) => String(x).slice(0, 80)) : v == null ? [] : [String(v).slice(0, 200)]);
+  const segs = Array.isArray(d.segments) ? d.segments : [];
+  const paces = segs.map((s) => Number(s && s.paceSec)).filter(Number.isFinite);
+  const dists = segs.map((s) => Number(s && s.distance)).filter(Number.isFinite);
+  return {
+    fn: String(fn || ''), code: String(code || 'internal'), detail: list(detail && detail.status != null ? `status ${detail.status}` : detail),
+    uid: uid || null, at, serverDay: String(at || '').slice(0, 10),
+    kind: d.kind === 'rehearsal' ? 'rehearsal' : d.kind ? 'race' : null,
+    date: typeof d.date === 'string' ? d.date.slice(0, 20) : d.date == null ? null : typeof d.date,
+    name: typeof d.name === 'string' ? d.name.slice(0, 70) : null,
+    segments: segs.length, profile: Array.isArray(d.profile) ? d.profile.length : null,
+    rehearsalKm: d.rehearsalKm != null ? Number(d.rehearsalKm) : null,
+    paceRange: paces.length ? [Math.min(...paces), Math.max(...paces)] : null,
+    km: dists.length ? Math.round(dists.reduce((a, b) => a + b, 0) * 1000) / 1000 : null,
+  };
+}
+
+/** A failure mail is sent for a refused send, at most `max` a day (garminMeta/errorMail keeps the count). */
+const ERROR_MAILS_PER_DAY = 20;
+function errorMailDue(meta, day, max = ERROR_MAILS_PER_DAY) {
+  const m = meta || {};
+  const count = m.day === day ? Number(m.count) || 0 : 0;
+  return { due: count < max, next: { day, count: count + 1 } };
+}
+
 module.exports = {
+  failureRecord, errorMailDue, ERROR_MAILS_PER_DAY,
   AUTHORIZE_URL, TOKEN_URL, API_BASE, USER_ID_PATH, PERMISSIONS_PATH, REGISTRATION_PATH, WORKOUT_PATH, WORKOUT_ONE_PATH,
   SCHEDULE_PATH, WORKOUT_IMPORT, STATE_TTL_MS, SENDS_PER_DAY,
   newVerifier, challengeOf, newState, authorizeUrl, tokenRequestBody, refreshRequestBody,

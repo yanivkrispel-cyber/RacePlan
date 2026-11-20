@@ -293,5 +293,30 @@ console.log('\n── disconnect and Garmin pushes ──');
   eq(s.db.store.size, 0, 'removes everything');
 }
 
+console.log('\n── a refused call is recorded with its reason (20.11.2026) ──');
+{
+  // the race is today: a same-day race must go through (Kris's race-morning case)
+  eq(G.readSendRequest(plan({ date: '2027-02-01' }), '2027-02-01').problems.length, 0, 'a race today is accepted');
+  const s = setup(); await connected(s);
+  eq(await code(s.app.send('u1', plan({ date: '2027-02-01' }))), 'ok', 'and sent, on the day itself');
+
+  const segs = [{ distance: 1, paceSec: 300 }, { distance: 0.5, paceSec: 280 }];
+  const r = G.failureRecord({ fn: 'Send', code: 'bad_request', detail: ['past'], uid: 'u9', at: '2026-11-20T03:19:39.000Z',
+    data: { name: 'חצי מרתון חיפה', kind: 'race', date: '2026-11-20', segments: segs, profile: [{ d: 0, ele: 1 }, { d: 1, ele: 2 }] } });
+  eq(r.code, 'bad_request', 'the code');
+  eq(r.detail.join(), 'past', 'the reason');
+  eq(r.serverDay, '2026-11-20', "the server's day");
+  eq(r.segments, 2, 'the segment count');
+  eq(r.km, 1.5, 'the distance');
+  eq(JSON.stringify(r.paceRange), '[280,300]', 'the pace range');
+  eq(r.profile, 2, 'the profile length, not the points');
+  eq(G.failureRecord({ fn: 'Send', code: 'workout_failed', detail: { status: 500 }, at: 'x' }).detail[0], 'status 500', "Garmin's status");
+  eq(G.failureRecord({ fn: 'Send', code: 'x', data: { date: 5 }, at: '' }).date, 'number', 'a date of the wrong type is named, not kept');
+
+  eq(G.errorMailDue(null, '2026-11-20').due, true, 'first mail of the day');
+  eq(G.errorMailDue({ day: '2026-11-20', count: G.ERROR_MAILS_PER_DAY }, '2026-11-20').due, false, 'the daily cap');
+  eq(G.errorMailDue({ day: '2026-11-19', count: 99 }, '2026-11-20').next.count, 1, 'a new day starts again');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

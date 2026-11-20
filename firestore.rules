@@ -69,6 +69,8 @@ service cloud.firestore {
     }
     match /garminTokens/{uid} { allow read, write: if false; }
     match /garminOAuth/{state} { allow read, write: if false; }
+    // refused sends, with the reason (garmin-functions.js recordFailure); the owner reads them, nobody writes
+    match /garminErrors/{id} { allow read: if isOwner(); allow write: if false; }
 
     // Community route submissions. Any verified user may propose a GPX route
     // for a race; only the coach reads the queue and approves / rejects.
