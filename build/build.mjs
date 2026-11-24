@@ -48,6 +48,7 @@ const JSX_FILES = [
   'src/videoshare.jsx',
   'src/athletes.jsx',
   'src/myplans.jsx',
+  'src/race-dates.jsx',
   'src/routes.jsx',
   'src/exporting.jsx',
   'src/watch.jsx',

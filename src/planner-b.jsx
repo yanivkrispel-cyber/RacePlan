@@ -675,7 +675,7 @@ function ClockGroup({ value, digits, max, onChange, label, digitH, inputRef, onF
     </div>
   );
 }
-function RaceClock({ h, m, s, onH, onM, onS, subtitle, digitH = 50 }) {
+function RaceClock({ h, m, s, onH, onM, onS, subtitle, digitH = 50, compact = false }) {
   const mRef = React.useRef(null);
   const sRef = React.useRef(null);
   const focus = (ref) => { if (ref.current) ref.current.focus(); };
@@ -706,8 +706,10 @@ function RaceClock({ h, m, s, onH, onM, onS, subtitle, digitH = 50 }) {
         <ClockGroup value={s} digits={2} max={59} onChange={onS} label={t('clock.seconds')} digitH={digitH}
           inputRef={sRef} />
       </div>
-      <div style={{ textAlign: 'center', fontSize: 9.5, marginTop: 7, letterSpacing: '.03em',
-        color: `rgba(${ACC_RGB},.45)` }}>{t('clock.tapToType')}</div>
+      {!compact && (
+        <div style={{ textAlign: 'center', fontSize: 9.5, marginTop: 7, letterSpacing: '.03em',
+          color: `rgba(${ACC_RGB},.45)` }}>{t('clock.tapToType')}</div>
+      )}
       {subtitle && (
         <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--rp-text-dim)',
           marginTop: 5, letterSpacing: '.03em', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -980,7 +982,8 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
     const segs = buildPlanSegments(course.profile || null, course.dist, opts);
     if (!segs.length) { setErr(t('setup.cannotBuild')); return; }
     const rc = realCourse(course);
-    onBuild({ segments: segs, course: rc, raceName: course.name || defaultName, goalSec, lastRoute: lastRouteFor(rc) });
+    onBuild({ segments: segs, course: rc, raceName: course.name || defaultName, goalSec, lastRoute: lastRouteFor(rc),
+      raceDate: course.raceDate || undefined });
   };
   const startEmpty = () => {
     const km = course ? course.dist : 10;
@@ -988,6 +991,7 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
     onBuild({
       segments: generatePlan(km), course: rc,
       raceName: course ? course.name : null, lastRoute: lastRouteFor(rc),
+      raceDate: (course && course.raceDate) || undefined,
     });
   };
 
@@ -1010,15 +1014,21 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
         padding: 16, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: 'var(--rp-text)' }}>
       <div className={LIME ? 'rp-lsheet' : undefined} style={{ background: 'var(--rp-surface)', border: '1px solid var(--rp-line)',
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 440, maxHeight: '92vh',
-        overflowY: 'auto', boxShadow: 'var(--rp-shadow-modal)', padding: '18px 18px 16px' }}>
-        {LIME && <i className="rp-lgrab" aria-hidden="true" />}
-        {LIME && (
-          <div className="rp-hud" style={{ fontSize: 10, color: 'var(--rp-gold)', marginBottom: 4 }}>
-            STEP {course ? 2 : 1} / 2</div>
-        )}
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        boxShadow: 'var(--rp-shadow-modal)', padding: course ? '14px 16px 12px' : '18px 18px 16px' }}>
+        {/* the body scrolls only as a last resort (a very short screen); the
+            build button lives outside it so it is always on screen */}
+        <div className="rp-setup-body" style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', margin: '0 -4px', padding: '0 4px' }}>
+        {LIME && <i className="rp-lgrab" aria-hidden="true" style={course ? { marginBottom: 8 } : undefined} />}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: 17, fontWeight: 800 }}>{t('setup.title')}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: course ? 8 : 12 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0 }}>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>{t('setup.title')}</div>
+            {LIME && (
+              <div className="rp-hud" style={{ fontSize: 10, color: 'var(--rp-gold)', direction: 'ltr' }}>
+                {course ? 2 : 1}/2</div>
+            )}
+          </div>
           <button onClick={onClose} aria-label={t('common.close')} style={{ background: 'none', border: 'none', cursor: 'pointer',
             color: 'var(--rp-text-dim)', fontSize: 20, lineHeight: 1, padding: '2px 6px' }}>✕</button>
         </div>
@@ -1100,9 +1110,10 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
         {course && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 12.5, color: 'var(--rp-gold)',
             background: 'var(--rp-gold-wash)', border: '1px solid var(--rp-gold-line)',
-            borderRadius: 8, padding: '8px 10px' }}>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              {course.name} · {U ? U.fmtDist(course.dist) : formatKm(course.dist)}{course.profile ? ' · ' + t('setup.hasProfile') : ''}
+            borderRadius: 8, padding: '7px 10px' }}>
+            <span style={{ flex: 1, minWidth: 0, display: 'flex', gap: 6, whiteSpace: 'nowrap' }}>
+              <bdi style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, fontWeight: 700 }}>{course.name}</bdi>
+              <span style={{ flex: '0 0 auto' }}>· {U ? U.fmtDist(course.dist) : formatKm(course.dist)}{course.profile ? ' · ' + t('setup.hasProfile') : ''}</span>
             </span>
             <button onClick={() => { setCourse(null); setRouteMeta(null); setEntryMode(null); }}
               style={{ flex: '0 0 auto', background: 'none', border: 'none', cursor: 'pointer',
@@ -1113,46 +1124,48 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
 
         {course && (
           <>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', margin: '14px 0 6px' }}>{t('setup.goalTime')}</div>
-            <RaceClock h={gh} m={gm} s={gs} onH={setGh} onM={setGm} onS={setGs}
-              subtitle={t('setup.goalSubtitle', { name: course.name })} />
-            <div style={{ fontSize: 12, marginTop: 8, textAlign: 'center', fontWeight: 700,
-              color: goalOk ? 'var(--rp-text)' : 'var(--rp-danger, #d9736a)' }}>
-              {goalOk ? `${formatClock(goalSec)}  ·  ${U ? U.fmtPace(goalSec / course.dist) + ' ' + U.paceUnit() : formatPace(goalSec / course.dist)}`
-                : t('setup.goalShort')}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+              fontSize: 12, fontWeight: 700, margin: '10px 0 5px' }}>
+              <span style={{ color: 'var(--rp-text-dim)' }}>{t('setup.goalTime')}</span>
+              <span style={{ color: goalOk ? 'var(--rp-gold)' : 'var(--rp-danger, #d9736a)' }}>
+                {goalOk ? (U ? U.fmtPace(goalSec / course.dist) + ' ' + U.paceUnit() : formatPace(goalSec / course.dist))
+                  : t('setup.goalShort')}
+              </span>
             </div>
+            <RaceClock h={gh} m={gm} s={gs} onH={setGh} onM={setGm} onS={setGs} digitH={36} compact />
 
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', margin: '14px 0 6px' }}>{t('setup.strategy')}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-              {STRATS.map(([v, label, sub]) => (
-                <button key={v} onClick={() => setStrategy(v)} style={{
-                  gridColumn: v === 'strong' ? '1 / -1' : undefined, textAlign: 'start', padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
-                  fontFamily: 'inherit',
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-text-dim)', margin: '10px 0 5px' }}>{t('setup.strategy')}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 5 }}>
+              {STRATS.map(([v, label], i) => (
+                <button key={v} onClick={() => setStrategy(v)} aria-pressed={strategy === v} style={{
+                  gridColumn: i < 3 ? 'span 2' : 'span 3', padding: '7px 4px', minHeight: 36, borderRadius: 8, cursor: 'pointer',
+                  fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, lineHeight: 1.15,
                   background: strategy === v ? 'var(--rp-gold-wash)' : 'var(--rp-surface-2)',
                   border: `1px solid ${strategy === v ? 'var(--rp-gold-line)' : 'var(--rp-line)'}`,
                   color: strategy === v ? 'var(--rp-gold)' : 'var(--rp-text)' }}>
-                  <div style={{ fontSize: 13, fontWeight: 700 }}>{t(label)}</div>
-                  <div style={{ fontSize: 10.5, color: 'var(--rp-text-dim)', marginTop: 1 }}>{t(sub)}</div>
+                  {t(label)}
                 </button>
               ))}
             </div>
-
-            {strategy !== 'even' && (
-              <div style={{ marginTop: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700,
-                  color: 'var(--rp-text-dim)' }}>
-                  <span>{t('setup.splitStrength')}</span><span style={{ color: 'var(--rp-gold)' }}>{splitPct}%</span>
-                </div>
-                <input type="range" min="0" max="8" step="0.5" value={splitPct}
-                  onChange={(e) => setSplitPct(+e.target.value)}
-                  style={{ width: '100%', marginTop: 6, accentColor: 'var(--rp-gold)' }} />
-              </div>
-            )}
+            {/* the picked strategy's one-line description, and its strength on the same row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 7, minHeight: 26 }}>
+              <span style={{ fontSize: 11.5, color: 'var(--rp-text-dim)', flex: '0 1 auto', whiteSpace: 'nowrap' }}>
+                {t((STRATS.find((x) => x[0] === strategy) || STRATS[0])[2])}
+              </span>
+              {strategy !== 'even' && (
+                <>
+                  <input type="range" min="0" max="8" step="0.5" value={splitPct} aria-label={t('setup.splitStrength')}
+                    onChange={(e) => setSplitPct(+e.target.value)}
+                    style={{ flex: 1, minWidth: 60, accentColor: 'var(--rp-gold)', margin: 0 }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--rp-gold)', minWidth: 30, textAlign: 'end' }}>{splitPct}%</span>
+                </>
+              )}
+            </div>
 
             {/* a plain distance has no route to follow, so there's nothing to
                 adjust — the option only appears once a route is loaded */}
             {(course.track || course.profile) && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 13,
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 13,
                 cursor: hasProfile ? 'pointer' : 'not-allowed', opacity: hasProfile ? 1 : 0.5 }}>
                 <input type="checkbox" checked={gradeAdjust && hasProfile} disabled={!hasProfile}
                   onChange={(e) => setGradeAdjust(e.target.checked)} style={{ accentColor: 'var(--rp-gold)' }} />
@@ -1162,9 +1175,9 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
             )}
 
             {preview.length > 0 && (
-              <div style={{ marginTop: 14, padding: '9px 11px', borderRadius: 8,
+              <div style={{ marginTop: 8, padding: '7px 10px', borderRadius: 8,
                 background: 'var(--rp-surface-2)', border: '1px solid var(--rp-line)',
-                fontSize: 12, color: 'var(--rp-text-dim)' }}>
+                fontSize: 11.5, color: 'var(--rp-text-dim)' }}>
                 {t('setup.previewLine', { count: preview.length, fast: (U ? U.fmtPace(fastest) : formatPace(fastest)), slow: (U ? U.fmtPace(slowest) : formatPace(slowest)), per: (U ? U.paceUnit() : t('units.perKm')), total: formatClock(goalSec) })}
               </div>
             )}
@@ -1175,9 +1188,10 @@ function RaceSetupSheet({ onClose, onBuild, defaultName }) {
           <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--rp-danger, #d9736a)',
             border: '1px solid var(--rp-danger, #d9736a)', borderRadius: 8, padding: '8px 10px' }}>{err}</div>
         )}
+        </div>
 
         {course && (
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flex: '0 0 auto' }}>
             <button className="rp-btn rp-btn-primary" disabled={!goalOk}
               onClick={build} style={{ flex: 1, justifyContent: 'center' }}>{t('setup.build')}</button>
             <button className="rp-btn" onClick={startEmpty} style={{ flex: '0 0 auto' }}>
@@ -1938,7 +1952,9 @@ function PlannerBApp({ isOwner, userName, seed, sharedPlan, onGoHome }) {
   }, [isOwner]);
   React.useEffect(() => { refreshPendingSubs(); }, [refreshPendingSubs]);
   const [gpxDialog, setGpxDialog] = React.useState(null);
-  const [raceDate, setRaceDate] = React.useState(() => localStorage.getItem(LS_RACE_DATE) || '');
+  // a race picked from the catalog brings its date along (seed.raceDate); a
+  // fresh plan from the Hub otherwise keeps whatever date was there before
+  const [raceDate, setRaceDate] = React.useState(() => (seed && seed.raceDate) || localStorage.getItem(LS_RACE_DATE) || '');
   const [raceTime, setRaceTime] = React.useState(() => localStorage.getItem(LS_RACE_TIME) || '07:00');
   const [weather, setWeather] = React.useState(null);
   const [weatherStatus, setWeatherStatus] = React.useState('idle');

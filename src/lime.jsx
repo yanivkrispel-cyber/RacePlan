@@ -132,7 +132,7 @@ if (LIME_ON && !document.getElementById('rp-lime-styles')) {
   .rp-lsheet{background:linear-gradient(180deg,#13160f,#070807)!important;border-color:rgba(221,255,74,.16)!important}
   @media (max-width:640px){
     .rp-lsheet-wrap{align-items:flex-end!important;padding:0!important}
-    .rp-lsheet{max-width:none!important;border-radius:26px 26px 0 0!important;max-height:94vh!important;
+    .rp-lsheet{max-width:none!important;border-radius:26px 26px 0 0!important;max-height:94vh!important;max-height:94dvh!important;
       padding-bottom:calc(18px + env(safe-area-inset-bottom))!important;animation:rp-sheet-up .28s cubic-bezier(.2,.9,.25,1)}
   }
   @keyframes rp-sheet-up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}

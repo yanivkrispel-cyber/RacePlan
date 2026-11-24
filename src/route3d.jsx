@@ -1273,6 +1273,46 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   let curFrac = 0; // kept in sync by updateRunner, read by the pov/broadcast rigs
   const target = new THREE.Vector3(0, TARGET_SIZE * 0.06, 0);
   let lastInteraction = 0;
+  // Pan: an offset from the runner the orbit camera looks at (two-finger drag,
+  // or right/shift-drag with a mouse). Reset on every camera-mode switch.
+  const panOffset = new THREE.Vector3();
+  // Film + touch: the film keeps running (runner, cards, clock) but the camera
+  // is the viewer's (orbit/zoom/pan around the runner) until "back to film".
+  let cineManual = false;
+  const _tmpV = new THREE.Vector3();
+  function notifyManual() {
+    try { container.dispatchEvent(new CustomEvent('rp3d-manual', { detail: cineManual })); } catch (e) {}
+  }
+  function enterCineManual() {
+    if (cameraMode !== 'cinema' || cineManual) return;
+    cineManual = true;
+    // take over from exactly where the film's camera is, no jump
+    const v = _tmpV.copy(camera.position).sub(camLook);
+    radius = Math.max(TARGET_SIZE * 0.04, v.length());
+    polar = Math.acos(Math.max(-1, Math.min(1, v.y / radius)));
+    azimuth = Math.atan2(v.x, v.z);
+    target.copy(camLook);
+    panOffset.copy(camLook).sub(curve.getPointAt(curFrac));
+    notifyManual();
+  }
+  function exitCineManual() {
+    if (!cineManual) return;
+    cineManual = false; panOffset.set(0, 0, 0);
+    notifyManual();
+  }
+  const zoomMin = () => TARGET_SIZE * (cameraMode === 'cinema' ? 0.04 : 0.12);
+  const zoomMax = () => TARGET_SIZE * 3.5;
+  // screen-space drag (px) -> move the look-at point across the ground
+  function panBy(dx, dy) {
+    const k = radius * 0.0016;
+    const fwd = _tmpV.set(target.x - camera.position.x, 0, target.z - camera.position.z);
+    if (fwd.lengthSq() < 1e-9) fwd.set(0, 0, -1);
+    fwd.normalize();
+    const rx = -fwd.z, rz = fwd.x; // camera-right on the ground
+    const mx = (-dx * rx + dy * fwd.x) * k, mz = (-dx * rz + dy * fwd.z) * k;
+    panOffset.x += mx; panOffset.z += mz;
+    target.x += mx; target.z += mz;
+  }
 
   // Shortest signed angular distance from `a` to `b`, so the chase camera
   // always sweeps the short way round the runner's turn instead of
@@ -1519,7 +1559,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     camera.lookAt(camLook);
   }
   function applyCamera() {
-    if (cameraMode === 'cinema') { cineCamera(0); return; }
+    if (cameraMode === 'cinema') { if (cineManual) applyCameraOrbit(); else cineCamera(0); return; }
     if (cameraMode === 'pov') applyCameraPov();
     else if (cameraMode === 'broadcast') applyCameraBroadcast();
     else applyCameraOrbit();
@@ -1530,6 +1570,8 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   function switchCameraMode(mode) {
     if (!CAMERA_DEFAULTS[mode] && mode !== 'pov' && mode !== 'broadcast' && !(mode === 'cinema' && TER)) return;
     const was = cameraMode;
+    if (cineManual) { cineManual = false; notifyManual(); }
+    panOffset.set(0, 0, 0);
     cameraMode = mode;
     if (cardEl && mode !== 'cinema') showCard('', '');
     if (mode === 'cinema' && was !== 'cinema') {
@@ -1552,15 +1594,22 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   let dragLast = null;
   let pinchStartDist = null;
   let pinchStartRadius = null;
+  let midLast = null;   // two-finger midpoint, for panning
+  let panDrag = false;  // mouse: right button or shift held -> pan instead of orbit
 
   function onPointerDown(e) {
+    // overlay buttons (back to film) are taps, not camera drags
+    if (e.target && e.target.closest && e.target.closest('button')) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     lastInteraction = performance.now();
+    enterCineManual();
+    panDrag = e.pointerType === 'mouse' && (e.button === 2 || e.shiftKey);
     if (pointers.size === 1) dragLast = { x: e.clientX, y: e.clientY };
     if (pointers.size === 2) {
       const pts = [...pointers.values()];
       pinchStartDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       pinchStartRadius = radius;
+      midLast = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
     }
     try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
   }
@@ -1568,12 +1617,15 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     lastInteraction = performance.now();
-    const orbitMode = cameraMode === 'free' || cameraMode === 'chase';
+    const orbitMode = cameraMode === 'free' || cameraMode === 'chase' || (cameraMode === 'cinema' && cineManual);
     if (pointers.size === 2 && pinchStartDist) {
       if (orbitMode) {
         const pts = [...pointers.values()];
         const dist = Math.max(1, Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y));
-        radius = Math.max(TARGET_SIZE * 0.35, Math.min(TARGET_SIZE * 3.5, pinchStartRadius * (pinchStartDist / dist)));
+        radius = Math.max(zoomMin(), Math.min(zoomMax(), pinchStartRadius * (pinchStartDist / dist)));
+        const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        if (midLast) panBy(mid.x - midLast.x, mid.y - midLast.y);
+        midLast = mid;
         applyCamera();
       }
       return;
@@ -1581,7 +1633,10 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     if (dragLast && pointers.size === 1) {
       const dx = e.clientX - dragLast.x, dy = e.clientY - dragLast.y;
       dragLast = { x: e.clientX, y: e.clientY };
-      if (cameraMode === 'cinema') {
+      if (orbitMode && panDrag) {
+        panBy(dx, dy);
+        applyCamera();
+      } else if (cameraMode === 'cinema' && !cineManual) {
         cine.yaw = Math.max(-1.2, Math.min(1.2, cine.yaw - dx * 0.006));
       } else if (orbitMode) {
         azimuth -= dx * 0.006;
@@ -1595,17 +1650,22 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
   }
   function onPointerUp(e) {
     pointers.delete(e.pointerId);
-    if (pointers.size < 2) pinchStartDist = null;
-    if (pointers.size === 0) dragLast = null;
+    if (pointers.size < 2) { pinchStartDist = null; midLast = null; }
+    // lifting one finger of a pinch: carry on orbiting from where the other one is
+    if (pointers.size === 1) { const p = [...pointers.values()][0]; dragLast = { x: p.x, y: p.y }; }
+    if (pointers.size === 0) { dragLast = null; panDrag = false; }
   }
   function onWheel(e) {
     e.preventDefault();
     lastInteraction = performance.now();
-    if (cameraMode === 'free' || cameraMode === 'chase') {
-      radius = Math.max(TARGET_SIZE * 0.35, Math.min(TARGET_SIZE * 3.5, radius * (1 + e.deltaY * 0.0012)));
+    enterCineManual();
+    if (cameraMode === 'free' || cameraMode === 'chase' || cineManual) {
+      radius = Math.max(zoomMin(), Math.min(zoomMax(), radius * (1 + e.deltaY * 0.0012)));
       applyCamera();
     }
   }
+  const onContextMenu = (e) => e.preventDefault(); // right-drag pans
+  container.addEventListener('contextmenu', onContextMenu);
   container.addEventListener('pointerdown', onPointerDown);
   container.addEventListener('pointermove', onPointerMove);
   container.addEventListener('pointerup', onPointerUp);
@@ -1680,6 +1740,9 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
       if (cameraMode === 'cinema') { cine.phase = 'run'; cine.pt = 0; cineStep(0, 0); } else applyCamera();
     },
     setCameraMode: switchCameraMode,
+    // film: hand the camera back to the film after the viewer took it
+    resumeFilm: exitCineManual,
+    isManual: () => cineManual,
     // Forces an immediate synchronous paint, bypassing the internal rAF-driven
     // tick() loop below — used by scripted/offscreen capture (videoshare.jsx)
     // so a frame is guaranteed on-canvas right after seek(), regardless of
@@ -1718,8 +1781,14 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
         const fr = cineStep(dt, (stateRef.current.rate || 1) * 2);
         if (fr < 0) { finished = true; stateRef.current.playing = false; cine.phase = 'outro'; if (onFinish) onFinish(); }
       }
-      if (now - lastInteraction > 1400 && pointers.size === 0) cine.yaw *= Math.max(0, 1 - dt * 0.9);
-      cineCamera(dt);
+      if (cineManual) {
+        // follow the runner (plus the viewer's pan) with the viewer's orbit
+        target.lerp(_tmpV.copy(curve.getPointAt(curFrac)).add(panOffset), Math.min(1, dt * 4));
+        applyCameraOrbit();
+      } else {
+        if (now - lastInteraction > 1400 && pointers.size === 0) cine.yaw *= Math.max(0, 1 - dt * 0.9);
+        cineCamera(dt);
+      }
     } else if (stateRef.current.playing) {
       if (finished) { elapsed = 0; finished = false; }
       elapsed += dt * speedMult * (stateRef.current.rate || 1);
@@ -1733,7 +1802,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
       const frac = distFractionAtTime(elapsed);
       updateRunner(frac);
       if (cameraMode === 'free' || cameraMode === 'chase') {
-        target.lerp(curve.getPointAt(frac), 0.04); // gentle camera follow
+        target.lerp(_tmpV.copy(curve.getPointAt(frac)).add(panOffset), 0.04); // gentle camera follow
       }
       // Chase-cam heading: swing the idle camera in behind wherever the
       // runner is now facing, so it reads as tucked-in-behind on curves
@@ -1779,6 +1848,7 @@ function mount3D(THREE, container, data, onProgress, stateRef, onFinish) {
     container.removeEventListener('pointerup', onPointerUp);
     container.removeEventListener('pointercancel', onPointerUp);
     container.removeEventListener('wheel', onWheel);
+    container.removeEventListener('contextmenu', onContextMenu);
     scene.traverse((obj) => {
       if (obj.geometry) obj.geometry.dispose();
       if (obj.material) (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach((m) => m.dispose());
@@ -1825,6 +1895,15 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
   const [playing, setPlaying] = React.useState(true);
   const [cameraMode, setCameraMode] = React.useState('free');
   const [hasTer, setHasTer] = React.useState(false); // lime: real ground loaded, the film is on
+  // the viewer took the film's camera (touch/wheel); "back to film" returns it
+  const [cineManual, setCineManual] = React.useState(false);
+  React.useEffect(() => {
+    const el = mountRef.current;
+    if (!el) return undefined;
+    const on = (e) => setCineManual(!!e.detail);
+    el.addEventListener('rp3d-manual', on);
+    return () => el.removeEventListener('rp3d-manual', on);
+  }, []);
   const hudKmRef = React.useRef(null), hudPaceRef = React.useRef(null), hudGradeRef = React.useRef(null);
   // the plan's pace and the road's grade where the runner is, for the clock's line under it
   const profPts = React.useMemo(() => (Array.isArray(profile) ? profile.filter((p) => isFinite(p.ele) && isFinite(p.d)) : []), [profile]);
@@ -2009,6 +2088,20 @@ function Route3DView({ track, profile, rows, totalDist, raceName, gain, loss, we
                 <span><b ref={hudGradeRef} /></span>
               </div>
             </div>
+          )}
+          {status === 'ready' && cameraMode === 'cinema' && cineManual && (
+            <button className="rp-3d-backfilm" onClick={() => { if (stateRef.current && stateRef.current.resumeFilm) stateRef.current.resumeFilm(); }}
+              style={{ position: 'absolute', bottom: 34, right: 10, zIndex: 3,
+                display: 'flex', alignItems: 'center', gap: 7, padding: '8px 14px', borderRadius: 999,
+                border: '1px solid var(--rp-gold)', background: 'rgba(5,6,5,.82)', color: 'var(--rp-gold)',
+                fontSize: 12.5, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit',
+                backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"
+                strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="14" rx="2" /><path d="M10 9l5 3-5 3z" fill="currentColor" />
+              </svg>
+              {t('view3d.backToFilm')}
+            </button>
           )}
           {status === 'ready' && weather && weather.windSpeed >= WIND_VIS_THRESHOLD_KMH && (
             <div style={{ position: 'absolute', top: 10, insetInlineEnd: 12, display: 'flex', alignItems: 'center',

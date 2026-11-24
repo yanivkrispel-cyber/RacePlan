@@ -39,6 +39,45 @@ function rl_downsample(arr, max) {
 }
 
 // The country as its two-letter code in a small tag (Kris, 3.11.2026: no emoji; flags were emoji).
+// ── race dates ─────────────────────────────────────────────────────────────
+// A race's next date: the owner's own `date` on the race doc wins, else the
+// researched table in src/race-dates.jsx (window.RP_RACE_DATES). 'YYYY-MM-DD'.
+function raceDateOf(r) {
+  const own = r && typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date) ? r.date : '';
+  if (own) return own;
+  const tbl = (typeof window !== 'undefined' && window.RP_RACE_DATES) || {};
+  const e = r && tbl[r.id];
+  return (e && e.date) || '';
+}
+function todayKey(now) {
+  const d = now ? new Date(now) : new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+// Soonest race first; races with no known date after them; races already run
+// at the very end. Ties: a race with a route first, then tier, then name.
+function compareRacesByDate(a, b, today) {
+  const da = raceDateOf(a), db = raceDateOf(b);
+  const ga = !da ? 1 : (da >= today ? 0 : 2);
+  const gb = !db ? 1 : (db >= today ? 0 : 2);
+  if (ga !== gb) return ga - gb;
+  if (ga === 0 && da !== db) return da < db ? -1 : 1;
+  if (ga === 2 && da !== db) return da > db ? -1 : 1;
+  const av = a.routeStatus === 'available' ? 0 : 1;
+  const bv = b.routeStatus === 'available' ? 0 : 1;
+  return av - bv || ((a.tier || 3) - (b.tier || 3)) || String(a.name).localeCompare(String(b.name));
+}
+function fmtRaceDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  return d + '.' + m + '.' + y;
+}
+function daysToRace(iso, now) {
+  if (!iso) return null;
+  const [y, m, d] = iso.split('-').map(Number);
+  const t0 = new Date(now || Date.now()); t0.setHours(0, 0, 0, 0);
+  return Math.round((new Date(y, m - 1, d) - t0) / 86400000);
+}
+
 function flagFor(cc) {
   const tag = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 28, height: 20,
     padding: '0 5px', borderRadius: 6, border: '1px solid var(--rp-line)', color: 'var(--rp-text-dim)',
@@ -198,8 +237,32 @@ function StatusBadge({ status }) {
   );
 }
 
+// The part of the screen the on-screen keyboard leaves visible. On phones the
+// keyboard covers the page without resizing it (iOS, and Chrome by default),
+// so a bottom sheet sized to the window ends up under the keyboard; sizing it
+// to the visual viewport keeps the search results between the field and the keys.
+function useVisualViewport() {
+  const read = () => {
+    const vv = typeof window !== 'undefined' && window.visualViewport;
+    if (!vv) return null;
+    return { h: Math.round(vv.height), top: Math.round(vv.offsetTop), kb: vv.height < window.innerHeight * 0.82 };
+  };
+  const [st, setSt] = React.useState(read);
+  React.useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return undefined;
+    const on = () => setSt(read());
+    vv.addEventListener('resize', on); vv.addEventListener('scroll', on);
+    return () => { vv.removeEventListener('resize', on); vv.removeEventListener('scroll', on); };
+  }, []);
+  return st;
+}
+
 function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, initialPending, zIndex = 1000 }) {
   useEscape(onClose);
+  const vv = useVisualViewport();
+  const listTopRef = React.useRef(null);
+  const [searchFocus, setSearchFocus] = React.useState(false);
   const [races, setRaces] = React.useState(null);   // null = loading
   const [q, setQ] = React.useState('');
   const [dist, setDist] = React.useState('all');
@@ -245,6 +308,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
   }, [isOwner]);
   React.useEffect(() => { loadSubs(); }, [loadSubs]);
 
+  const today = todayKey();
   const filtered = React.useMemo(() => {
     const list = races || [];
     const needle = q.trim().toLowerCase();
@@ -252,17 +316,16 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
       .filter((r) => isOwner || r.listed !== false)
       .filter((r) => dist === 'all' || r.distance === dist)
       .filter((r) => !needle || (r.search || (r.name + ' ' + r.city).toLowerCase()).includes(needle))
-      .sort((a, b) => {
-        const av = a.routeStatus === 'available' ? 0 : 1;
-        const bv = b.routeStatus === 'available' ? 0 : 1;
-        return av - bv || (a.tier - b.tier) || String(a.name).localeCompare(b.name);
-      })
+      .sort((a, b) => compareRacesByDate(a, b, today))
       .slice(0, 120);
   }, [races, q, dist]);
 
   const pickRace = (rc) => {
     if (rc.routeStatus === 'available') {
-      onLoadCourse(courseFromRace(rc));
+      const c = courseFromRace(rc);
+      const rd = raceDateOf(rc);
+      if (rd && rd >= today) c.raceDate = rd;
+      onLoadCourse(c);
       if (onRaceName) onRaceName(rc.nameHe || rc.name);
       onClose();
       return;
@@ -502,7 +565,8 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
       className="rp-sheet-wrap rp-cq-scope"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(submitted); }}
       style={{
-        position: 'fixed', inset: 0, zIndex,
+        position: 'fixed', zIndex,
+        ...(vv ? { left: 0, right: 0, top: vv.top, height: vv.h } : { inset: 0 }),
         background: (window.RP_LIME ? 'rgba(0,0,0,.78)' : 'rgba(9,11,22,.78)'), backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 20, direction: I18N.dir, fontFamily: 'var(--rp-font-ui)', color: TEXT,
@@ -512,13 +576,17 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
         @media (max-width: 640px){
           .rp-sheet-wrap{ align-items: flex-end !important; padding: 0 !important; }
           .rl-sheet{ max-width: none !important; width: 100% !important;
-            max-height: 92vh !important; border-radius: 20px 20px 0 0 !important; }
-          .rl-sheet input, .rl-sheet textarea, .rl-sheet button{ font-size: 15px; }
+            max-height: 94% !important; border-radius: 20px 20px 0 0 !important; }
+          /* keyboard up: the sheet takes the whole visible area above it */
+          .rl-sheet.rl-kb{ max-height: none !important; height: calc(100% - 6px) !important; }
+          /* 16px: below that iOS zooms the page on focus */
+          .rl-sheet input, .rl-sheet textarea, .rl-sheet select{ font-size: 16px !important; }
+          .rl-sheet button{ font-size: 15px; }
           .rl-row{ min-height: 52px; }
         }
       `}</style>
 
-      <div className="rl-sheet" style={{
+      <div className={'rl-sheet' + ((vv && vv.kb) || searchFocus ? ' rl-kb' : '')} style={{
         background: 'var(--rp-surface)', border: `1px solid ${BD}`,
         borderRadius: 'var(--rp-r-14)', width: '100%', maxWidth: 640, maxHeight: '88vh',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -542,7 +610,7 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
         </div>
 
         {/* tabs — hidden in the propose flow, which has only one thing to do */}
-        {!isProposeFlow && (
+        {!isProposeFlow && (tab !== 'library' || isOwner) && (
           <div style={{ display: 'flex', borderBottom: `1px solid ${BD}` }}>
             {tabBtn('library', t('routes.tabSearch'))}
             {tab === 'link' && tabBtn('link', t('routes.tabFile'))}
@@ -552,12 +620,17 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
         )}
 
         {/* body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', minHeight: 0 }}>
+        <div ref={listTopRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', minHeight: 0 }}>
 
           {tab === 'library' && (
             <>
               <input
-                value={q} onChange={(e) => setQ(e.target.value)}
+                value={q} onChange={(e) => { setQ(e.target.value); if (listTopRef.current) listTopRef.current.scrollTop = 0; }}
+                type="search" enterKeyHint="search" autoComplete="off" autoCorrect="off" spellCheck={false}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                onFocus={() => setSearchFocus(true)}
+                /* late, so a tap on a result lands before the sheet changes height */
+                onBlur={() => setTimeout(() => setSearchFocus(false), 300)}
                 placeholder={t('routes.searchPlaceholder')}
                 style={{ width: '100%', background: FIELD_BG, border: `1px solid ${FIELD_BD}`,
                   borderRadius: 10, padding: '9px 12px', fontSize: 14, color: TEXT,
@@ -646,8 +719,21 @@ function RouteLibrary({ onClose, onLoadCourse, raceName, onRaceName, isOwner, in
                         overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {rc.nameHe || rc.name}
                       </div>
-                      <div style={{ fontSize: 11.5, color: DIM, marginTop: 2 }}>
-                        {rc.city}{rc.city ? ' · ' : ''}{DIST_LABEL[rc.distance] ? t(DIST_LABEL[rc.distance]) : ''}
+                      <div style={{ fontSize: 11.5, color: DIM, marginTop: 2, whiteSpace: 'nowrap',
+                        overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {(() => {
+                          const rd = raceDateOf(rc);
+                          if (!rd) return null;
+                          const n = daysToRace(rd);
+                          const soon = n != null && n >= 0 && n <= 30;
+                          return (
+                            <span style={{ color: soon ? 'var(--rp-gold)' : (n < 0 ? DIM : 'var(--rp-text)'), fontWeight: 700 }}>
+                              <bdi>{fmtRaceDate(rd)}</bdi>{soon ? ' · ' + (n === 0 ? t('routes.raceToday') : t('routes.inDays', { n })) : ''}
+                              {' · '}
+                            </span>
+                          );
+                        })()}
+                        {DIST_LABEL[rc.distance] ? t(DIST_LABEL[rc.distance]) : ''}{rc.city ? ' · ' : ''}<bdi>{rc.city}</bdi>
                       </div>
                     </div>
                     <StatusBadge status={rc.routeStatus} />
@@ -944,8 +1030,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
       .filter((r) => dist === 'all' || r.distance === dist)
       .filter((r) => vis === 'all' || (vis === 'shown' ? isShown(r) : !isShown(r)))
       .filter((r) => !needle || (r.search || buildSearch(r)).includes(needle))
-      .sort((a, b) => (a.tier - b.tier)
-        || String(a.nameHe || a.name).localeCompare(String(b.nameHe || b.name), 'he'));
+      .sort((a, b) => compareRacesByDate(a, b, todayKey()));
   }, [races, q, dist, vis]);
 
   const shownCount = (races || []).filter(isShown).length;
@@ -971,6 +1056,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
       nameHe: r.nameHe || '', name: r.name || '', city: r.city || '',
       cc: r.countryCode || '', dist: r.distance || 'custom',
       tier: r.tier == null ? 3 : r.tier,
+      date: raceDateOf(r),
     });
   };
 
@@ -988,6 +1074,7 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
     const next = {
       name: name || nameHe, nameHe: nameHe || null, city: ef.city.trim(),
       countryCode: cc, distance: ef.dist, distanceKm: km, tier,
+      date: /^\d{4}-\d{2}-\d{2}$/.test(ef.date || '') ? ef.date : null,
     };
     next.search = buildSearch({ ...r, ...next });
     try {
@@ -1440,6 +1527,12 @@ function RaceAdminPanel({ onClose, zIndex = 1000 }) {
                             style={{ ...fieldStyle, width: 96, flex: '0 0 auto' }} aria-label={t('routes.priority')} />
                         </div>
                         <div style={{ fontSize: 10.5, color: DIM }}>{t('routes.priorityHint')}</div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: DIM }}>
+                          {t('routes.raceDate')}
+                          <input type="date" value={ef.date || ''}
+                            onChange={(e) => setEf((s) => ({ ...s, date: e.target.value }))}
+                            style={{ ...fieldStyle, flex: 1 }} />
+                        </label>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button onClick={() => saveEdit(r)} disabled={rowBusy}
                             className="rp-btn rp-btn-primary" style={{ flex: 1, justifyContent: 'center' }}>
@@ -1666,4 +1759,6 @@ window.RP_ROUTES = {
   buildSubmissionRecord,
   courseFromSubmission,
   sourceLabel,
+  raceDateOf,
+  compareRacesByDate,
 };
